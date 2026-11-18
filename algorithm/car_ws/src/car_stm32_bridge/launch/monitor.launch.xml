@@ -1,0 +1,10 @@
+<launch>
+  <!-- Read-only: never issues motor/servo commands. -->
+  <arg name="port" default=""/>
+  <arg name="replay_file" default=""/>
+  <node pkg="car_stm32_bridge" exec="car_ulog43_bridge" name="car_ulog43_bridge" output="screen">
+    <param from="$(find-pkg-share car_stm32_bridge)/config/bridge.yaml"/>
+    <param name="port" value="$(var port)" type="str"/>
+    <param name="replay_file" value="$(var replay_file)" type="str"/>
+  </node>
+</launch>

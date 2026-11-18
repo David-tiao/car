@@ -1,0 +1,13 @@
+car_ulog43_bridge:
+  ros__parameters:
+    # Set either replay_file OR port (never both). Empty values mean standby.
+    port: ""
+    replay_file: ""
+    baud: 115200
+    replay_interval_ms: 50
+    pulses_per_meter: 1750.0   # from STM32F4/Hardware/bsp_ulog.h
+    wheel_ppr: 440.0            # from STM32F4/App/app_runtime.c
+    wheelbase_half_m: 0.093
+    track_half_m: 0.11
+    publish_tf: false          # Avoid duplicate odom -> base_link broadcasters
+    publish_joint_states: true
