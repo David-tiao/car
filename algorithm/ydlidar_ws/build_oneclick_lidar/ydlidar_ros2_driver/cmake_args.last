@@ -1,0 +1,1 @@
+['-DBUILD_TESTING=OFF', '-Dydlidar_sdk_DIR=/home/tao/Desktop/algorithm/ydlidar_ws/install_oneclick_sdk/lib/cmake/ydlidar_sdk', '-DAMENT_CMAKE_SYMLINK_INSTALL=1']

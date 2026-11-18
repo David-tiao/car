@@ -1,0 +1,11 @@
+prefix=/home/tao/Desktop/algorithm/ydlidar_ws/install_oneclick_sdk
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include
+
+Name: YDLIDAR_SDK
+Description: 
+Version: 1.2.20
+Cflags:   -I/home/tao/Desktop/algorithm/ydlidar_ws/install_oneclick_sdk/include/src -I/home/tao/Desktop/algorithm/ydlidar_ws/install_oneclick_sdk/include
+Libs: -L${libdir}  -lpthread -lrt -lydlidar_sdk
+

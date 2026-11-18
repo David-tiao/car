@@ -1,0 +1,87 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ''
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Grid
+      Cell Size: 0.5
+      Plane Cell Count: 10
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/Map
+      Enabled: true
+      Name: 比赛静态地图
+      Alpha: 1.0
+      Color Scheme: map
+      Topic:
+        Value: /map
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Map
+      Enabled: false
+      Name: 禁行掩膜（可切换）
+      Alpha: 0.55
+      Color Scheme: map
+      Topic:
+        Value: /keepout_filter_mask
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: true
+      Name: 真实X3扫描
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+        History Policy: Keep Last
+      Style: Points
+      Size (m): 0.025
+      Color: 255; 100; 100
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: 封闭道路拓扑
+      Topic:
+        Value: /competition/road_graph
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: 锁定障碍物
+      Topic:
+        Value: /competition/locked_obstacle_markers
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: 整场任务道路路线（预览）
+      Topic:
+        Value: /competition/mission_road_path
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+  Enabled: true
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: map
+    Frame Rate: 20
+  Name: root
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Target Frame: <Fixed Frame>
+      Scale: 170
+      X: 1.2
+      Y: 1.2

@@ -1,0 +1,4 @@
+# Computer-side only. Python >=3.12.
+openmv
+opencv-python
+numpy

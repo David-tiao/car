@@ -1,0 +1,36 @@
+demo_circle validation — 2026-11-04
+
+Host: CPython; simulated CSI/image/Hough, no physical camera.
+Syntax compilation: PASS
+SHA256 demo_circle.py: f4d2080f40b665c27bf7f463ddaf21cbd48c10df59145618f867b716299bbf8b
+
+test_bad_config_or_resolution_retains_only_center (test_demo_circle.RingTests.test_bad_config_or_resolution_retains_only_center) ... ok
+test_calibrated_flag_is_explicit (test_demo_circle.RingTests.test_calibrated_flag_is_explicit) ... ok
+test_clipped_and_elliptical_blob_not_published_as_distance (test_demo_circle.RingTests.test_clipped_and_elliptical_blob_not_published_as_distance) ... ok
+test_color_trackers_are_independent (test_demo_circle.RingTests.test_color_trackers_are_independent) ... ok
+test_confirm_requires_three_consecutive_measurements (test_demo_circle.RingTests.test_confirm_requires_three_consecutive_measurements) ... ok
+test_custom_principal_point (test_demo_circle.RingTests.test_custom_principal_point) ... ok
+test_distance_scales_inversely_with_radius (test_demo_circle.RingTests.test_distance_scales_inversely_with_radius) ... ok
+test_distance_uses_unrounded_radius (test_demo_circle.RingTests.test_distance_uses_unrounded_radius) ... ok
+test_hough_exception_fails_closed (test_demo_circle.RingTests.test_hough_exception_fails_closed) ... ok
+test_inner_only_or_displaced_circle_is_not_range_measurement (test_demo_circle.RingTests.test_inner_only_or_displaced_circle_is_not_range_measurement) ... ok
+test_invalid_radius_does_not_produce_numeric_distance (test_demo_circle.RingTests.test_invalid_radius_does_not_produce_numeric_distance) ... ok
+test_loss_clears_published_data_and_expires_track (test_demo_circle.RingTests.test_loss_clears_published_data_and_expires_track) ... ok
+test_low_confidence_and_position_outlier_are_not_measurements (test_demo_circle.RingTests.test_low_confidence_and_position_outlier_are_not_measurements) ... ok
+test_main_emits_all_colors_and_detects_before_drawing (test_demo_circle.RingTests.test_main_emits_all_colors_and_detects_before_drawing) ... ok
+test_no_blob_and_unknown_color (test_demo_circle.RingTests.test_no_blob_and_unknown_color) ... ok
+test_no_target_json_nulls_and_stable_keys (test_demo_circle.RingTests.test_no_target_json_nulls_and_stable_keys) ... ok
+test_off_axis_distance_is_slant_not_depth (test_demo_circle.RingTests.test_off_axis_distance_is_slant_not_depth) ... ok
+test_optical_axis_distance_and_pixel_center (test_demo_circle.RingTests.test_optical_axis_distance_and_pixel_center) ... ok
+test_optional_digit_is_preserved (test_demo_circle.RingTests.test_optional_digit_is_preserved) ... ok
+test_outer_circle_selected_instead_of_inner_outer_average (test_demo_circle.RingTests.test_outer_circle_selected_instead_of_inner_outer_average) ... ok
+test_radius_outlier_does_not_jump_distance (test_demo_circle.RingTests.test_radius_outlier_does_not_jump_distance) ... ok
+test_reacquisition_needs_three_new_consecutive_hits (test_demo_circle.RingTests.test_reacquisition_needs_three_new_consecutive_hits) ... ok
+test_tick_counter_wrap (test_demo_circle.RingTests.test_tick_counter_wrap) ... ok
+
+----------------------------------------------------------------------
+Ran 23 tests in 0.004s
+
+OK
+
+Hardware status: NOT RUN. Accuracy/FPS/firmware compatibility require board acceptance.

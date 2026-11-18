@@ -1,0 +1,1 @@
+/home/tao/Desktop/algorithm/ydlidar_ws/build_oneclick_lidar/ydlidar_ros2_driver/ament_cmake_environment_hooks/local_setup.zsh
