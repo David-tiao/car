@@ -1,0 +1,38 @@
+{
+  "revision": 225,
+  "scene": {
+    "obstacles": [],
+    "scenarioVersion": 10,
+    "rawX": 1.12,
+    "rawY": 2.42,
+    "qrY": 1.2,
+    "gridStep": 0.48,
+    "start": {
+      "x": 2.25,
+      "y": 2.25
+    },
+    "goal": {
+      "x": 0.33,
+      "y": 1.2
+    },
+    "startZone": 1,
+    "velocity": 0.75,
+    "handling": 0.65,
+    "rotorDwell": 4.0,
+    "rotorRate": 45.0,
+    "rotorAngle": 120.0,
+    "alignOffset": 0.015,
+    "alignSpeed": 0.04,
+    "alignYaw": 2.0,
+    "armReach": 0.09,
+    "armSpeed": 0.1,
+    "mode": "mission",
+    "planner": "astar",
+    "goalPolicy": "other",
+    "task": "156+123+516+213",
+    "showGrid": true,
+    "ringFollow": true,
+    "pathView": "global",
+    "turnDirection": "cw"
+  }
+}
