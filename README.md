@@ -23,6 +23,13 @@ bash sync_car.sh --delete-build
 先列出匹配的本地编译目录，需要输入 YES 后才真正删除，再进行同步。删除后可能需要重新编译。
 bash sync_car.sh 
 同步提交
+bash sync_car.sh --history 20
+查看往前的版本并且还附带了版本说明
+bash sync_car.sh --show a83b2c1
+查看具体的版本说明
+bash sync_car.sh --rollback a83b2c1
+回溯版本
+
 
 
 取消github上在这个文件里面嵌套的项目               --- 已解决
