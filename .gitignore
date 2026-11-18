@@ -1,17 +1,14 @@
 
-# >>> car sync: generated files >>>
-# ROS 2 / colcon / catkin
+# >>> car-sync generated files >>>
 **/build/
 **/install/
 **/log/
 **/devel/
-# STM32CubeIDE / PlatformIO / CMake
 **/Debug/
 **/Release/
 **/.pio/
 **/CMakeFiles/
 **/cmake-build-*/
-# Python / OpenMV cache and common intermediate files
 **/__pycache__/
 **/.pytest_cache/
 **/.mypy_cache/
@@ -22,4 +19,4 @@
 *.obj
 *.elf
 *.map
-# <<< car sync: generated files <<<
+# <<< car-sync generated files <<<

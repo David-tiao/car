@@ -1,45 +1,111 @@
 # sync_car.sh 使用说明
 
-`sync_car.sh` 是工创小车项目 `car` 的 Git 管理脚本，用于同步 GitHub、记录修改说明、查看与回溯版本，以及手动接收队友的 STM32F4 更新。
+## 1. 脚本介绍
 
-## 1. 启动方法
+`sync_car.sh` 用于工创小车 `car` 项目的 GitHub 代码管理。
 
-脚本位置：`/home/tao/Desktop/car/sync_car.sh`
+主要功能：
+- 一键提交并同步代码到 GitHub。
+- 自动重试网络异常，检查推送是否成功。
+- 查看历史版本并安全回退。
+- 检查和合并队友的 STM32F4 代码。
+- 防止重要文件误删除。
+
+## 2. 首次使用
+
+脚本放在 `~/Desktop/car/` 目录下。
+
+打开 Ubuntu 终端：
 
 ```bash
-cd /home/tao/Desktop/car
-chmod +x sync_car.sh        # 首次使用执行一次
-./sync_car.sh --help       # 查看帮助
+cd ~/Desktop/car
+chmod +x sync_car.sh
+bash -n sync_car.sh
 ```
 
-## 2. 主要功能与命令
+## 3. 常用命令
 
-| 功能 | 命令 | 说明 |
-| --- | --- | --- |
-| 同步 GitHub | `./sync_car.sh` | 提交本地修改、拉取并合并远程 `main`、推送；有修改时手动填写提交标题及说明 |
-| 指定提交说明 | `./sync_car.sh --message "标题" --details "详细说明"` | 不使用交互输入提交说明 |
-| 查看历史 | `./sync_car.sh --history 20` | 查看最近 20 次提交及修改说明 |
-| 查看版本详情 | `./sync_car.sh --show <提交ID>` | 查看版本信息、提交说明及文件变动统计 |
-| 回溯版本 | `./sync_car.sh --rollback <提交ID>` | 经确认后恢复旧版文件，创建新提交并推送，不强制改写历史 |
-| 查看备份 | `./sync_car.sh --backups` | 查看回溯及 STM32 合并前的本地备份标签 |
-| 检查队友更新 | `./sync_car.sh --check-stm32` | 获取队友分支更新、列出尚未导入的提交，不修改本地 STM32F4 |
-| 查看队友差异 | `./sync_car.sh --stm32-diff` | 查看队友相对上次导入版本的代码差异；首次导入前显示文件统计 |
-| 手动合并 STM32 | `./sync_car.sh --update-stm32` | 经确认后将队友代码集成到 `car/STM32F4`，只在本地提交，不自动上传 |
-| 清理编译目录 | `./sync_car.sh --delete-build` | 确认后删除本地编译目录，再同步 GitHub |
-| 取消嵌套 Git | `./sync_car.sh --include-nested` | 备份嵌套 `.git` 元数据，把子项目源码交给 `car` 主仓库管理 |
+| 命令 | 功能 |
+|---|---|
+| `./sync_car.sh` | 一键同步代码到 GitHub |
+| `./sync_car.sh --preview` | 预览本地代码修改 |
+| `./sync_car.sh --doctor` | 检查仓库状态 |
+| `./sync_car.sh --history 20` | 查看最近 20 次提交 |
+| `./sync_car.sh --show <版本ID>` | 查看指定版本 |
+| `./sync_car.sh --rollback <版本ID>` | 恢复历史版本 |
+| `./sync_car.sh --check-remote` | 检查是否同步成功 |
+| `./sync_car.sh --retry-push` | 推送失败后重新推送 |
+| `./sync_car.sh --backups` | 查看备份版本 |
 
-## 3. 推荐使用流程
+**平时上传代码只需要执行：**
 
-1. 修改代码后执行 `./sync_car.sh`，填写本次修改内容。
-2. 想查看旧版本时，先用 `--history 20`，再用 `--show <提交ID>`。
-3. 需要恢复旧版时，用 `--rollback <提交ID>` 并按提示确认。
-4. 需要接收队友 STM32 代码时，依次运行 `--check-stm32`、`--stm32-diff`、`--update-stm32`；完成编译与实机检查后，再运行 `./sync_car.sh` 上传。
+```bash
+./sync_car.sh
+```
 
-## 4. 注意事项
+按照提示填写提交标题和修改说明，说明写完后单独输入 `END` 结束。
 
-- 默认项目路径为**脚本所在目录**；主仓库为 `David-tiao/car` 的 `main` 分支。
-- 队友仓库为 `Wangdachang888/GongChuangSai`，同步分支是 `refactor/architecture-v2`。
-- 默认只忽略 ROS2 `build/`、`install/`、`log/` 等编译产物，**不会删除本地编译文件**；使用 `--delete-build` 才会在确认后删除。
-- **首次**运行 `--update-stm32` 会用队友仓库完整快照替换 `STM32F4` 目录中原先被 Git 跟踪的文件，务必先检查差异；后续更新采用受控三方合并，冲突时停止。
-- `--rollback` 作用于**整个 `car` 仓库**，执行前要求工作区干净，并会推送恢复提交；`--update-stm32` 同样要求工作区干净，但不会自动推送。
-- 本脚本不会自动验证 Keil 编译、OpenMV 通信或小车实机运行，合并队友代码后应自行测试。
+## 4. STM32F4 队友代码同步
+
+| 命令 | 功能 |
+|---|---|
+| `./sync_car.sh --check-stm32` | 检查队友有没有更新 |
+| `./sync_car.sh --stm32-diff` | 查看队友修改了哪些代码 |
+| `./sync_car.sh --update-stm32` | 将队友代码合并到本地 |
+
+首次导入需要输入 `ADOPT STM32`，会用队友整个仓库快照替换本地 `STM32F4` 中已跟踪的文件。
+
+后续增量合并需要输入 `MERGE STM32`。
+
+**注意：STM32 合并完成后不会自动上传 GitHub。** 建议先完成编译和实机测试，再执行 `./sync_car.sh`。
+
+## 5. 推送失败怎么办？
+
+如果出现 `HTTP 408` 或其他网络错误，先检查：
+
+```bash
+./sync_car.sh --check-remote
+```
+
+确认未成功同步后，重新推送：
+
+```bash
+./sync_car.sh --retry-push
+```
+
+如果仍然失败，可以尝试：
+
+```bash
+CAR_GIT_HTTP_VERSION=HTTP/1.1 ./sync_car.sh --retry-push
+```
+
+脚本默认自动重试最多 3 次，不会强制覆盖远程代码。
+
+## 6. 其他功能
+
+处理嵌套 Git 仓库：
+
+```bash
+./sync_car.sh --include-nested
+```
+
+确认后删除本地编译目录：
+
+```bash
+./sync_car.sh --delete-build
+```
+
+## 7. 注意事项
+
+1. 重要文件被删除时，脚本会要求人工确认。
+2. Git 合并出现冲突时，脚本会停止，不会自动覆盖代码。
+3. 历史版本回退会创建新提交，保留原有 Git 历史。
+4. STM32F4 代码更新后，应先测试，再推送到 GitHub。
+
+---
+
+**推荐工作流程：**
+
+日常开发：`修改代码 → ./sync_car.sh → GitHub`
+
+队友代码更新：`--check-stm32 → --stm32-diff → --update-stm32 → 编译测试 → ./sync_car.sh`
