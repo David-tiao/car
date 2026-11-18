@@ -1,3 +1,157 @@
+SIM2REAL OPERATOR CONSOLE V13.0.0 — CHASSIS DIAGNOSTICS & MANUAL TRAINING
+=============================================================================
+
+WHAT'S NEW
+- Two main modes retained: SIMULATION and LIVE. LIVE is read-only.
+- Two fully collapsible workspaces near the top: MANUAL TRAINING and CHASSIS DIAGNOSTICS.
+- Manual training is SIMULATION ONLY. Click a safe map point to plan and move;
+  W/A/S/D translate, Q/E rotate, G toggle gripper, R extend/retract, SPACE stop.
+  No actual STM32, ROS2 /cmd_vel or HTTP command endpoint is connected.
+- Real-time analytics compares map-aligned /odom position against planned
+  route polyline: cross-track RMS/P95/max, heading RMS and a clearly-labelled
+  simulated reference speed comparison. This is NOT absolute position accuracy.
+- Full original uploaded 'kart_log_view_mecanum_v4(1).html' retained under
+  web/tools/mecanum_debugger.html (six original tabs, all waveform/PID/quality
+  tools preserved). Supports importing original ULog43 CSV as before.
+- Realtime /odom samples can be exported as named-column CSV or sent to the
+  embedded legacy debugger. Missing wheel/PID channels remain missing.
+- ROS2 navigation view and camera dashboard can be collapsed to reduce clutter.
+- No new server dependency. Only browser JS and CSS added.
+
+INSTALL INTO THE USER'S NEW DESKTOP LOCATION (BACK UP FIRST IF CUSTOMIZED)
+  # Stop the old 'car' server with Ctrl+C first.
+  cd ~/Downloads
+  python3 -m zipfile -e competition_simulator_server_v13.zip .
+  mkdir -p "$HOME/Desktop/car/sim2real"
+  cp -a competition_simulator_server/. "$HOME/Desktop/car/sim2real/"
+  bash "$HOME/Desktop/car/sim2real/start_server.sh"
+
+EXISTING 'car' ALIAS SHOULD POINT TO:
+  car() { bash "$HOME/Desktop/car/sim2real/start_server.sh"; }
+
+OPEN: http://127.0.0.1:8080/?build=13.0.0
+CHECK: curl -s http://127.0.0.1:8080/api/build
+
+REAL VEHICLE DATA FLOW
+  STM32F4 -> Pi5 serial protocol parser (NOT YET PROVIDED) -> Pi5 ROS2 /odom
+  -> Ubuntu DDS -> start_ros_visualization.sh -> localhost POST /api/telemetry
+  -> browser 140ms polling -> LIVE monitor and realtime error comparison.
+  Do not run both visualization and legacy odom bridges simultaneously.
+  OpenMV and Pi5 cameras upload frames to the existing authenticated APIs.
+
+LIMITATIONS / SAFETY
+- Manual controls are restricted to browser-only simulation; physical motion
+  requires protocol review, emergency stop, command timeout, safety limits,
+  on-site supervision, and a separate explicitly authorized controller.
+- Competition rules prohibit remote control while the robot is running.
+- Error measurements require matching map frames. Without map->odom
+  localization, odometry can drift. The browser applies only initial alignment.
+- Rotation swept footprint and extension-arm collisions are still simplified.
+- Live data channels do not magically contain wheel speeds, PID terms or
+  mechanical actuator feedback. The legacy analyzer shows missing fields.
+- Preserve data/shared_scene.json and data/camera_token.txt during upgrades.
+
+--- PREVIOUS V12 README BELOW ---
+
+COMPETITION CAR SIMULATOR SERVER V12.0.0 — ROS2 / NAV2 / LIDAR DASHBOARD
+===========================================================================
+
+WHAT WAS ADDED
+- Built-in RViz-style 2D navigation viewer within the existing SIMULATION / LIVE website.
+- Browser layers: /map, /scan, /global_costmap/costmap, /local_costmap/costmap,
+  /plan, /local_plan, /competition/road_path, /competition/road_graph,
+  /competition_start_zones, TF map->odom->base_link->laser_frame, /odom, /cmd_vel,
+  /diagnostics and /navigate_to_pose/_action/status.
+- ROS2 topic discovery, message rates and TF availability readouts.
+- User can switch between world map view (TF required) and raw laser-frame view
+  (works with /scan alone); frame-mismatched data is NOT forcibly overlaid.
+- The bridge is READ ONLY and never commands a robot or starts Nav2.
+- The entire website and all download / script filenames remain in ENGLISH.
+- Original Stage 6 RViz2 config from uploaded algorithm.zip included as a fallback
+  for native desktop RViz2. Browser viewer is NOT a complete 3D RViz2 replacement.
+
+FIRST UPDATE / INSTALL ON UBUNTU
+  cd ~/Downloads && python3 -m zipfile -e competition_simulator_server_v12.zip . && bash competition_simulator_server/start_server.sh
+
+SUBSEQUENT WEBSITE START
+  car
+
+BROWSER
+  http://127.0.0.1:8080/?build=12.0.0
+  On local Wi-Fi, use the IP printed by the Ubuntu web server, not 127.0.0.1.
+
+CONNECT REAL ROS2 DATA (SECOND TERMINAL ON UBUNTU)
+  source /opt/ros/humble/setup.bash
+  ros2 topic list -t
+  cd ~/Downloads/competition_simulator_server
+  bash start_ros_visualization.sh
+
+The new script subscribes to ROS2 topics and also forwards REAL /odom to the
+existing website telemetry interface (max 15 Hz). You usually do NOT need to
+run start_ros_bridge.sh at the same time: it can duplicate samples.
+The simulator does not launch a lidar driver, map server, SLAM, or Nav2.
+Those nodes must already be running on the Pi5 and/or Ubuntu ROS2 network.
+
+CUSTOM TOPIC NAMES (EXAMPLES)
+  bash start_ros_visualization.sh --scan /scan --map /map \
+    --global-costmap /global_costmap/costmap --local-costmap /local_costmap/costmap \
+    --plan /plan --local-plan /local_plan --odom /odom
+
+  bash start_ros_visualization.sh --help
+
+NETWORK PI5 -> UBUNTU ROS2
+  Both machines must share compatible ROS_DOMAIN_ID, ROS_LOCALHOST_ONLY=0,
+  same ROS2 communication setup and working DDS discovery over the network.
+  Verify: ros2 topic echo /scan --once
+          ros2 topic echo /odom --once
+          ros2 topic echo /map --once --qos-durability transient_local
+  Check TF: ros2 run tf2_ros tf2_echo map base_link
+            ros2 run tf2_ros tf2_echo base_link laser_frame
+
+BROWSER INSTRUCTIONS
+  Open the ROS2 navigation and lidar section near the TOP of the webpage.
+  Choose world map or local laser-frame view, toggle grid layers and paths,
+  and inspect topic Hz / age / node graph / diagnostics.
+  If there is no map->laser_frame TF, laser points are NEVER drawn in map view.
+  Select local scan view to inspect their raw sensor-frame shape instead.
+  If /odom exists but map->base_link is absent, the robot pose in the browser
+  map viewer remains hidden; the separate LIVE odom panel can still show
+  odometry relative to its own initial field registration.
+
+WEBSITE API CHECKS
+  curl -s http://127.0.0.1:8080/api/build
+  curl -s http://127.0.0.1:8080/api/ros/state
+  curl -s http://127.0.0.1:8080/api/ros/grid/map
+  curl -s http://127.0.0.1:8080/api/telemetry
+
+Only local ROS bridge software can POST to the ROS APIs. Other web visitors
+may READ live ROS data and cameras; use trusted networks, do not expose
+private telemetry or video to untrusted public tunnels.
+
+ORIGINAL DESKTOP RVIZ2 (OPTIONAL)
+  cd ~/Downloads/competition_simulator_server
+  bash start_native_rviz.sh
+
+The native profile is copied from your Stage 6 uploaded algorithm.zip and can
+render native RViz2 MarkerArray plugins and further 3D plugins; it is a separate
+window. Browser V12 supports basic 2D markers and Nav2 navigation layers,
+not RViz2 3D RobotModel, PointCloud2, URDF and arbitrary plugin rendering.
+
+LIMITATIONS
+- No actual Pi5/STM32/lidar connected during package validation.
+- No control commands are published; ROS2 /cmd_vel is only displayed as a
+  commanded velocity, NOT treated as measured chassis movement.
+- This bridge sends periodic full-grid snapshots when /map or costmap updates
+  are received. Nav2 incremental OccupancyGridUpdate-only topics are not yet
+  reconstructed; standard full OccupancyGrid messages are supported.
+- LaserScan points are sampled (up to 720), global / local paths (up to 500)
+  and marker sets are reduced for browser bandwidth.
+- Missing or incompatible TF is explicitly shown. ROS2 /odom is not
+  equivalent to global map pose until localization supplies map->odom.
+- You can adjust command-line topic names if your launch files remap them.
+
+---- PREVIOUS V11 INSTRUCTIONS BELOW ----
+
 V11.0.0 — TWO RUN MODES + TWO LIVE CAMERAS + SETTINGS DIRECTORY
 
 - Top bar: choose SIMULATION or LIVE ROS2 ODOM.

@@ -68,7 +68,7 @@ def main():
             time.sleep(.12)
     if not port_available(PORT):
         sys.exit(f'Port {PORT} is busy with a different process. Check: sudo ss -lptn "sport = :{PORT}"')
-    url = f'http://127.0.0.1:{PORT}/?build=11.0.0'
+    url = f'http://127.0.0.1:{PORT}/?build=13.0.0'
     print('Opening ' + url, flush=True)
     if os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY'):
         subprocess.Popen(['sh', '-c', f'sleep 1.2; command -v xdg-open >/dev/null && xdg-open "{url}" >/dev/null 2>&1 || true'],

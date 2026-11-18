@@ -30,7 +30,7 @@ bash sync_car.sh --show a83b2c1
 bash sync_car.sh --rollback a83b2c1
 回溯版本
 
-
+更多功能:./sync_car.sh --help
 
 取消github上在这个文件里面嵌套的项目               --- 已解决
 仿真实验室的设计                --- 还未进行实车的验证(话题数据传输)

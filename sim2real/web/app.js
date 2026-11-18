@@ -57,10 +57,10 @@
     $('rotorAngleValue').textContent=state.rotorAngle.toFixed(0)+' °';
   }
   // V10 directory: keep all legacy element IDs; only change which group is visible.
-  const SETTINGS_IDS=['planner','grid','fixture','drive','rotor','task','live','export','camera'];
+  const SETTINGS_IDS=['planner','grid','fixture','drive','rotor','task','live','export','camera','ros'];
   const cameraFrames={openmv:{id:'camOpenmvImage',status:'camOpenmvStatus',placeholder:'camOpenmvPlaceholder',fps:'camOpenmvFps',info:'cameraOpenmvInfo'},pi5:{id:'camPi5Image',status:'camPi5Status',placeholder:'camPi5Placeholder',fps:'camPi5Fps',info:'cameraPi5Info'}};
   function updateCameraStreamMode(){
-    const isLive=state.runSource==='live';
+    const isLive=state.runSource==='live'&&Boolean($('cameraDashboard')?.open);
     for(const [name,parts] of Object.entries(cameraFrames)){
       const el=$(parts.id);if(!el)continue;
       if(isLive){if(!el.getAttribute('src'))el.src='/api/camera/'+name+'/stream.mjpg?build=11';}
@@ -114,6 +114,7 @@
     if(state.sim){state.sim.running=false;state.sim.phase='idle';state.sim.poseOverride=null;state.sim.armExtension=0;state.sim.motion=null;state.sim.armMove=null;}
     state.runSource=mode;live.anchor=null;live.pose=null;live.trail=[];live.lastSeq=0;
     syncRunUI();activateSettingsTab(mode==='live'?'live':'planner');paintLiveTrail();paintRobot();updateCameraStreamMode();
+    window.dispatchEvent(new CustomEvent('sim2real:mode',{detail:{mode}}));
     tell(mode==='live'?'已切换实车实时模式：等待 /odom 反馈；该模式不使用预设速度播放。':'已切换模拟运行模式：可使用速度滑块播放规划任务。');
   }
   function syncRunUI(){
@@ -161,6 +162,7 @@
           const p=alignedPose(s);live.pose=p;live.lastSeen=Date.now();
           const prev=live.trail[live.trail.length-1];if(!prev||Math.hypot(prev.x-p.x,prev.y-p.y)>.003)live.trail.push(p);
           if(live.trail.length>1800)live.trail.splice(0,live.trail.length-1800);
+          window.dispatchEvent(new CustomEvent('sim2real:telemetry',{detail:{raw:{...s},aligned:{...p},planned:state.plan?.fullPath||[],referenceSpeed:state.velocity,planner:state.planner}}));
         }
       }
       if(state.runSource==='live'){paintLiveTrail();paintRobot();updateLiveReadout();}
@@ -369,7 +371,8 @@
     node('line',{x1:x-5,y1:front+7,x2:x-5,y2:tip,stroke:'#8ee2f1','stroke-width':2.2},armGroup);
     node('line',{x1:x+5,y1:front+7,x2:x+5,y2:tip,stroke:'#8ee2f1','stroke-width':2.2},armGroup);
     node('rect',{x:x-11,y:tip-5,width:22,height:7,rx:2,fill:'#ffbd71',stroke:'#684d39','stroke-width':1},armGroup);
-    node('path',{d:`M ${x-10} ${tip-5} L ${x-14} ${tip-12} M ${x+10} ${tip-5} L ${x+14} ${tip-12}`,stroke:'#ffe0aa','stroke-width':3,'stroke-linecap':'round',fill:'none'},armGroup);
+    const jaw=window.Sim2RealManualGripOpen&&state.runSource==='simulation'?8:0;
+    node('path',{d:`M ${x-10-jaw} ${tip-5} L ${x-14-jaw} ${tip-12} M ${x+10+jaw} ${tip-5} L ${x+14+jaw} ${tip-12}`,stroke:'#ffe0aa','stroke-width':3,'stroke-linecap':'round',fill:'none'},armGroup);
     node('rect',{x:x-12,y:y-17,width:24,height:34,rx:7,fill:'#075370',stroke:'#fff','stroke-width':1.6},g);
     node('path',{d:`M ${x-7} ${y-8} L ${x} ${y-14} L ${x+7} ${y-8}`,fill:'none',stroke:'#fff','stroke-width':2.1},g);
     const cargo=state.sim?.cargo||[];cargo.forEach((it,i)=>node('circle',{cx:x-7+(i%3)*7,cy:y+4,r:3.2,fill:TONES[it.color],stroke:'#fff','stroke-width':.5},g));
@@ -770,7 +773,27 @@
     }catch(e){console.warn('Saved scene unavailable',e)}
     syncUI();attach();bindDirectory();recalc();state.turnOrigin=performance.now();requestAnimationFrame(animationLoop);startShared();
     window.setInterval(pollTelemetry,140);window.setInterval(updateLiveReadout,500);pollTelemetry();
-    window.setInterval(updateCameraStatus,1100);updateCameraStreamMode();
+    window.setInterval(updateCameraStatus,1100);updateCameraStreamMode();window.addEventListener('sim2real:cameratoggle',updateCameraStreamMode);
   }
+
+  // Read-only telemetry and offline training API for the V13 operator console.
+  // There is deliberately NO hardware command endpoint exposed here.
+  window.Sim2RealCore={
+    getMode:()=>state.runSource,
+    getReferenceSpeed:()=>state.velocity,
+    getPlanner:()=>state.planner,
+    getRoute:()=>state.plan?.ok?state.plan.fullPath.map(p=>({...p})):[],
+    getSimPose:()=>({...(state.sim?.poseOverride?.point||state.start),yaw:state.sim?.poseOverride?.heading!==undefined?(90-state.sim.poseOverride.heading)*Math.PI/180:0}),
+    isSafe:(x,y)=>safe(x,y),
+    manualPlan:(a,b)=>{if(state.runSource!=='simulation')return null;const grid=mapGrid();return findPath(GridPlanning.buildGraph(grid,segmentSafe),grid,a,b)},
+    manualReset:()=>{if(state.sim){state.sim.poseOverride=null;state.sim.armExtension=0;}if(state.runSource==='simulation')paintRobot();},
+    manualPose:(p,extension=0)=>{if(state.runSource!=='simulation')return false;
+      if(!state.sim)return false;state.sim.running=false;state.sim.phase='idle';
+      state.sim.poseOverride={point:{x:p.x,y:p.y},heading:90-p.yaw*180/Math.PI};
+      state.sim.armExtension=Math.max(0,Math.min(.15,extension));paintRobot();return true;},
+    cancelMission:()=>{if(state.sim){state.sim.running=false;state.sim.phase='idle';state.sim.poseOverride=null;}},
+    mapCoordinate:evt=>posAt(evt),
+  };
+
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
 })();

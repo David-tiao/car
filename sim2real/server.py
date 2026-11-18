@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 from collections import deque
 import math
 import time
@@ -23,13 +24,82 @@ DATA = ROOT / "data"
 SHARED_FILE = DATA / "shared_scene.json"
 LOCK = threading.RLock()
 MAX_BODY = 48 * 1024
-BUILD_VERSION = "11.0.0"
+BUILD_VERSION = "13.0.0"
 TELEMETRY = {"seq": 0, "last_mono": 0., "samples": deque(maxlen=3000)}
 CAMERA_NAMES = ("openmv", "pi5")
 CAMERA_CONDITION = threading.Condition()
 CAMERA_FEEDS = {name: {"jpeg": None, "seq": 0, "last_mono": 0., "fps_times": deque(maxlen=24), "source": ""} for name in CAMERA_NAMES}
 CAMERA_TOKEN_FILE = DATA / "camera_token.txt"
 MAX_JPEG_BYTES = 2 * 1024 * 1024
+
+
+# Browser ROS2 display snapshots. Publishers are restricted to loopback; LAN clients are read-only.
+ROS_LOCK = threading.RLock()
+ROS_STATE = {"seq": 0, "last_mono": 0.0, "snapshot": None}
+ROS_GRIDS = {name: {"seq": 0, "last_mono": 0.0, "grid": None}
+             for name in ("map", "global_costmap", "local_costmap")}
+ROS_JSON_LIMIT = 240 * 1024
+ROS_GRID_JSON_LIMIT = 2 * 1024 * 1024
+
+
+def is_loopback(addr):
+    try:
+        return ipaddress.ip_address(addr).is_loopback
+    except ValueError:
+        return False
+
+
+def read_json_body(handler, limit):
+    if handler.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
+        raise ValueError("Content-Type must be application/json")
+    try:
+        size = int(handler.headers.get("Content-Length", "0"))
+    except (TypeError, ValueError):
+        raise ValueError("Invalid Content-Length") from None
+    if not 0 < size <= limit:
+        raise ValueError("JSON payload is empty or too large")
+    def reject_constant(value):
+        raise ValueError("Invalid JSON number: " + value)
+    return json.loads(handler.rfile.read(size), parse_constant=reject_constant)
+
+
+def ros_status():
+    with ROS_LOCK:
+        age = (time.monotonic() - ROS_STATE["last_mono"]) if ROS_STATE["seq"] else None
+        result = dict(ROS_STATE["snapshot"] or {})
+        result.update({"online": age is not None and age < 3.0,
+                       "age_s": round(age, 2) if age is not None else None,
+                       "seq": ROS_STATE["seq"],
+                       "grids": {k: {"seq": v["seq"], "frame": (v["grid"] or {}).get("frame", ""),
+                                      "width": (v["grid"] or {}).get("width", 0),
+                                      "height": (v["grid"] or {}).get("height", 0),
+                                      "age_s": round(time.monotonic()-v["last_mono"], 2) if v["seq"] else None}
+                                 for k, v in ROS_GRIDS.items()}})
+        return result
+
+
+def validate_grid(obj):
+    if not isinstance(obj, dict):
+        raise ValueError("Grid must be an object")
+    name = obj.get("name")
+    if name not in ROS_GRIDS:
+        raise ValueError("Unknown grid layer")
+    width, height = int(obj.get("width",0)), int(obj.get("height",0))
+    resolution = float(obj.get("resolution", 0))
+    ox = float(obj.get("origin_x",0)); oy = float(obj.get("origin_y",0)); yaw = float(obj.get("origin_yaw",0))
+    if not 1 <= width <= 1200 or not 1 <= height <= 1200 or width*height > 1500000:
+        raise ValueError("Grid dimensions outside limits")
+    if not all(math.isfinite(x) for x in (resolution,ox,oy,yaw)) or not 0.001 <= resolution <= 5:
+        raise ValueError("Invalid grid resolution or origin")
+    packed = obj.get("data")
+    if not isinstance(packed, str) or len(packed) > 2100000:
+        raise ValueError("Invalid occupancy encoding")
+    raw = base64.b64decode(packed, validate=True)
+    if len(raw) != width*height:
+        raise ValueError("Occupancy array length mismatch")
+    return name, {"width":width, "height":height, "resolution":resolution,
+                  "origin_x":ox,"origin_y":oy,"origin_yaw":yaw,"frame":str(obj.get("frame", "map"))[:80],
+                  "data":packed}
 
 
 def camera_token():
@@ -286,6 +356,18 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         parsed = urlsplit(self.path)
+        if parsed.path == "/api/ros/state":
+            self.respond_json(200, ros_status())
+            return
+        if parsed.path.startswith("/api/ros/grid/"):
+            layer = parsed.path.removeprefix("/api/ros/grid/")
+            if layer not in ROS_GRIDS:
+                self.respond_json(404, {"error": "Unknown occupancy grid layer"})
+                return
+            with ROS_LOCK:
+                item = ROS_GRIDS[layer]
+                self.respond_json(200, {"seq": item["seq"], "grid": item["grid"]})
+            return
         if parsed.path == "/api/cameras":
             self.respond_json(200, {"cameras": camera_status(), "stream_urls": {name: "/api/camera/" + name + "/stream.mjpg" for name in CAMERA_NAMES}})
             return
@@ -328,10 +410,10 @@ class Handler(SimpleHTTPRequestHandler):
                 self.respond_json(200, dict(SHARED))
             return
         if parsed.path == "/api/build":
-            self.respond_json(200, {"version": BUILD_VERSION, "build": "v11-two-live-cameras", "planner": ["astar", "dijkstra", "dstar"], "obstacles_max": 2, "grid_step_m": 0.48, "grid_shape": [5,5], "cell_numbering": "snake_0_to_24_bottom_left", "blocking": "one-grid-cell", "telemetry_api": "/api/telemetry", "camera_api":"/api/cameras"})
+            self.respond_json(200, {"version": BUILD_VERSION, "build": "v13-sim2real-operator-console", "planner": ["astar", "dijkstra", "dstar"], "obstacles_max": 2, "grid_step_m": 0.48, "grid_shape": [5,5], "cell_numbering": "snake_0_to_24_bottom_left", "blocking": "one-grid-cell", "telemetry_api": "/api/telemetry", "camera_api":"/api/cameras", "ros_api":"/api/ros/state"})
             return
         if parsed.path == "/api/health":
-            self.respond_json(200, {"ok": True, "service": "competition-v11-simulator", "shared": True, "version": BUILD_VERSION})
+            self.respond_json(200, {"ok": True, "service": "competition-v13-simulator", "shared": True, "version": BUILD_VERSION})
             return
         if parsed.path.startswith("/api/"):
             self.respond_json(404, {"error": "API 不存在"})
@@ -340,6 +422,37 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         path = urlsplit(self.path).path
+        if path in ("/api/ros/state", "/api/ros/grid"):
+            if not is_loopback(self.client_address[0]):
+                self.respond_json(403, {"error": "ROS2 data publishing is localhost-only"})
+                return
+            try:
+                payload = read_json_body(self, ROS_GRID_JSON_LIMIT if path.endswith("/grid") else ROS_JSON_LIMIT)
+                if not isinstance(payload, dict):
+                    raise ValueError("Expected JSON object")
+                if path.endswith("/grid"):
+                    layer, grid = validate_grid(payload)
+                    with ROS_LOCK:
+                        ROS_GRIDS[layer]["seq"] += 1
+                        ROS_GRIDS[layer]["last_mono"] = time.monotonic()
+                        ROS_GRIDS[layer]["grid"] = grid
+                        seq = ROS_GRIDS[layer]["seq"]
+                else:
+                    # Strictly limit the exposed message surface. No commands or actuator control.
+                    allowed = ("display_frame", "scan", "robot", "odom", "paths", "markers", "cmd_vel", "tf", "topics", "nodes", "nav", "diagnostics", "bridge")
+                    snapshot = {k: payload[k] for k in allowed if k in payload}
+                    if not isinstance(snapshot.get("topics",{}),dict) or not isinstance(snapshot.get("paths",{}),dict):
+                        raise ValueError("Malformed ROS state")
+                    with ROS_LOCK:
+                        ROS_STATE["seq"] += 1
+                        ROS_STATE["last_mono"] = time.monotonic()
+                        ROS_STATE["snapshot"] = snapshot
+                        seq = ROS_STATE["seq"]
+            except (ValueError, TypeError, KeyError, json.JSONDecodeError) as exc:
+                self.respond_json(400, {"error": str(exc)[:160]})
+                return
+            self.respond_json(200, {"ok": True, "seq": seq})
+            return
         for name in CAMERA_NAMES:
             if path != "/api/camera/" + name + "/frame":
                 continue
@@ -447,13 +560,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.respond_json(200, {"ok": True, "revision": SHARED["revision"]})
 
     def log_message(self, fmt, *args):
-        if self.path.startswith(("/api/scene", "/api/telemetry", "/api/camera/", "/api/cameras")):
+        if self.path.startswith(("/api/scene", "/api/telemetry", "/api/camera/", "/api/cameras", "/api/ros/")):
             return  # 多人同步每秒产生请求，不刷屏
         return super().log_message(fmt, *args)
 
 
 def main():
-    parser = argparse.ArgumentParser(description="工创 V11.0 双摄像头地图仿真 HTTP 服务")
+    parser = argparse.ArgumentParser(description="工创 V13.0 Sim2Real控制台与完整底盘诊断 HTTP 服务")
     parser.add_argument("--port", type=int, default=8080, help="监听端口（默认 8080）")
     parser.add_argument("--host", default="0.0.0.0", help="监听地址（默认 0.0.0.0）")
     args = parser.parse_args()
