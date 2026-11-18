@@ -1,0 +1,42 @@
+<root BTCPP_format="3" main_tree_to_execute="MainTree">
+
+  <BehaviorTree ID="MainTree">
+
+    <RecoveryNode
+        number_of_retries="3"
+        name="CompetitionNavigateRecovery">
+
+      <!-- 正常导航流程 -->
+      <PipelineSequence name="NavigateWithReplanning">
+
+        <!-- 每秒重新规划一次 -->
+        <RateController hz="1.0">
+
+          <ComputePathToPose
+              goal="{goal}"
+              path="{path}"
+              planner_id="GridBased"/>
+
+        </RateController>
+
+        <!-- 跟踪规划路径 -->
+        <FollowPath
+            path="{path}"
+            controller_id="FollowPath"/>
+
+      </PipelineSequence>
+
+      <!-- 保守恢复：不进行额外移动 -->
+      <ReactiveFallback name="SafeRecovery">
+
+        <GoalUpdated/>
+
+        <Wait wait_duration="1.0"/>
+
+      </ReactiveFallback>
+
+    </RecoveryNode>
+
+  </BehaviorTree>
+
+</root>

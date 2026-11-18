@@ -1,0 +1,11 @@
+{
+  "expected_obstacles": 2,
+  "start_zone": "upper_right",
+  "serial_port": null,
+  "show_rviz": true,
+  "stationary_tf": {
+    "enabled": false,
+    "map_to_base": null,
+    "base_to_laser": null
+  }
+}

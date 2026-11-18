@@ -1,0 +1,8 @@
+[INFO] [1794853481.072278218] [costmap_filter_info_server]: This is costmap filter info publisher
+[INFO] [1794853481.107678437] [competition_keepout_info_server]: 
+	competition_keepout_info_server lifecycle node launched. 
+	Waiting on external lifecycle transitions to activate
+	See https://design.ros2.org/articles/node_lifecycle.html for more information.
+[INFO] [1794853493.771172649] [competition_keepout_info_server]: Configuring
+[INFO] [1794853496.020996788] [competition_keepout_info_server]: Activating
+[INFO] [1794853496.021161406] [competition_keepout_info_server]: Creating bond (competition_keepout_info_server) to lifecycle manager.
