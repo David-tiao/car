@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>car_debug</name>
+  <version>0.2.0</version>
+  <description>Read-only C++ ROS2 diagnostic monitor and path visualization for car ULog43 streams.</description>
+  <maintainer email="car@example.invalid">Car ROS2 project</maintainer>
+  <license>MIT</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <depend>rclcpp</depend>
+  <depend>car_interfaces</depend>
+  <depend>nav_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>diagnostic_msgs</depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

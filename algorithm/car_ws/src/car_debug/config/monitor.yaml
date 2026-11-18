@@ -1,0 +1,6 @@
+car_data_monitor:
+  ros__parameters:
+    stale_after_ms: 1000
+    max_path_points: 1000
+    path_publish_stride: 4
+    wheel_error_warn_pps: 350.0  # display threshold only; not a motor safety threshold

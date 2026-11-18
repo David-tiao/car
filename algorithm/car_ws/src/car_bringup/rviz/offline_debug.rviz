@@ -1,0 +1,38 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: true
+      Name: Ground Grid
+      Cell Size: 0.25
+      Plane: XY
+      Color: 130; 130; 130
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Robot Trajectory
+      Color: 50; 210; 255
+      Line Style: Lines
+      Line Width: 0.03
+      Topic:
+        Value: /car/debug/trajectory
+    - Class: rviz_default_plugins/Odometry
+      Enabled: true
+      Name: Robot Odometry
+      Keep: 1
+      Topic:
+        Value: /odom
+  Global Options:
+    Fixed Frame: odom
+    Frame Rate: 30
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Top Down
+      Angle: 0
+      Scale: 120
+      Target Frame: <Fixed Frame>

@@ -1,0 +1,24 @@
+<launch>
+  <!-- This launch is explicitly OFFLINE, using synthetic CSV; never sends motor commands. -->
+  <arg name="replay_file" default="$(find-pkg-share car_bringup)/examples/sample_ulog43_synthetic.csv"/>
+  <arg name="replay_interval_ms" default="50"/>
+  <arg name="with_rviz" default="false"/>
+
+  <node pkg="car_stm32_bridge" exec="car_ulog43_bridge"
+        name="car_ulog43_bridge" output="screen">
+    <param from="$(find-pkg-share car_stm32_bridge)/config/bridge.yaml"/>
+    <param name="port" value="" type="str"/>
+    <param name="replay_file" value="$(var replay_file)" type="str"/>
+    <param name="replay_interval_ms" value="$(var replay_interval_ms)" type="int"/>
+    <param name="publish_tf" value="false" type="bool"/>
+  </node>
+
+  <node pkg="car_debug" exec="car_data_monitor"
+        name="car_data_monitor" output="screen">
+    <param from="$(find-pkg-share car_debug)/config/monitor.yaml"/>
+  </node>
+
+  <node pkg="rviz2" exec="rviz2" name="rviz2" output="screen"
+        args="-d $(find-pkg-share car_bringup)/rviz/offline_debug.rviz"
+        if="$(var with_rviz)"/>
+</launch>
