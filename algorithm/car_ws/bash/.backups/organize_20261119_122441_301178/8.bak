@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=一键启动V6地图雷达
+Comment=V6静态地图+雷达+RViz预览，关闭窗口自动停止
+Exec=/usr/bin/python3 "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/oneclick_stage/competition_v6_viewer.py" start --desktop
+Icon=applications-science
+Terminal=true
+StartupNotify=false
+Categories=Utility;

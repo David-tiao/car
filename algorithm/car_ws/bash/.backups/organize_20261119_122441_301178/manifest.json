@@ -1,0 +1,88 @@
+{
+  "project": "car_ws_bash_unify_v1",
+  "files": [
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/competition_v6_viewer.py",
+      "new_sha": "32beb274cb76d5e4e823f19830f1498396cde5288357557d5fbce9f39285ef0c",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "0.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/visual_overlay.py",
+      "new_sha": "39333bef6fa41dee8a3afa904860d6ab8cb80479dfb6f9e786bdc97df8f4e163",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "1.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/preview.rviz",
+      "new_sha": "c06783e37e458b584549506deaf0416c5e73e20bf651366e61c829c87d03e71c",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "2.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/start.sh",
+      "new_sha": "d8f943ee39e9ba01a881ee3de13c1224005f1c7348b6982d1eb57d0826a22a17",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "3.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/manage.sh",
+      "new_sha": "c67bd6efe87fc63318c487584fb765d0059df1e1d60e0800a7fe0749407c9c6a",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "4.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/lidar.sh",
+      "new_sha": "481b08fcfd3d3c4347d7c8a35a654f92b843b9cf27b60b46ede77efcb5b9bb62",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "5.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/competition.sh",
+      "new_sha": "c4182022e4f886b37c3d520bc74ffc83a05cc3310bf968c8fefa13ffcbf0607c",
+      "old_exists": false,
+      "old_mode": null,
+      "backup": "6.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/bash/README.md",
+      "new_sha": "eae1b7c68db933817a69c4dfab9d2bab9e2642fbf409a136a0dc7add89717dd1",
+      "old_exists": true,
+      "old_mode": 436,
+      "backup": "7.bak",
+      "old_sha": "01e98567868ee3d30c85a680e674afd49586464ccb15dbab4016e730b4444cf6"
+    },
+    {
+      "path": "/home/tao/Desktop/一键启动V6地图雷达.desktop",
+      "new_sha": "6e2f31e349c1bcbb24301a227025617de855b01185b72456b6168042284be977",
+      "old_exists": true,
+      "old_mode": 493,
+      "backup": "8.bak",
+      "old_sha": "16fee2f7f39802db03e04a42faa6aba76352044242989f241e2c68cf68ab9709"
+    }
+  ],
+  "map_created": false,
+  "map_path": "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/v6_static_preview",
+  "map_hashes": {
+    "competition_keepout_mask.yaml": "01799f68d066ad181130dd433614ca7cadb545e8733e2a13912022b263f5ce8d",
+    "competition_navigation_map.pgm": "55fc4f5f39434df3b496109d8234eaf3d91b841e225b88eb491bb90371997e20",
+    "competition_field_preview.png": "66611c35fb678d3b72e1d0b94a05c40e7710b9012616053471509ba36fd3386e",
+    "README_静态场地地图核对版.md": "ae377a8eb698dc6f8d862b92689c2908ba57e1a76048c67b1abeccb5fc597dfe",
+    "competition_map_layers.png": "fc91a997233225118aa0de5f6031f509608719b9aa4074163c311ad29f7d0a91",
+    "zones.json": "d5e70001e98ad3ef0b2b383bbdf3db58df82ae9b53de5c10ccfae027ae5004b5",
+    "competition_navigation_map.yaml": "be8e408b34656a834d780be0738f368a0670aa02bb6ae9f9171046a84cd2a2a4",
+    "competition_rules_preview.yaml": "dfd16ae75666f8ab9f2e519be91e4f00be86918a9d384e1d74c3b6de71885e2a",
+    "competition_field_preview.svg": "a8af7918fc60252f13b1d464238d1c31f3b5a006fadae9f3bd19935e637404b0",
+    "competition_topology_preview.png": "017d22dcb05d3d82de5dec5e7dde304e37a9e5c4ad64d164a81afaf4a51253a3",
+    "generate_static_map_v6.py": "69f069b0d154966bf1665db0cc9277dbd1a447d54d0456de771d0b40ed14f54c",
+    "competition_rules_preview.pgm": "f297c1a8a84f50778f5c451ff9bed860bd89f60022bef0ac27597893506fd4ae",
+    "verify_static_map.py": "6b0f43e6a491c5c8fac1ee1afa33a989e1118d90f87f6c102d750f600ec02aea",
+    "competition_keepout_mask.pgm": "f297c1a8a84f50778f5c451ff9bed860bd89f60022bef0ac27597893506fd4ae"
+  }
+}

@@ -1,0 +1,114 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ''
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Enabled: false
+      Name: Grid
+      Cell Size: 0.2
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+    - Class: rviz_default_plugins/Map
+      Enabled: false
+      Name: Physical Occupancy (optional)
+      Alpha: 0.35
+      Color Scheme: map
+      Topic:
+        Value: /map
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Map
+      Enabled: false
+      Name: Rule Keepout (optional)
+      Alpha: 0.45
+      Color Scheme: map
+      Topic:
+        Value: /keepout_filter_mask
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: COLOR FIELD + ROADS + RAW SCAN INSET
+      Topic:
+        Value: /competition/v6/scene
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Path
+      Enabled: true
+      Name: Dijkstra BASELINE (not locked)
+      Topic:
+        Value: /competition/v6/prelock_path
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Alpha: 0.85
+      Color: 0; 255; 255
+      Line Style: Lines
+      Line Width: 0.025
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Name: REAL LOCKED OBSTACLES (calibrated only)
+      Topic:
+        Value: /competition/locked_obstacle_markers
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Name: REAL LOCKED ROAD GRAPH (calibrated only)
+      Topic:
+        Value: /competition/road_graph
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Path
+      Enabled: false
+      Name: REAL LOCKED ROAD PATH (calibrated only)
+      Topic:
+        Value: /competition/locked_road_path
+        Depth: 5
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Alpha: 1
+      Color: 255; 64; 80
+      Line Style: Lines
+      Line Width: 0.045
+    - Class: rviz_default_plugins/LaserScan
+      Enabled: false
+      Name: REGISTERED LaserScan (calibrated only)
+      Topic:
+        Value: /scan
+        Depth: 5
+        Durability Policy: Volatile
+        Reliability Policy: Best Effort
+        History Policy: Keep Last
+      Color Transformer: FlatColor
+      Color: 255; 20; 20
+      Size (Pixels): 4
+      Style: Points
+  Enabled: true
+  Global Options:
+    Background Color: 30; 34; 44
+    Fixed Frame: map
+    Frame Rate: 20
+  Name: root
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Name: Current View
+      Target Frame: <Fixed Frame>
+      Scale: 165
+      X: 1.88
+      Y: 1.2
