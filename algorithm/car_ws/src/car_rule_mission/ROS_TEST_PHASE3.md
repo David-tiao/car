@@ -34,7 +34,7 @@ cd ~/Desktop/car
 bash algorithm/car_ws/bash/test_mission_ros_phase3.sh
 ```
 
-预期执行原有规划、任务和协议测试，加上新增 4 个模拟会话测试、3 个 MOCK 网页数据验证测试，合计 **36 项单元测试**。此外检查 Python 和 Bash 语法，并跑阶段二的独立 PTY 演示。
+预期执行原有规划、任务和协议测试，加上新增 4 个模拟会话测试、3 个 MOCK 网页数据验证测试，合计 **37 项单元测试**。此外检查 Python 和 Bash 语法，并跑阶段二的独立 PTY 演示。
 
 ## Ubuntu ROS2+网页联调（两个终端）
 
