@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | `/car/test/mission/state` | `std_msgs/String` JSON | 当前任务、步骤进度、模拟抓放统计、终止状态 |
 | `/car/test/mission/feedback` | `std_msgs/String` JSON | TEST PTY 返回的 ACK、STARTED、COMPLETED、FAILED |
+| `/car/test/mission/command_feedback` | `car_interfaces/CommandFeedback` | 类型化 B2 模拟回执；`original_command_type=0xE0`，并限定 TEST 命名空间 |
 | `/car/test/mission/road_node_pose` | `geometry_msgs/PoseStamped` | **离散路网节点预览**，非真实定位 |
 | `/car/test/mission/road_node_trace` | `nav_msgs/Path` | 仅显示已模拟完成的路网节点轨迹 |
 
