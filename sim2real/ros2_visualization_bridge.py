@@ -71,6 +71,7 @@ def main():
     try:
         import rclpy
         from rclpy.node import Node
+        from rclpy.executors import ExternalShutdownException
         from rclpy.time import Time
         from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy, HistoryPolicy, qos_profile_sensor_data
         from nav_msgs.msg import OccupancyGrid, Odometry, Path
@@ -125,12 +126,12 @@ def main():
                 ('diagnostics',args.diagnostics,DiagnosticArray,self.on_diagnostics,reliable),
             ]
             self.names={role:name for role,name,_,_,_ in subs}
-            self.subscriptions=[self.create_subscription(msgtype,name,lambda m,f=cb,role=role:(self.touch(role),f(m)),qos)
+            self._web_subscriptions=[self.create_subscription(msgtype,name,lambda m,f=cb,role=role:(self.touch(role),f(m)),qos)
                                 for role,name,msgtype,cb,qos in subs if name]
             # /map may be VOLATILE from some SLAM publishers, but TRANSIENT_LOCAL from Nav2 map_server.
             # A second VOLATILE subscriber handles both; latest map wins, duplicates are harmless.
             if args.map:
-                self.subscriptions.append(self.create_subscription(OccupancyGrid,args.map,lambda m:(self.touch('map'),self.on_grid('map',m)),reliable))
+                self._web_subscriptions.append(self.create_subscription(OccupancyGrid,args.map,lambda m:(self.touch('map'),self.on_grid('map',m)),reliable))
             self.timer=self.create_timer(1.0/args.hz,self.publish_state)
             self.get_logger().info('ROS2 visualization bridge listening for '+', '.join(f'{r}={n}' for r,n,_,_,_ in subs))
             self.get_logger().info('Waiting for topics. Map and LaserScan must have working TF for map-aligned overlays.')
@@ -306,10 +307,13 @@ def main():
                         self.get_logger().warning(f'Website occupancy layer {layer} unavailable: {e}')
 
     node=Viewer()
-    try:rclpy.spin(node)
-    except KeyboardInterrupt:pass
+    try:
+        rclpy.spin(node)
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        if rclpy.ok():
+            rclpy.shutdown()
 
 if __name__=='__main__':main()

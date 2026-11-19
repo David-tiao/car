@@ -58,6 +58,7 @@ case "$CMD" in
     done
     [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[PASS] Keyboard mode disabled'
     /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py"
+    /usr/bin/python3 -m py_compile "$SIM/test_inspection.py" "$SIM/test_telemetry_bridge.py"
     echo '[PASS] Python syntax; original car shortcut unaffected'
     echo '[INFO] doctor does not validate physical STM32, laser, OpenMV or ROS2 runtime.'
     ;;

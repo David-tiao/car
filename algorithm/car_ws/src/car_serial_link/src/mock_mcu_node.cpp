@@ -61,11 +61,20 @@ private:
   }
   if(ticks_%2==0){proto::Writer w;w.u8(1);w.u8(1);w.u32(ticks_*50);send(proto::Type::HEARTBEAT,w);}
   // A class: pose, speeds and yaw are physical quantities (all MOCK values).
-  const std::int32_t x=static_cast<std::int32_t>(ticks_)*6;
-  const std::int32_t y=static_cast<std::int32_t>(80*std::sin(ticks_*.03));
-  const std::int32_t yaw=static_cast<std::int32_t>(ticks_)*2;
-  {proto::Writer w;w.i32(x);w.i32(y);w.i32(yaw);w.i32(120);
-   w.i32(static_cast<std::int32_t>(48*std::cos(ticks_*.03)));w.i32(40);w.u8(0x01);
+  // Bounded MOCK oval (<2 m): keep browser trace inside the 2.4 m demo field.
+  // 50 ms period: derivatives (mm/s) agree with the emitted pose; yaw is mrad.
+  const double phase=static_cast<double>(ticks_)*.012;
+  const double sn=std::sin(phase),cs=std::cos(phase);
+  const double heading=.15*sn;
+  const std::int32_t x=static_cast<std::int32_t>(std::lround(500*sn));
+  const std::int32_t y=static_cast<std::int32_t>(std::lround(350*(1-cs)));
+  const std::int32_t yaw=static_cast<std::int32_t>(std::lround(1000*heading));
+  const double wx=120*cs,wy=84*sn;
+  const std::int32_t vx=static_cast<std::int32_t>(std::lround(std::cos(heading)*wx+std::sin(heading)*wy));
+  const std::int32_t vy=static_cast<std::int32_t>(std::lround(-std::sin(heading)*wx+std::cos(heading)*wy));
+  const std::int32_t wz=static_cast<std::int32_t>(std::lround(36*cs));
+  {proto::Writer w;w.i32(x);w.i32(y);w.i32(yaw);w.i32(vx);
+   w.i32(vy);w.i32(wz);w.u8(0x01);
    send(proto::Type::CHASSIS,w);}
   {proto::Writer w;
    for(const std::int32_t v:{230,260,230,260})w.i32(v);

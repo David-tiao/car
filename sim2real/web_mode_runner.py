@@ -58,7 +58,7 @@ def probe(url):
         return None
 
 
-def require_site(port):
+def require_site(port, mode=None):
     url = f'http://127.0.0.1:{port}'
     found = probe(url + '/api/health')
     if found is not None:
@@ -66,6 +66,8 @@ def require_site(port):
             raise RuntimeError(f'Port {port} is occupied by a non-Sim2Real service')
         if not (probe(url + '/api/mode/status') or {}).get('channels'):
             raise RuntimeError('Existing car web process is an older version; stop car and restart it after installation')
+        if mode == 'test' and (probe(url + '/api/test/inspection') or {}).get('source_type') != 'MOCK':
+            raise RuntimeError('Running car website has old TEST API: stop it and rerun car')
         print('[REUSE] Existing Sim2Real HTTP server (for example, started by car)', flush=True)
         return url
     server = spawn('site', [sys.executable, str(ROOT / 'server.py'), '--host', '127.0.0.1', '--port', str(port)])
@@ -115,10 +117,10 @@ def main():
     package = 'car_serial_link' if args.mode == 'test' or args.protocol == 'carlink' else 'car_stm32_bridge'
     ros_pkg_exists(package)
     port = check_port(args.real_port) if args.mode == 'real' else None
-    url = require_site(args.port)
+    url = require_site(args.port, args.mode)
     print(f'[WEB] {url}/{args.mode}', flush=True)
     if args.mode == 'test':
-        launch = ['ros2', 'launch', 'car_serial_link', 'offline_serial_demo.launch.xml', 'with_debug:=true']
+        launch = ['ros2', 'launch', 'car_serial_link', 'offline_serial_demo.launch.xml', 'with_debug:=false']
     elif args.protocol == 'carlink':
         launch = ['ros2', 'launch', 'car_serial_link', 'live_readonly.launch.xml', 'port:=' + port]
     else:
@@ -130,10 +132,14 @@ def main():
     bridge = spawn(args.mode + '_web_bridge', [sys.executable, str(ROOT / 'ros2_visualization_bridge.py'),
         '--server', url, '--web-channel', args.mode,
         '--plan', '/car/navigation/preview_path', '--road-path', '/competition/mission_road_path'])
+    if args.mode == 'test':
+        inspector = spawn('test_inspection_bridge', [sys.executable, str(ROOT / 'test_telemetry_bridge.py'),
+            '--server', url])
+        print('[TEST] Collecting wheels, vision, mission, link CRC, synthetic command feedback.', flush=True)
     print(f'[READY] Open {url}/{args.mode}; actual data may still be OFFLINE until received.', flush=True)
     print('[STOP] Ctrl+C stops only the subprocesses created by this launcher.', flush=True)
     while True:
-        for p in (producer, bridge):
+        for p in CHILDREN:
             if p.poll() is not None:
                 raise RuntimeError(f'Child exited with code {p.returncode}: PID {p.pid}; check {LOG_DIR}')
         time.sleep(.4)

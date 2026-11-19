@@ -1,0 +1,1 @@
+/home/tao/Desktop/car/algorithm/car_ws/build_lidar_repair_20261119_190945_2102628/ydlidar_ros2_driver/ament_cmake_environment_hooks/local_setup.sh

@@ -1,7 +1,12 @@
 {
-  "revision": 336,
+  "revision": 345,
   "scene": {
-    "obstacles": [],
+    "obstacles": [
+      {
+        "x": 1.2,
+        "y": 1.2
+      }
+    ],
     "scenarioVersion": 10,
     "rawX": 1.12,
     "rawY": 2.42,

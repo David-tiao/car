@@ -128,7 +128,7 @@ int main(int argc, char *argv[]) {
   b_optvalue = false;
   node->declare_parameter("debug", b_optvalue);
   node->get_parameter("debug", b_optvalue);
-  laser.setEnableDebug(b_optvalue);
+  // X3 SDK compatibility: setEnableDebug is unavailable.
 
   //////////////////////float property/////////////////
   /// unit: °
@@ -167,15 +167,15 @@ int main(int argc, char *argv[]) {
     int i_v = 0;
     node->declare_parameter("m1_mode", i_v);
     node->get_parameter("m1_mode", i_v);
-    laser.setWorkMode(i_v, 0x01);
+    // X3 SDK compatibility: GS mode 0x01 is not required.
     i_v = 0;
     node->declare_parameter("m2_mode", i_v);
     node->get_parameter("m2_mode", i_v);
-    laser.setWorkMode(i_v, 0x02);
+    // X3 SDK compatibility: GS mode 0x02 is not required.
     i_v = 1;
     node->declare_parameter("m3_mode", i_v);
     node->get_parameter("m3_mode", i_v);
-    laser.setWorkMode(i_v, 0x04);
+    // X3 SDK compatibility: GS mode 0x04 is not required.
     //启动扫描
     ret = laser.turnOn();
   } 
