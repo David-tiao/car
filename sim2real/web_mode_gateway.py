@@ -32,6 +32,7 @@ def _fresh_state():
 
 
 CHANNELS = {name: _fresh_state() for name in MODES}
+TEST_PATH = {"seq":0,"updated":0.0,"points":[]}
 
 
 def _is_local(address):
@@ -118,6 +119,17 @@ def mode_get(handler):
         handler.path = '/index.html'
         SimpleHTTPRequestHandler.do_GET(handler)
         return True
+    if path == '/api/test/reference_path':
+        with LOCK:
+            age = time.monotonic()-TEST_PATH['updated'] if TEST_PATH['updated'] else None
+            online = age is not None and age < 3.0
+            handler.respond_json(200, {
+                'source_type':'TEST',
+                'seq':TEST_PATH['seq'],
+                'online':online,
+                'points':TEST_PATH['points'] if online else []
+            })
+        return True
     if path == '/api/mode/status':
         with LOCK:
             status = {k: {'telemetry_online': _online(v['telemetry']['last_mono'], 2.0),
@@ -159,6 +171,42 @@ def mode_post(handler):
     if test_inspection.handle_post(handler):
         return True
     path = urlsplit(handler.path).path
+    if path == '/api/test/reference_path':
+        if not _is_local(handler.client_address[0]):
+            handler.respond_json(403, {'error':'TEST planner requires localhost'})
+            return True
+        origin = handler.headers.get('Origin')
+        if origin and urlsplit(origin).netloc.lower() != handler.headers.get('Host','').lower():
+            handler.respond_json(403, {'error':'Cross-origin planner rejected'})
+            return True
+        try:
+            raw = _json_body(handler,24000)['points']
+            if not isinstance(raw,list) or not 2 <= len(raw) <= 250:
+                raise ValueError('Expected 2..250 waypoints')
+            points = []
+            for q in raw:
+                if not isinstance(q,list) or len(q)!=2 or any(type(v) not in (int,float) for v in q):
+                    raise ValueError('Point must be two numbers')
+                x,y = q
+                if not (math.isfinite(x) and math.isfinite(y) and 0<=x<=2.4 and 0<=y<=2.4):
+                    raise ValueError('Point outside field')
+                pt = [round(x,4),round(y,4)]
+                if not points or math.dist(pt,points[-1])>.002:
+                    points.append(pt)
+            if len(points)<2:
+                raise ValueError('Need distinct waypoints')
+            with LOCK:
+                if TEST_PATH['points'] != points:
+                    TEST_PATH['seq'] += 1
+                    TEST_PATH['points'] = points
+                TEST_PATH['updated'] = time.monotonic()
+                seq = TEST_PATH['seq']
+            handler.respond_json(200, {
+                'ok':True,'seq':seq,'count':len(points),'source_type':'TEST'
+            })
+        except (ValueError,TypeError,KeyError) as e:
+            handler.respond_json(400, {'error':str(e)[:160]})
+        return True
     if path == '/api/keyboard/command':
         handler.respond_json(403, {'error': 'Real keyboard control is not implemented'})
         return True

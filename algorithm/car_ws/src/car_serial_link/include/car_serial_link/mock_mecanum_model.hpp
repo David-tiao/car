@@ -1,161 +1,190 @@
 #pragma once
-// TEST ONLY: approximate motor dynamics with STM32F4 kinematics.
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <vector>
 
 namespace car_serial_link {
 
 struct MockPose {
-  double x, y, yaw;
+    double x,y,yaw;
 };
 
 struct MockMecanumState {
-  double x=0.40, y=0.40, yaw=0;
-  double vx=0, vy=0, wz=0;
-  double cmd_vx=0, cmd_vy=0, cmd_wz=0;
-  double target_x=0, target_y=0, target_yaw=0;
-  std::array<double,4> wheel_target{};
-  std::array<double,4> wheel_actual{};
-  std::size_t waypoint=0;
-  bool reached=false;
+    double x=0.4,y=0.4,yaw=0,vx=0,vy=0,wz=0;
+    double cmd_vx=0,cmd_vy=0,cmd_wz=0;
+    double target_x=0,target_y=0,target_yaw=0;
+    std::array<double,4> wheel_target{},wheel_actual{};
+    std::size_t waypoint=0;
+    bool reached=false;
 };
 
 class MockMecanumModel {
+    static constexpr double PI=3.14159265358979323846;
+    static constexpr double L=0.093+0.110;
+    static constexpr double PPM=440.0/(2*PI*0.04);
+
+    MockMecanumState st_{};
+    std::vector<MockPose> path_;
+    bool active_=false,complete_=false;
+
+    static double wrap(double x){
+        return std::atan2(std::sin(x),std::cos(x));
+    }
+
 public:
-  static constexpr double PI=3.14159265358979323846;
-  static constexpr double L=0.093+0.110;
-  static constexpr double PPM=440.0/(2.0*PI*0.04);
-  static constexpr double RAMP=4000.0;
-
-  const MockMecanumState& state() const {
-    return state_;
-  }
-
-  void step(double dt) {
-    if (!(dt>0 && dt<=0.1)) return;
-
-    const auto &goal=route_[state_.waypoint];
-    state_.target_x=goal.x;
-    state_.target_y=goal.y;
-    state_.target_yaw=goal.yaw;
-
-    const double ex=goal.x-state_.x;
-    const double ey=goal.y-state_.y;
-    const double dist=std::hypot(ex,ey);
-    const double yaw_error=wrap(goal.yaw-state_.yaw);
-
-    // Position-loop arrival detection.
-    state_.reached =
-      dist<0.025 &&
-      std::abs(yaw_error)<0.06 &&
-      std::hypot(state_.vx,state_.vy)<0.04 &&
-      std::abs(state_.wz)<0.08;
-
-    if (state_.reached) {
-      if (++hold_ticks_>=8) {
-        state_.waypoint=(state_.waypoint+1)%route_.size();
-        hold_ticks_=0;
-      }
-    } else {
-      hold_ticks_=0;
+    const MockMecanumState &state() const {
+        return st_;
     }
 
-    // Simplified STM32 position loop, using its proportional gains.
-    double vx_world=std::clamp(1.6*ex,-0.28,0.28);
-    double vy_world=std::clamp(1.6*ey,-0.28,0.28);
-
-    double limit=std::min(0.28,std::sqrt(2.0*0.50*dist));
-    const double ae=std::abs(yaw_error);
-
-    // Yaw-first translation attenuation from STM32 chassis code.
-    const double yaw_scale =
-      ae<=0.035 ? 1.0 :
-      ae>=0.18 ? 0.20 :
-      1.0-(ae-0.035)*(0.80/0.145);
-
-    limit*=yaw_scale;
-
-    const double v=std::hypot(vx_world,vy_world);
-    if (v>limit && v>0) {
-      vx_world*=limit/v;
-      vy_world*=limit/v;
+    void stop(){
+        active_=false;
+        complete_=false;
+        path_.clear();
+        st_.reached=false;
     }
 
-    double wz=std::clamp(3.2*yaw_error,-0.8,0.8);
-    const double wlimit=std::sqrt(2.0*1.80*ae);
-    wz=std::clamp(wz,-wlimit,wlimit);
+    void setRoute(const std::vector<MockPose> &points){
+        if(points.size()<2||points.size()>250){
+            stop();return;
+        }
 
-    if (ae<0.05) wz=0;
-    if (dist<0.025) vx_world=vy_world=0;
+        bool changed=path_.size()!=points.size();
 
-    // World frame -> body frame.
-    const double c=std::cos(state_.yaw);
-    const double s=std::sin(state_.yaw);
+        if(!changed){
+            for(std::size_t i=0;i<points.size();++i){
+                if(std::hypot(
+                    path_[i].x-points[i].x,
+                    path_[i].y-points[i].y
+                )>.002){
+                    changed=true;
+                    break;
+                }
+            }
+        }
 
-    state_.cmd_vx=c*vx_world+s*vy_world;
-    state_.cmd_vy=-s*vx_world+c*vy_world;
-    state_.cmd_wz=wz;
+        if(!changed)return;
 
-    // STM32 X-layout mecanum inverse kinematics.
-    const std::array<double,4> demand={{
-      (state_.cmd_vx-state_.cmd_vy-L*wz)*PPM,
-      (state_.cmd_vx+state_.cmd_vy+L*wz)*PPM,
-      (state_.cmd_vx+state_.cmd_vy-L*wz)*PPM,
-      (state_.cmd_vx-state_.cmd_vy+L*wz)*PPM
-    }};
+        path_=points;
+        active_=true;
+        complete_=false;
+        st_=MockMecanumState{};
 
-    // STM32-compatible target ramp.
-    // Actual wheel response is an approximate first-order model.
-    const double max_change=RAMP*dt;
-    const double alpha=1.0-std::exp(-dt/0.15);
-
-    for (std::size_t i=0;i<4;++i) {
-      const double delta=std::clamp(
-        demand[i]-state_.wheel_target[i],
-        -max_change,max_change
-      );
-
-      state_.wheel_target[i]+=delta;
-      state_.wheel_actual[i]+=alpha*(
-        state_.wheel_target[i]-state_.wheel_actual[i]
-      );
+        // TEST 初始化到网页规划路径的起点。
+        st_.x=path_.front().x;
+        st_.y=path_.front().y;
+        st_.yaw=std::atan2(
+            path_[1].y-st_.y,
+            path_[1].x-st_.x
+        );
+        st_.waypoint=1;
     }
 
-    // STM32 mecanum forward kinematics.
-    const auto &p=state_.wheel_actual;
+    void step(double dt){
+        if(dt<=0||dt>0.1)return;
 
-    const double fl=p[0]/PPM;
-    const double fr=p[1]/PPM;
-    const double rl=p[2]/PPM;
-    const double rr=p[3]/PPM;
+        double wx=0,wy=0,wz=0;
 
-    state_.vx=(fl+fr+rl+rr)/4;
-    state_.vy=(-fl+fr+rl-rr)/4;
-    state_.wz=(-fl+fr-rl+rr)/(4*L);
+        if(active_ && st_.waypoint<path_.size()){
+            auto target=path_[st_.waypoint];
+            double dx=target.x-st_.x;
+            double dy=target.y-st_.y;
+            double d=std::hypot(dx,dy);
 
-    // Body velocity -> world odometry.
-    state_.x+=(state_.vx*c-state_.vy*s)*dt;
-    state_.y+=(state_.vx*s+state_.vy*c)*dt;
-    state_.yaw=wrap(state_.yaw+state_.wz*dt);
-  }
+            if(d<0.045){
+                ++st_.waypoint;
+                if(st_.waypoint>=path_.size()){
+                    active_=false;
+                    complete_=true;
+                }else{
+                    target=path_[st_.waypoint];
+                    dx=target.x-st_.x;
+                    dy=target.y-st_.y;
+                    d=std::hypot(dx,dy);
+                }
+            }
 
-private:
-  static double wrap(double a) {
-    return std::atan2(std::sin(a),std::cos(a));
-  }
+            if(active_){
+                const double desired_yaw=std::atan2(dy,dx);
+                const double err=wrap(desired_yaw-st_.yaw);
+                const double ae=std::abs(err);
 
-  // Temporary TEST waypoints, not the browser's planned route.
-  inline static constexpr std::array<MockPose,4> route_={{
-    {1.90,0.40,0},
-    {1.90,1.90,PI/2},
-    {0.40,1.90,PI},
-    {0.40,0.40,-PI/2}
-  }};
+                const double yaw_scale=
+                    ae<=0.035?1.0:
+                    (ae>=0.18?0.2:
+                    1.0-(ae-0.035)*0.8/0.145);
 
-  MockMecanumState state_{};
-  int hold_ticks_=0;
+                const double vmax=
+                    std::min(0.23,std::sqrt(2*0.5*d))*yaw_scale;
+
+                wx=std::clamp(1.6*dx,-vmax,vmax);
+                wy=std::clamp(1.6*dy,-vmax,vmax);
+
+                const double norm=std::hypot(wx,wy);
+                if(norm>vmax&&norm>0){
+                    wx*=vmax/norm;
+                    wy*=vmax/norm;
+                }
+
+                wz=std::clamp(3.2*err,-0.5,0.5);
+
+                st_.target_x=target.x;
+                st_.target_y=target.y;
+                st_.target_yaw=desired_yaw;
+            }
+        }
+
+        // 世界坐标速度 -> 车体坐标速度。
+        const double c=std::cos(st_.yaw);
+        const double s=std::sin(st_.yaw);
+
+        st_.cmd_vx=wx*c+wy*s;
+        st_.cmd_vy=-wx*s+wy*c;
+        st_.cmd_wz=wz;
+
+        // 对齐 STM32F4 X 型麦克纳姆轮解算。
+        // 轮序：FL FR RL RR。
+        const std::array<double,4> cmd={{
+            (st_.cmd_vx-st_.cmd_vy-L*wz)*PPM,
+            (st_.cmd_vx+st_.cmd_vy+L*wz)*PPM,
+            (st_.cmd_vx+st_.cmd_vy-L*wz)*PPM,
+            (st_.cmd_vx-st_.cmd_vy+L*wz)*PPM
+        }};
+
+        const double alpha=1-std::exp(-dt/0.15);
+
+        for(std::size_t i=0;i<4;++i){
+            st_.wheel_target[i]+=
+                std::clamp(
+                    cmd[i]-st_.wheel_target[i],
+                    -4000*dt,4000*dt
+                );
+
+            st_.wheel_actual[i]+=alpha*(
+                st_.wheel_target[i]-st_.wheel_actual[i]
+            );
+        }
+
+        // 四轮实际速度 -> 底盘实际速度。
+        const auto &p=st_.wheel_actual;
+        const double fl=p[0]/PPM;
+        const double fr=p[1]/PPM;
+        const double rl=p[2]/PPM;
+        const double rr=p[3]/PPM;
+
+        st_.vx=(fl+fr+rl+rr)/4;
+        st_.vy=(-fl+fr+rl-rr)/4;
+        st_.wz=(-fl+fr-rl+rr)/(4*L);
+
+        // 车体速度 -> 世界坐标里程计积分。
+        st_.x+=(st_.vx*c-st_.vy*s)*dt;
+        st_.y+=(st_.vx*s+st_.vy*c)*dt;
+        st_.yaw=wrap(st_.yaw+st_.wz*dt);
+
+        st_.reached=complete_
+            &&std::hypot(st_.vx,st_.vy)<0.04
+            &&std::abs(st_.wz)<0.08;
+    }
 };
-
-} // namespace car_serial_link
+}

@@ -136,6 +136,8 @@ def main():
         inspector = spawn('test_inspection_bridge', [sys.executable, str(ROOT / 'test_telemetry_bridge.py'),
             '--server', url])
         print('[TEST] Collecting wheels, vision, mission, link CRC, synthetic command feedback.', flush=True)
+    if args.mode == 'test':
+        spawn('test_path_bridge', [sys.executable, str(ROOT/'test_path_bridge.py'), '--server', url])
     print(f'[READY] Open {url}/{args.mode}; actual data may still be OFFLINE until received.', flush=True)
     print('[STOP] Ctrl+C stops only the subprocesses created by this launcher.', flush=True)
     while True:

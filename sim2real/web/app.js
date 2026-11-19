@@ -139,6 +139,7 @@
   function resetLiveAnchor(){live.anchor=null;live.pose=null;live.trail=[];paintLiveTrail();paintRobot();
     $('liveState').textContent='等待下一帧对齐';}
   function alignedPose(s){
+    if(window.CarWebMode?.mode==='test')return {x:s.x,y:s.y,yaw:s.yaw};
     if(!live.anchor)live.anchor={x:s.x,y:s.y,yaw:s.yaw};
     const ax=Number($('liveAnchorX').value),ay=Number($('liveAnchorY').value),ang=Number($('liveAnchorYaw').value)*Math.PI/180;
     const a=ang-live.anchor.yaw,dx=s.x-live.anchor.x,dy=s.y-live.anchor.y;
@@ -146,7 +147,7 @@
   }
   function paintLiveTrail(){const layer=$('liveTrailLayer');empty(layer);if(state.runSource!=='live'||live.trail.length<2)return;
     const path=live.trail.map((p,i)=>`${i?'L':'M'}${fx(p.x).toFixed(1)} ${fy(p.y).toFixed(1)}`).join(' ');
-    node('path',{d:path,fill:'none',stroke:'#f59e0b','stroke-width':4.5,'stroke-linecap':'round','stroke-linejoin':'round'},layer);
+    node('path',{d:path,fill:'none',stroke:'#f59e0b','stroke-width':2,'stroke-linecap':'round','stroke-linejoin':'round'},layer);
   }
   function updateLiveReadout(){
     const isLive=state.runSource==='live',fresh=live.online&&(Date.now()-live.lastSeen<2000);
@@ -174,7 +175,7 @@
         if(state.runSource==='live'){
           const p=alignedPose(s);live.pose=p;live.lastSeen=Date.now();
           const prev=live.trail[live.trail.length-1];if(!prev||Math.hypot(prev.x-p.x,prev.y-p.y)>.003)live.trail.push(p);
-          if(live.trail.length>1800)live.trail.splice(0,live.trail.length-1800);
+          if(live.trail.length>60)live.trail.splice(0,live.trail.length-60);
           window.dispatchEvent(new CustomEvent('sim2real:telemetry',{detail:{raw:{...s},aligned:{...p},planned:state.plan?.fullPath||[],referenceSpeed:state.velocity,planner:state.planner}}));
         }
       }

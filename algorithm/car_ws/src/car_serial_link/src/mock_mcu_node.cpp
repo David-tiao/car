@@ -1,6 +1,8 @@
 // No motor commands or hardware. Sends CAR-LINK V1 bytes over a Linux PTY.
 #include "car_serial_link/protocol.hpp"
 #include "car_serial_link/mock_mecanum_model.hpp"
+#include <nav_msgs/msg/path.hpp>
+#include <vector>
 #include <rclcpp/rclcpp.hpp>
 #include <cerrno>
 #include <chrono>
@@ -37,6 +39,24 @@ public:
   RCLCPP_INFO(get_logger(),"MOCK ONLY; CAR-LINK PTY %s -> %s",link_.c_str(),name);
   RCLCPP_WARN(get_logger(),"Synthetic MCU data; command events are simulated, no real motor control");
   start_=std::chrono::steady_clock::now();timer_=create_wall_timer(50ms,[this]{tick();});
+  path_sub_=create_subscription<nav_msgs::msg::Path>(
+    "/car/test/reference_path",10,
+    [this](nav_msgs::msg::Path::ConstSharedPtr msg){
+      if(msg->header.frame_id!="odom" || msg->poses.size()>250){
+        model_.stop();return;
+      }
+      std::vector<car_serial_link::MockPose> path;
+      for(const auto &p:msg->poses){
+        const auto x=p.pose.position.x,y=p.pose.position.y;
+        if(!std::isfinite(x)||!std::isfinite(y)||x<0||x>2.4||y<0||y>2.4){
+          model_.stop();return;
+        }
+        if(path.empty()||std::hypot(x-path.back().x,y-path.back().y)>.002)
+          path.push_back({x,y,0});
+      }
+      if(path.size()<2){model_.stop();return;}
+      model_.setRoute(path);
+    });
  }
  ~MockMcu() override{
   if(master_>=0)::close(master_);
@@ -151,6 +171,7 @@ private:
  }
  int master_=-1,slave_=-1;std::uint16_t seq_=0;std::uint32_t ticks_=0;
  car_serial_link::MockMecanumModel model_;
+ rclcpp::Subscription<nav_msgs::msg::Path>::SharedPtr path_sub_;
  std::string link_;bool emit_fault_=false;
  std::chrono::steady_clock::time_point start_{};rclcpp::TimerBase::SharedPtr timer_;
 };

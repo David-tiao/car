@@ -24,7 +24,7 @@ ament_target_dependencies(car_serial_bridge
 add_executable(car_serial_mock_mcu src/mock_mcu_node.cpp)
 target_compile_features(car_serial_mock_mcu PRIVATE cxx_std_17)
 target_link_libraries(car_serial_mock_mcu car_link_codec util)
-ament_target_dependencies(car_serial_mock_mcu rclcpp)
+ament_target_dependencies(car_serial_mock_mcu rclcpp nav_msgs)
 
 install(TARGETS car_serial_bridge car_serial_mock_mcu DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY launch config DESTINATION share/${PROJECT_NAME})
