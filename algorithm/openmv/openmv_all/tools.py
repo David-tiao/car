@@ -1,7 +1,7 @@
 """智能搬运的视觉、任务、跟踪及显示对象。坐标均使用 QVGA 像素。"""
 import math
 import time
-import algorithm.openmv.config as C
+import algorithm.openmv.openmv_all.config as C
 
 
 def val(obj, name, default=0):

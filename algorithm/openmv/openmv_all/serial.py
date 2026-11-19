@@ -7,7 +7,7 @@
 """
 import time
 from machine import UART
-import algorithm.openmv.config as C
+import algorithm.openmv.openmv_all.config as C
 
 
 class SerialLink:

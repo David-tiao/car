@@ -29,9 +29,9 @@ def _add_project_directory():
 
 
 _add_project_directory()
-import algorithm.openmv.config as C
+import algorithm.openmv.openmv_all.config as C
 from serial import SerialLink
-from algorithm.openmv.tools import Camera, MaterialDetector, Mission, Panel, SourceStation, StablePoint, StationVision, near
+from algorithm.openmv.openmv_all.tools import Camera, MaterialDetector, Mission, Panel, SourceStation, StablePoint, StationVision, near
 
 
 class App:
