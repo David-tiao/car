@@ -324,7 +324,7 @@ def run_loopback(steps, qr_code, *, fail_at=None, drop_ack_at=None,
                 ignored += _consume_feedback(_recv(slave, host_parser), engine,
                                              step.cmd_id, now + 2)
             if engine.state in ('WAIT_ACK', 'WAIT_RESULT'):
-                engine.tick(now + 30001)
+                engine.tick(now + 30002)
             now += 31000
         result = engine.summary()
         result['wire'] = {'mode': 'ANONYMOUS_PTY_ONLY', 'hardware_authorized': False,
