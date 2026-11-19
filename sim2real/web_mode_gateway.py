@@ -15,6 +15,7 @@ import time
 from http.server import SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 import test_inspection
+import test_mission_store
 
 MODES = ('test', 'real')
 LAYER_NAMES = ('map', 'global_costmap', 'local_costmap')
@@ -114,6 +115,8 @@ def mode_get(handler):
     """Return True when request was handled, else allow the old server to run."""
     if test_inspection.handle_get(handler):
         return True
+    if test_mission_store.handle_get(handler):
+        return True
     path = urlsplit(handler.path).path
     if path in ('/sim', '/test', '/real', '/keyboard'):
         handler.path = '/index.html'
@@ -169,6 +172,8 @@ def mode_get(handler):
 
 def mode_post(handler):
     if test_inspection.handle_post(handler):
+        return True
+    if test_mission_store.handle_post(handler):
         return True
     path = urlsplit(handler.path).path
     if path == '/api/test/reference_path':
