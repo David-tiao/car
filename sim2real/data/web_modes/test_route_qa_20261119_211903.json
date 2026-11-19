@@ -1,0 +1,17 @@
+{
+  "schema": "test_route_qa_v1",
+  "source_type": "TEST",
+  "status": "PASS",
+  "route_seq": 1,
+  "points": 52,
+  "samples": 1592,
+  "duration_s": 60.18,
+  "rms_error_m": 0.008035685171838483,
+  "p95_error_m": 0.019798989873223295,
+  "max_error_m": 0.025455844122715985,
+  "progress_estimate_pct": 81.1,
+  "travelled_m": 7.014,
+  "outside_samples": 0,
+  "odom_jump_events": 0,
+  "failures": []
+}
