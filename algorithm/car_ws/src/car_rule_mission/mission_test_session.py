@@ -106,7 +106,7 @@ class PtyMissionSession:
                                         'event_type': f.msg_type})
         _consume_feedback(received, self.engine, current.cmd_id, self.now_ms + 1)
         if self.engine.state in ('WAIT_ACK', 'WAIT_RESULT'):
-            self.engine.tick(self.now_ms + 30001)
+            self.engine.tick(self.now_ms + 30002)
         if self.engine.state == 'FAULT':
             this_events.append({'cmd_id': current.cmd_id, 'event': 'FAULT',
                                 'reason': self.engine.error})
