@@ -53,9 +53,9 @@ class WireTests(unittest.TestCase):
     def test_canonical_road_accepts_reverse_direction(self):
         # Route C3 -> C2 legally travels canonical edge "C2-C3".
         from dataclasses import replace
-        step = next(s for s in self.steps
-                    if s.kind == 'MOVE_NODE' and s.node == 'C2'
-                    and s.road_id == 'C2-C3')
+        original = next(s for s in self.steps
+                        if s.kind == 'MOVE_NODE' and s.node == 'C2')
+        step = replace(original, road_id='C2-C3')
         decoded = decode_step(pack_step(step))
         self.assertEqual(decoded['node'], 'C2')
         self.assertEqual(decoded['road'], 'C2-C3')
