@@ -28,6 +28,7 @@ def make_node(start_zone='upper_right', task_code='156+123+516+231',
                 raise MissionError('NO_ROUTE: TEST mission refuses to begin')
             self.session = PtyMissionSession(plan, task_code, fail_at, drop_ack_at)
             self.state_pub = self.create_publisher(String, '/car/test/mission/state', 10)
+            self.feedback_pub = self.create_publisher(String, '/car/test/mission/feedback', 10)
             self.pose_pub = self.create_publisher(PoseStamped, '/car/test/mission/road_node_pose', 10)
             self.path_pub = self.create_publisher(RosPath, '/car/test/mission/road_node_trace', 10)
             self.last_event_count = 0
@@ -37,8 +38,10 @@ def make_node(start_zone='upper_right', task_code='156+123+516+231',
 
         def advance(self):
             try:
-                if self.session.state == 'READY':
-                    self.session.advance()
+                emitted = self.session.advance() if self.session.state == 'READY' else []
+                for event in emitted:
+                    self.feedback_pub.publish(String(data=json.dumps(
+                        {'source_type': 'MOCK', 'hardware_authorized': False, **event})))
                 snapshot = self.session.snapshot()
                 self.state_pub.publish(String(data=json.dumps(snapshot, ensure_ascii=False)))
                 pose = PoseStamped()
