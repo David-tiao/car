@@ -1,0 +1,17 @@
+<launch>
+  <!-- Read-only: synthetic lidar, existing competition physical map + keepout. -->
+  <!-- No motor commands, no TF invented, no localization assumed. -->
+  <arg name="map_yaml" default=""/>
+  <arg name="mask_yaml" default=""/>
+  <arg name="clearance_m" default="0.17"/>
+  <arg name="with_mock_scan" default="true"/>
+  <node pkg="car_navigation" exec="car_map_publisher" name="car_map_publisher" output="screen">
+    <param name="map_yaml" value="$(var map_yaml)" type="str"/>
+    <param name="mask_yaml" value="$(var mask_yaml)" type="str"/>
+  </node>
+  <node pkg="car_navigation" exec="car_path_preview" name="car_path_preview" output="screen">
+    <param name="clearance_m" value="$(var clearance_m)"/>
+  </node>
+  <node pkg="car_navigation" exec="car_navigation_monitor" name="car_navigation_monitor" output="screen"/>
+  <node pkg="car_navigation" exec="car_mock_scan" name="car_mock_scan" output="screen" if="$(var with_mock_scan)"/>
+</launch>

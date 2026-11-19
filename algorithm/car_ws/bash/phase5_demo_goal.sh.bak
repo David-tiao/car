@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Publish a manually selected safe map-frame sample start/goal; NEVER robot localization.
+# Map probe checks CURRENT physical map + keepout + clearance; no motor commands.
+set -Eeuo pipefail
+WS="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+MAP_DIR="${CAR_PHASE5_MAP_DIR:-$WS/maps/competition_v1}"
+MAP="$MAP_DIR/competition_navigation_map.yaml"
+MASK="$MAP_DIR/competition_keepout_mask.yaml"
+set +u
+source /opt/ros/humble/setup.bash
+source "$WS/install/setup.bash"
+set -u
+ROUTE="$(ros2 run car_navigation car_map_probe "$MAP" "$MASK" "${CAR_PHASE5_CLEARANCE_M:-0.17}")"
+read -r SX SY GX GY <<< "$ROUTE"
+echo "[INFO] Manual preview start=($SX,$SY), goal=($GX,$GY); no movement execution."
+timeout 15 ros2 topic pub --once --wait-matching-subscriptions 1 /initialpose geometry_msgs/msg/PoseWithCovarianceStamped \
+  "{header: {frame_id: 'map'}, pose: {pose: {position: {x: $SX, y: $SY, z: 0.0}, orientation: {w: 1.0}}}}"
+sleep 0.6
+timeout 15 ros2 topic pub --once --wait-matching-subscriptions 1 /goal_pose geometry_msgs/msg/PoseStamped \
+  "{header: {frame_id: 'map'}, pose: {position: {x: $GX, y: $GY, z: 0.0}, orientation: {w: 1.0}}"
+echo '[INFO] Check /car/navigation/plan_status and /car/navigation/preview_path.'

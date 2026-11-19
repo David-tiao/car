@@ -1,0 +1,19 @@
+# Upper-level MONITORING summary; source /car/mission/state stays STM32-owned.
+std_msgs/Header header
+string state
+string detail
+bool link_connected
+bool heartbeat_fresh
+bool mission_fresh
+bool vision_fresh
+bool mechanism_fresh
+bool odom_fresh
+bool plan_done
+bool fault_active
+uint16 fault_code
+uint8 race_state
+uint8 action_index
+uint8 plan_index
+uint8 control_owner
+uint32 last_cmd_id
+string last_command_event

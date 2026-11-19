@@ -1,0 +1,12 @@
+<launch>
+  <!-- Complete OFFLINE pipeline: one source for /odom, one source for /car/vision/event. -->
+  <arg name="port" default="/tmp/car_link_demo_uart"/>
+  <arg name="with_debug" default="true"/>
+  <include file="$(find-pkg-share car_serial_link)/launch/offline_serial_demo.launch.xml">
+    <arg name="port" value="$(var port)"/>
+    <arg name="with_debug" value="$(var with_debug)"/>
+  </include>
+  <node pkg="car_vision" exec="car_vision_monitor" name="car_vision_monitor" output="screen"/>
+  <node pkg="car_mechanism" exec="car_mechanism_monitor" name="car_mechanism_monitor" output="screen"/>
+  <node pkg="car_mission" exec="car_mission_monitor" name="car_mission_monitor" output="screen"/>
+</launch>

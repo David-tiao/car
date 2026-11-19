@@ -1,0 +1,12 @@
+<launch>
+  <!-- Real UART version MUST remain monitor-only. Requires future STM32 CAR-LINK firmware. -->
+  <arg name="port" default="/dev/ttyUSB0"/>
+  <arg name="with_debug" default="true"/>
+  <include file="$(find-pkg-share car_serial_link)/launch/live_readonly.launch.xml">
+    <arg name="port" value="$(var port)"/>
+  </include>
+  <node pkg="car_debug" exec="car_data_monitor" output="screen" if="$(var with_debug)"/>
+  <node pkg="car_vision" exec="car_vision_monitor" output="screen"/>
+  <node pkg="car_mechanism" exec="car_mechanism_monitor" output="screen"/>
+  <node pkg="car_mission" exec="car_mission_monitor" output="screen"/>
+</launch>
