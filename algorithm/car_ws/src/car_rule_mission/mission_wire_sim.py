@@ -137,8 +137,15 @@ def decode_step(payload):
     kind_name = KINDS[kind - 1]
     road = payload[10:].decode('ascii')
     if kind_name == 'MOVE_NODE':
-        if not node or len(road) != 5 or road[2] != '-' or road[3:] != NODE_NAMES[node]:
+        # Dijkstra encodes an UNDIRECTED road in canonical graph order.
+        # For example C3 -> C2 uses road_id "C2-C3", not "C3-C2".
+        # The destination may therefore be either end of the named road.
+        if not node or len(road) != 5 or road[2] != '-':
             raise WireError('invalid move destination and road')
+        start, end = road[:2], road[3:]
+        if (start not in NODE_NAMES[1:] or end not in NODE_NAMES[1:]
+                or start == end or NODE_NAMES[node] not in (start, end)):
+            raise WireError('road endpoints do not contain move destination')
     elif node or road:
         raise WireError('unexpected node / road for manipulation')
     return {'cmd_id': cmd_id, 'kind': kind_name, 'stage': stage,
@@ -324,7 +331,7 @@ def run_loopback(steps, qr_code, *, fail_at=None, drop_ack_at=None,
                 ignored += _consume_feedback(_recv(slave, host_parser), engine,
                                              step.cmd_id, now + 2)
             if engine.state in ('WAIT_ACK', 'WAIT_RESULT'):
-                engine.tick(now + 30001)
+                engine.tick(now + 30002)
             now += 31000
         result = engine.summary()
         result['wire'] = {'mode': 'ANONYMOUS_PTY_ONLY', 'hardware_authorized': False,
