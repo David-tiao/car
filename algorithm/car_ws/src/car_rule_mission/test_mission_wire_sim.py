@@ -50,6 +50,20 @@ class WireTests(unittest.TestCase):
         p.feed(bad)
         self.assertGreaterEqual(p.length_errors, 1)
 
+    def test_canonical_road_accepts_reverse_direction(self):
+        # Route C3 -> C2 legally travels canonical edge "C2-C3".
+        from dataclasses import replace
+        step = next(s for s in self.steps
+                    if s.kind == 'MOVE_NODE' and s.node == 'C2'
+                    and s.road_id == 'C2-C3')
+        decoded = decode_step(pack_step(step))
+        self.assertEqual(decoded['node'], 'C2')
+        self.assertEqual(decoded['road'], 'C2-C3')
+        # A destination outside the road's endpoints must still be rejected.
+        from mission_wire_sim import WireError
+        with self.assertRaises(WireError):
+            decode_step(pack_step(replace(step, node='A1')))
+
     def test_step_roundtrip(self):
         for step in self.steps:
             got = decode_step(pack_step(step))
