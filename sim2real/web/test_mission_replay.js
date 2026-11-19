@@ -10,6 +10,8 @@
   };
   function mount() {
     const panel = el('section', document.body);
+    const testPanel = document.getElementById('carTestPanel');
+    if (testPanel) testPanel.after(panel);
     panel.id = 'carTestMissionReplay';
     panel.style.cssText = 'max-width:1450px;margin:14px auto;padding:18px;border:1px solid #47617b;border-radius:12px;background:#112638;color:#e3f3fc;font:14px/1.6 system-ui,sans-serif';
     el('h2', panel, 'TEST · 比赛任务状态机与虚拟串口回执');
