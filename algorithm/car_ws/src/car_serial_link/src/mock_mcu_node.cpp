@@ -1,5 +1,6 @@
 // No motor commands or hardware. Sends CAR-LINK V1 bytes over a Linux PTY.
 #include "car_serial_link/protocol.hpp"
+#include "car_serial_link/mock_mecanum_model.hpp"
 #include <rclcpp/rclcpp.hpp>
 #include <cerrno>
 #include <chrono>
@@ -60,38 +61,71 @@ private:
     send(proto::Type::HELLO,w);
   }
   if(ticks_%2==0){proto::Writer w;w.u8(1);w.u8(1);w.u32(ticks_*50);send(proto::Type::HEARTBEAT,w);}
-  // A class: pose, speeds and yaw are physical quantities (all MOCK values).
-  // Bounded MOCK oval (<2 m): keep browser trace inside the 2.4 m demo field.
-  // 50 ms period: derivatives (mm/s) agree with the emitted pose; yaw is mrad.
-  const double phase=static_cast<double>(ticks_)*.012;
-  const double sn=std::sin(phase),cs=std::cos(phase);
-  const double heading=.15*sn;
-  const std::int32_t x=static_cast<std::int32_t>(std::lround(500*sn));
-  const std::int32_t y=static_cast<std::int32_t>(std::lround(350*(1-cs)));
-  const std::int32_t yaw=static_cast<std::int32_t>(std::lround(1000*heading));
-  const double wx=120*cs,wy=84*sn;
-  const std::int32_t vx=static_cast<std::int32_t>(std::lround(std::cos(heading)*wx+std::sin(heading)*wy));
-  const std::int32_t vy=static_cast<std::int32_t>(std::lround(-std::sin(heading)*wx+std::cos(heading)*wy));
-  const std::int32_t wz=static_cast<std::int32_t>(std::lround(36*cs));
-  {proto::Writer w;w.i32(x);w.i32(y);w.i32(yaw);w.i32(vx);
-   w.i32(vy);w.i32(wz);w.u8(0x01);
-   send(proto::Type::CHASSIS,w);}
-  {proto::Writer w;
-   for(const std::int32_t v:{230,260,230,260})w.i32(v);
-   for(const std::int32_t v:{196,224,196,224})w.i32(v);
-   for(const std::int16_t v:{100,110,105,115})w.i16(v);
-   w.u8(0x01);send(proto::Type::WHEELS,w);}
-  {proto::Writer w;w.i32(0);w.i32(0);w.i32(yaw);w.u8(1);send(proto::Type::IMU,w);}
-  {proto::Writer w;w.i32(x+1000);w.i32(0);w.i32(yaw+100);w.i32(150);w.i32(0);w.i32(0);w.u8(1);
-   send(proto::Type::CHASSIS_TARGET,w);}
+  // TEST: wheel-consistent pose, target and feedback.
+  model_.step(0.05);
+  const auto &s=model_.state();
+
+  auto i32=[](double value) {
+    return static_cast<std::int32_t>(std::lround(value));
+  };
+
+  // CHASSIS: mm, mrad, mm/s, mrad/s (body twist).
+  {
+    proto::Writer w;
+    w.i32(i32(s.x*1000));
+    w.i32(i32(s.y*1000));
+    w.i32(i32(s.yaw*1000));
+    w.i32(i32(s.vx*1000));
+    w.i32(i32(s.vy*1000));
+    w.i32(i32(s.wz*1000));
+    w.u8(static_cast<std::uint8_t>(
+      0x01 | (s.reached ? 0x02 : 0x00)
+    ));
+    send(proto::Type::CHASSIS,w);
+  }
+
+  // WHEELS: FL, FR, RL, RR, all in pulse/s.
+  {
+    proto::Writer w;
+    for (double v:s.wheel_target) w.i32(i32(v));
+    for (double v:s.wheel_actual) w.i32(i32(v));
+    for (int i=0;i<4;++i) w.i16(0);
+    w.u8(0); // PID output not simulated; mark invalid.
+    send(proto::Type::WHEELS,w);
+  }
+
+  // Ideal simulated IMU, not a real sensor reading.
+  {
+    proto::Writer w;
+    w.i32(0);
+    w.i32(0);
+    w.i32(i32(s.yaw*1000));
+    w.u8(1);
+    send(proto::Type::IMU,w);
+  }
+
+  // The target twist is in body frame, matching ROS bridge.
+  {
+    proto::Writer w;
+    w.i32(i32(s.target_x*1000));
+    w.i32(i32(s.target_y*1000));
+    w.i32(i32(s.target_yaw*1000));
+    w.i32(i32(s.cmd_vx*1000));
+    w.i32(i32(s.cmd_vy*1000));
+    w.i32(i32(s.cmd_wz*1000));
+    w.u8(1); // position mode
+    send(proto::Type::CHASSIS_TARGET,w);
+  }
   if(ticks_%2==0){
     proto::Writer w;w.i32(950);w.i32(260);w.i32(110);w.i32(40);w.u8(0x03);w.u8(0);w.u16(0);
     send(proto::Type::MECHANISM,w);
   }
   if(ticks_%10==0){
     proto::Writer w;w.u16(12000);w.u16(11800);w.u8(0x03);send(proto::Type::POWER,w);
-    proto::Writer event;event.u8(1);event.u8(1);event.u8(static_cast<std::uint8_t>(ticks_/10));
-    event.u8(0);event.u8(0);event.u16(0);send(proto::Type::MISSION_EVENT,event);
+    proto::Writer event;event.u8(model_.state().reached?3:1);event.u8(1);
+    event.u8(static_cast<std::uint8_t>(model_.state().waypoint));
+    event.u8(static_cast<std::uint8_t>(model_.state().waypoint));
+    event.u8(0);event.u16(0);send(proto::Type::MISSION_EVENT,event);
     proto::Writer vision;vision.u8(2);vision.i16(158);vision.i16(122);vision.u8(1);
     send(proto::Type::VISION_MEASUREMENT,vision);
   }
@@ -116,6 +150,7 @@ private:
   if(emit_fault_ && ticks_==200){proto::Writer w;w.u8(1);w.u16(4);w.u8(1);send(proto::Type::FAULT_EVENT,w);}
  }
  int master_=-1,slave_=-1;std::uint16_t seq_=0;std::uint32_t ticks_=0;
+ car_serial_link::MockMecanumModel model_;
  std::string link_;bool emit_fault_=false;
  std::chrono::steady_clock::time_point start_{};rclcpp::TimerBase::SharedPtr timer_;
 };
