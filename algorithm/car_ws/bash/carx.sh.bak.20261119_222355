@@ -1,0 +1,285 @@
+#!/usr/bin/env bash
+# 工创小车统一入口。STM32F4 只读；复用现有功能脚本。
+set -Eeuo pipefail
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+WS="$(cd "$HERE/.." && pwd -P)"
+ROOT="$(cd "$WS/../.." && pwd -P)"
+SIM="$ROOT/sim2real"
+
+cmd="${1:-help}"
+(($#==0)) || shift
+
+help() {
+cat <<'EOF'
+========== CARX 工创小车管理台 ==========
+
+carx test                启动 TEST + 网页
+carx check [秒数]        CAR-LINK / ROS2 通信验收
+carx qa [秒数]           路径跟踪质量验收
+carx kin [秒数]          STM32F4 运动学一致性验收
+carx status              查看服务与进程状态
+carx logs [行数]         查看 TEST 日志
+carx stop                清理 TEST 残留进程
+
+carx site                只启动网页
+carx build [serial|core|all]   构建 ROS2
+carx doctor              检查网页环境
+
+carx map [命令]          V6 地图管理
+carx lidar [命令]        雷达管理
+carx competition [命令]  比赛流程
+carx real                真实串口只读监控
+carx help                显示帮助
+
+原来的 car 命令不变；STM32F4 不修改。
+键盘向实体底盘发送指令仍然禁用。
+=======================================
+EOF
+}
+
+need() {
+    [[ -f "$1" ]] || {
+        echo "[ERROR] 文件不存在: $1" >&2
+        exit 2
+    }
+}
+
+case "$cmd" in
+
+    help|-h|--help)
+        help
+        ;;
+
+    test)
+        # 防止多个模拟 MCU 同时发布 /odom
+        if pgrep -f '[/]car_serial_mock_mcu' >/dev/null; then
+            echo "[BLOCKED] 已存在模拟 MCU 进程" >&2
+            echo "先停止旧 TEST；残留进程可执行 carx stop" >&2
+            pgrep -af '[/]car_serial_mock_mcu' || true
+            exit 2
+        fi
+        exec bash "$HERE/web.sh" test "$@"
+        ;;
+
+    check|qa)
+        if [[ "$cmd" == check ]]; then
+            file="$SIM/test_acceptance.py"
+            option="--timeout"
+            seconds="${1:-15}"
+        else
+            file="$SIM/test_route_qa.py"
+            option="--seconds"
+            seconds="${1:-60}"
+        fi
+
+        need "$file"
+
+        [[ "$seconds" =~ ^[0-9]+([.][0-9]+)?$ ]] || {
+            echo "[ERROR] 秒数无效" >&2
+            exit 2
+        }
+
+        exec /usr/bin/python3 "$file" "$option" "$seconds"
+        ;;
+
+    site|real|doctor)
+        exec bash "$HERE/web.sh" "$cmd" "$@"
+        ;;
+
+    build)
+        exec bash "$HERE/build.sh" "${@:-serial}"
+        ;;
+
+    map)
+        exec bash "$HERE/manage.sh" "${@:-status}"
+        ;;
+
+    lidar)
+        exec bash "$HERE/lidar.sh" "${@:-doctor}"
+        ;;
+
+    competition)
+        exec bash "$HERE/competition.sh" "${@:-doctor}"
+        ;;
+
+    logs)
+        count="${1:-20}"
+
+        [[ "$count" =~ ^[0-9]+$ ]] &&
+        ((count>=1 && count<=200)) || {
+            echo "[ERROR] 日志行数应在 1..200" >&2
+            exit 2
+        }
+
+        for name in \
+            test_ros \
+            test_web_bridge \
+            test_inspection_bridge \
+            test_path_bridge
+        do
+            echo "========== $name =========="
+            f="$SIM/data/web_modes/$name.log"
+
+            if [[ -f "$f" ]]; then
+                tail -n "$count" "$f"
+            else
+                echo "暂无日志"
+            fi
+        done
+        ;;
+
+    kin|kinematics)
+        need "$HERE/check_kinematics.py"
+        exec /usr/bin/python3 "$HERE/check_kinematics.py" --seconds "${1:-15}"
+        ;;
+
+    status)
+        /usr/bin/python3 - "$ROOT" <<'PY'
+import json
+import sys
+from pathlib import Path
+from urllib.request import urlopen
+
+base = "http://127.0.0.1:8080"
+root = sys.argv[1]
+
+for endpoint in (
+    "/api/health",
+    "/api/test/reference_path",
+    "/api/test/inspection",
+):
+    try:
+        with urlopen(base + endpoint, timeout=1.2) as r:
+            data = json.load(r)
+
+        if endpoint.endswith("health"):
+            msg = "网页服务在线"
+        elif endpoint.endswith("reference_path"):
+            msg = (
+                f"规划路径在线={data.get('online')}, "
+                f"航点={len(data.get('points') or [])}"
+            )
+        else:
+            msg = f"诊断服务在线={data.get('online')}"
+
+        print("[STATUS]", msg)
+
+    except (OSError, ValueError) as e:
+        print("[OFFLINE]", endpoint, str(e))
+
+count = {"MCU": 0, "串口": 0, "路径": 0}
+
+for proc in Path("/proc").iterdir():
+    if not proc.name.isdigit():
+        continue
+
+    try:
+        cmdline = (
+            (proc / "cmdline")
+            .read_bytes()
+            .replace(b"\x00", b" ")
+            .decode(errors="replace")
+        )
+    except (OSError, PermissionError):
+        continue
+
+    if root not in cmdline:
+        continue
+
+    if "/car_serial_mock_mcu" in cmdline:
+        count["MCU"] += 1
+    elif "/car_serial_bridge" in cmdline:
+        count["串口"] += 1
+    elif "/test_path_bridge.py" in cmdline:
+        count["路径"] += 1
+
+print("[PROCESS]", count)
+
+if count["MCU"] > 1 or count["串口"] > 1:
+    print("[WARN] 存在重复模拟进程，请检查或执行 carx stop")
+PY
+        ;;
+
+    stop)
+        /usr/bin/python3 - "$ROOT" \
+            "${CAR_TEST_ROS_DOMAIN_ID:-73}" <<'PY'
+import os
+import signal
+import sys
+from pathlib import Path
+
+root = str(Path(sys.argv[1]).resolve())
+domain = ("ROS_DOMAIN_ID=" + sys.argv[2]).encode()
+
+binary = (
+    root + "/algorithm/car_ws/install/"
+    "car_serial_link/lib/car_serial_link/"
+)
+sim = root + "/sim2real/"
+found = []
+
+for proc in Path("/proc").iterdir():
+    if not proc.name.isdigit():
+        continue
+
+    pid = int(proc.name)
+
+    if pid == os.getpid():
+        continue
+
+    try:
+        args = [
+            x.decode(errors="replace")
+            for x in (proc / "cmdline").read_bytes().split(b"\0")
+            if x
+        ]
+        env = (proc / "environ").read_bytes().split(b"\0")
+    except (OSError, PermissionError):
+        continue
+
+    if not args or domain not in env:
+        continue
+
+    matched = (
+        args[0] in (
+            binary + "car_serial_mock_mcu",
+            binary + "car_serial_bridge",
+        )
+        or sim + "test_path_bridge.py" in args
+        or sim + "test_telemetry_bridge.py" in args
+        or (
+            sim + "web_mode_runner.py" in args
+            and "test" in args
+        )
+        or (
+            sim + "ros2_visualization_bridge.py" in args
+            and "--web-channel" in args
+            and "test" in args
+        )
+        or (
+            "offline_serial_demo.launch.xml" in args
+            and "car_serial_link" in args
+        )
+    )
+
+    if matched:
+        found.append(pid)
+
+for pid in found:
+    try:
+        os.kill(pid, signal.SIGTERM)
+        print("[STOP] TEST PID", pid)
+    except ProcessLookupError:
+        pass
+
+print("[OK] 已发送 TEST 终止信号，目标进程数:", len(found))
+PY
+        ;;
+
+    *)
+        echo "[ERROR] 未知命令: $cmd" >&2
+        help
+        exit 2
+        ;;
+esac
