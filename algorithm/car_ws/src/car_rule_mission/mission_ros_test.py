@@ -17,6 +17,7 @@ def make_node(start_zone='upper_right', task_code='156+123+516+231',
     import rclpy
     from rclpy.node import Node
     from std_msgs.msg import String
+    from car_interfaces.msg import CommandFeedback
     from geometry_msgs.msg import PoseStamped
     from nav_msgs.msg import Path as RosPath
 
@@ -29,6 +30,7 @@ def make_node(start_zone='upper_right', task_code='156+123+516+231',
             self.session = PtyMissionSession(plan, task_code, fail_at, drop_ack_at)
             self.state_pub = self.create_publisher(String, '/car/test/mission/state', 10)
             self.feedback_pub = self.create_publisher(String, '/car/test/mission/feedback', 10)
+            self.typed_feedback_pub = self.create_publisher(CommandFeedback, '/car/test/mission/command_feedback', 10)
             self.pose_pub = self.create_publisher(PoseStamped, '/car/test/mission/road_node_pose', 10)
             self.path_pub = self.create_publisher(RosPath, '/car/test/mission/road_node_trace', 10)
             self.last_event_count = 0
@@ -42,6 +44,17 @@ def make_node(start_zone='upper_right', task_code='156+123+516+231',
                 for event in emitted:
                     self.feedback_pub.publish(String(data=json.dumps(
                         {'source_type': 'MOCK', 'hardware_authorized': False, **event})))
+                    if event['event'] in ('ACK', 'REJECTED', 'STARTED', 'PROGRESS', 'COMPLETED', 'FAILED'):
+                        typed = CommandFeedback()
+                        typed.header.stamp = self.get_clock().now().to_msg()
+                        typed.header.frame_id = 'mock_test_only'
+                        typed.source_time_ms = self.session.now_ms
+                        typed.event_type = event['event_type']
+                        typed.cmd_id = event['cmd_id']
+                        typed.original_command_type = 0xE0  # TEST_STEP only
+                        typed.progress_percent = 100 if event['event'] == 'COMPLETED' else 0
+                        typed.error_code = 42 if event['event'] == 'FAILED' else 0
+                        self.typed_feedback_pub.publish(typed)
                 snapshot = self.session.snapshot()
                 self.state_pub.publish(String(data=json.dumps(snapshot, ensure_ascii=False)))
                 pose = PoseStamped()
