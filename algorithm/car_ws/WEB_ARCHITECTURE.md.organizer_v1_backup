@@ -1,0 +1,63 @@
+# 工创小车：ROS2 / Sim2Real 四个功能集（目录整理版）
+
+本次仅整理代码和入口；不修改 STM32F4，不改已有 ROS2 功能包，不接通键盘/电机控制。
+
+```text
+~/Desktop/car/
+├── STM32F4/                      # 原封不动，绝对不操作
+├── sim2real -> algorithm/car_ws/src/car_web_sim/site
+│                                   # 保持旧 car 命令和启动脚本兼容
+└── algorithm/car_ws/
+    ├── src/
+    │   ├── car_web_test/          # 测试集：虚拟串口/ROS2（当前不写入网页实车槽）
+    │   ├── car_web_real/          # 运行集：实车 ROS2 -> 网页（只读入口）
+    │   ├── car_web_sim/           # 纯模拟集：原 Sim2Real 原样迁入
+    │   │   └── site/              # server.py、web/、data/、相机、旧桥接脚本
+    │   ├── car_web_keyboard/      # 映射集：仅占位，COLCON_IGNORE
+    │   ├── car_interfaces/        # 原有 ROS2 包，保持原地
+    │   ├── car_serial_link/
+    │   ├── car_navigation/
+    │   ├── car_mission/
+    │   ├── car_vision/
+    │   └── ...
+    ├── bash/
+    │   ├── web.sh                 # 新增统一入口
+    │   ├── organize_web_ros.py   # 本整理程序，支持检查/撤销
+    │   └── ...                    # 所有历史脚本保留
+    ├── maps/                      # 原来的地图脚本不移动
+    ├── build/ install/ log/       # colcon 目录不移动
+    └── WEB_ARCHITECTURE.md
+```
+
+## 启动
+
+```bash
+bash ~/Desktop/car/algorithm/car_ws/bash/web.sh doctor
+bash ~/Desktop/car/algorithm/car_ws/bash/web.sh build
+bash ~/Desktop/car/algorithm/car_ws/bash/web.sh sim    # 启动原网站，内建纯模拟
+bash ~/Desktop/car/algorithm/car_ws/bash/web.sh test   # 虚拟 STM32 -> ROS2（不写实车网页槽）
+bash ~/Desktop/car/algorithm/car_ws/bash/web.sh real   # ROS2 -> 原网站实时监控（只读）
+```
+
+建议不同常驻命令在**不同终端**启动；`test` 与 `real` 不要同时运行。
+`real` 无法仅靠 ROS2 消息确定硬件真实性，必须人工/后续代码校验数据来源。
+
+## 范围与限制
+
+- `car_web_test` 和 `car_web_real` 现在仅是 ROS2 包骨架与管理入口；尚未实现互相隔离的两套新版网页 API。
+- 现有 `/api/telemetry`、`/api/ros/state`、`/api/ros/grid/...` 功能保持原样。
+- 浏览器模拟运行保留既有 JavaScript 逻辑，无须 ROS2。
+- 旧 `car` 命令所使用的 `~/Desktop/car/sim2real/launcher.py` 继续可访问。
+- web 包的 `colcon build` 负责注册 ROS2 包、安装只读网页资源；`launcher.py` 继续从源码目录启动以保持可写 `data/` 状态和兼容性。
+- `car_web_keyboard` 使用 COLCON_IGNORE，未来实现控制权、急停、失联保护后再单独开发。
+- 若担心 Git 路径迁移，整理前可 `git status --short`，整理后人工核对，脚本不执行 Git add/commit。
+
+## 操作
+
+```bash
+python3 ~/Desktop/car/algorithm/car_ws/bash/organize_web_ros.py --check
+python3 ~/Desktop/car/algorithm/car_ws/bash/organize_web_ros.py --undo
+```
+
+`--undo` 会把 **当前** 网站目录搬回原路径（保留迁移后的网站修改）。只在新建文件未被更改时安全清理对应包骨架；不会盲目删除用户后来写的文件。
+首次迁移的独立备份在 `~/.local/state/car_web_organizer/backups/`（权限仅当前用户）。

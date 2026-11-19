@@ -1,0 +1,4 @@
+# 运行集
+
+原样保留网站内的 `ros2_visualization_bridge.py`，由 `car_ws/bash/web.sh real` 启动。只读，不发电机命令。
+注意：ROS2 发现模拟发布者时不能声称是真实硬件；未来加入 source/run_id 的正式来源验证。

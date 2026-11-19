@@ -1,0 +1,4 @@
+# 测试集
+
+虚拟 STM32 (PTY) → CAR-LINK → ROS2。目前不往网页实车 /api/telemetry 写入模拟数据，未来建立独立的 test API。
+启动：`bash ../../bash/web.sh test`。不控制真实电机。
