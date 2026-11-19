@@ -32,7 +32,7 @@ REQUIRED = (
     ROOT / 'simple_lock_stage' / 'preflight_fixed_route.py',
     ROOT / 'simple_lock_stage' / 'lock_core.py',
     ROOT / 'topology_stage6' / 'road_topology.py',
-    WS / 'x3.yaml',
+    WS / 'config' / 'x3.yaml',
 )
 
 
@@ -74,7 +74,7 @@ def check_inputs():
     if '--mission' not in topology or '--expected-obstacles' not in topology:
         raise RuntimeError('现有 road_topology.py 不是支持固定多段任务的 V2.1 版本')
     d = config()
-    text = (WS / 'x3.yaml').read_text(encoding='utf-8')
+    text = (WS / 'config' / 'x3.yaml').read_text(encoding='utf-8')
     port_match = re.search(r'^\s*port:\s*([^#\s]+)', text, flags=re.M)
     frame_match = re.search(r'^\s*frame_id:\s*([^#\s]+)', text, flags=re.M)
     if not port_match or not frame_match:

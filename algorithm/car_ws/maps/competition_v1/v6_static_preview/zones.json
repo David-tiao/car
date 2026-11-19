@@ -1,0 +1,177 @@
+{
+  "source": "2027工创大赛智能搬运初赛规则第3页图1 + 原工程 competition_v1/zones.json",
+  "measurements_note": "场地和功能区尺寸来自规则；黄色区域绝对坐标、工位位置来自原工程按规则示意图定位，现场允许偏差，须测量校正",
+  "version": "v6_review_not_yet_installed",
+  "field_size": [
+    2.4,
+    2.4
+  ],
+  "resolution": 0.01,
+  "origin": [
+    -0.2,
+    -0.2,
+    0.0
+  ],
+  "grid_size": [
+    280,
+    280
+  ],
+  "yellow": [
+    [
+      0.55,
+      0.55,
+      1.0,
+      1.0
+    ],
+    [
+      1.4,
+      0.55,
+      1.85,
+      1.0
+    ],
+    [
+      0.55,
+      1.4,
+      1.0,
+      1.85
+    ],
+    [
+      1.4,
+      1.4,
+      1.85,
+      1.85
+    ]
+  ],
+  "blue": [
+    [
+      2.1,
+      2.1,
+      2.4,
+      2.4
+    ],
+    [
+      2.1,
+      0.0,
+      2.4,
+      0.3
+    ]
+  ],
+  "start_zone": "upper_right",
+  "work": [
+    [
+      0.0,
+      0.91,
+      0.15,
+      1.49
+    ],
+    [
+      0.91,
+      0.0,
+      1.49,
+      0.15
+    ]
+  ],
+  "raw_disk": {
+    "center": [
+      1.2,
+      2.4
+    ],
+    "radius": 0.15,
+    "position_adjustment_required_on_site": true
+  },
+  "qr_fixed": false,
+  "random_obstacles_premapped": false,
+  "topology_nodes": {
+    "A1": [
+      0.35,
+      0.35
+    ],
+    "A2": [
+      0.35,
+      1.2
+    ],
+    "A3": [
+      0.35,
+      2.05
+    ],
+    "B1": [
+      1.2,
+      0.35
+    ],
+    "B2": [
+      1.2,
+      1.2
+    ],
+    "B3": [
+      1.2,
+      2.05
+    ],
+    "C1": [
+      2.05,
+      0.35
+    ],
+    "C2": [
+      2.05,
+      1.2
+    ],
+    "C3": [
+      2.05,
+      2.05
+    ]
+  },
+  "topology_edges": {
+    "A1-B1": [
+      "A1",
+      "B1"
+    ],
+    "B1-C1": [
+      "B1",
+      "C1"
+    ],
+    "A2-B2": [
+      "A2",
+      "B2"
+    ],
+    "B2-C2": [
+      "B2",
+      "C2"
+    ],
+    "A3-B3": [
+      "A3",
+      "B3"
+    ],
+    "B3-C3": [
+      "B3",
+      "C3"
+    ],
+    "A1-A2": [
+      "A1",
+      "A2"
+    ],
+    "A2-A3": [
+      "A2",
+      "A3"
+    ],
+    "B1-B2": [
+      "B1",
+      "B2"
+    ],
+    "B2-B3": [
+      "B2",
+      "B3"
+    ],
+    "C1-C2": [
+      "C1",
+      "C2"
+    ],
+    "C2-C3": [
+      "C2",
+      "C3"
+    ]
+  },
+  "map_semantics": {
+    "competition_navigation_map": "static physical occupancy: all field traversable except disk; enforce yellow/work with keepout mask",
+    "competition_keepout_mask": "rule-based forbidden areas (yellow, storage, rough-processing and disk)",
+    "competition_rules_preview": "visualization of rule-based forbidden areas, same geometry as mask"
+  }
+}

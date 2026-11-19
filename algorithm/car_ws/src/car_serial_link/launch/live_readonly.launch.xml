@@ -1,0 +1,8 @@
+<launch>
+  <!-- Future live connection; NEVER transmits any command to STM32. -->
+  <arg name="port" default="/dev/ttyUSB0"/>
+  <node pkg="car_serial_link" exec="car_serial_bridge"
+        name="car_serial_bridge" output="screen">
+    <param name="port" value="$(var port)"/>
+  </node>
+</launch>

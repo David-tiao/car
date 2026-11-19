@@ -1,0 +1,60 @@
+{
+  "project": "competition_v6_migrate_into_car_ws_v1",
+  "map_created": true,
+  "map_path": "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/v6_static_preview",
+  "map_hashes": {
+    "README_静态场地地图核对版.md": "ae377a8eb698dc6f8d862b92689c2908ba57e1a76048c67b1abeccb5fc597dfe",
+    "competition_field_preview.png": "66611c35fb678d3b72e1d0b94a05c40e7710b9012616053471509ba36fd3386e",
+    "competition_field_preview.svg": "a8af7918fc60252f13b1d464238d1c31f3b5a006fadae9f3bd19935e637404b0",
+    "competition_keepout_mask.pgm": "f297c1a8a84f50778f5c451ff9bed860bd89f60022bef0ac27597893506fd4ae",
+    "competition_keepout_mask.yaml": "01799f68d066ad181130dd433614ca7cadb545e8733e2a13912022b263f5ce8d",
+    "competition_map_layers.png": "fc91a997233225118aa0de5f6031f509608719b9aa4074163c311ad29f7d0a91",
+    "competition_navigation_map.pgm": "55fc4f5f39434df3b496109d8234eaf3d91b841e225b88eb491bb90371997e20",
+    "competition_navigation_map.yaml": "be8e408b34656a834d780be0738f368a0670aa02bb6ae9f9171046a84cd2a2a4",
+    "competition_rules_preview.pgm": "f297c1a8a84f50778f5c451ff9bed860bd89f60022bef0ac27597893506fd4ae",
+    "competition_rules_preview.yaml": "dfd16ae75666f8ab9f2e519be91e4f00be86918a9d384e1d74c3b6de71885e2a",
+    "competition_topology_preview.png": "017d22dcb05d3d82de5dec5e7dde304e37a9e5c4ad64d164a81afaf4a51253a3",
+    "generate_static_map_v6.py": "69f069b0d154966bf1665db0cc9277dbd1a447d54d0456de771d0b40ed14f54c",
+    "verify_static_map.py": "6b0f43e6a491c5c8fac1ee1afa33a989e1118d90f87f6c102d750f600ec02aea",
+    "zones.json": "d5e70001e98ad3ef0b2b383bbdf3db58df82ae9b53de5c10ccfae027ae5004b5"
+  },
+  "files": [
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/oneclick_stage/competition_v6_viewer.py",
+      "old_exists": false,
+      "old_mode": null,
+      "new_sha": "deede0497aef91478700d7273078c3aacf6f894e1343df410cd1e0cc45c1b952",
+      "backup": "0.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/oneclick_stage/visual_overlay.py",
+      "old_exists": false,
+      "old_mode": null,
+      "new_sha": "39333bef6fa41dee8a3afa904860d6ab8cb80479dfb6f9e786bdc97df8f4e163",
+      "backup": "1.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/oneclick_stage/preview.rviz",
+      "old_exists": false,
+      "old_mode": null,
+      "new_sha": "c06783e37e458b584549506deaf0416c5e73e20bf651366e61c829c87d03e71c",
+      "backup": "2.bak"
+    },
+    {
+      "path": "/home/tao/Desktop/car/algorithm/car_ws/maps/competition_v1/oneclick_stage/main.py",
+      "old_exists": true,
+      "old_mode": 420,
+      "new_sha": "0ed411f9f8cad0f5d35625b3c750a5c3c2dec136e12fd56b019d82f7c4a53c62",
+      "backup": "3.bak",
+      "old_sha": "757ffc65436bd53ed0f9c81214b3ca3669e0154f992b8a652fc3ef07fd2bd54c"
+    },
+    {
+      "path": "/home/tao/Desktop/一键启动V6地图雷达.desktop",
+      "old_exists": true,
+      "old_mode": 493,
+      "new_sha": "16fee2f7f39802db03e04a42faa6aba76352044242989f241e2c68cf68ab9709",
+      "backup": "4.bak",
+      "old_sha": "e748181cd967458a6ca941e06b8566dcf9bab5c98d55bfdbf87068628e53e712"
+    }
+  ]
+}

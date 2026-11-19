@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1050" height="950" viewBox="0 0 1050 950">
+<rect width="1050" height="950" fill="#f8fafc"/>
+<text x="525" y="50" text-anchor="middle" font-family="sans-serif" font-size="28" fill="#16263f">智能搬运赛项 · 静态场地图 V6（核对版）</text>
+<rect x="125" y="120" width="672.0" height="672.0" fill="#c8cbcf" stroke="#334155" stroke-width="3"/>
+<rect x="279.0" y="512.0" width="125.99999999999999" height="125.99999999999999" fill="#fff5b8"/>
+<rect x="517.0" y="512.0" width="126.00000000000006" height="125.99999999999999" fill="#fff5b8"/>
+<rect x="279.0" y="273.99999999999994" width="125.99999999999999" height="126.00000000000006" fill="#fff5b8"/>
+<rect x="517.0" y="273.99999999999994" width="126.00000000000006" height="126.00000000000006" fill="#fff5b8"/>
+<rect x="125.0" y="374.79999999999995" width="42.0" height="162.39999999999998" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+<rect x="379.8" y="750.0" width="162.39999999999998" height="42.0" fill="#fff" stroke="#64748b" stroke-width="1.5"/>
+<rect x="713.0" y="120.0" width="83.99999999999994" height="83.99999999999994" fill="#175cd3"/>
+<rect x="713.0" y="708.0" width="83.99999999999994" height="84.0" fill="#175cd3"/>
+<circle cx="461.0" cy="120.0" r="42.0" fill="#fff" stroke="#475569" stroke-width="2"/>
+<circle cx="146.0" cy="416.79999999999995" r="9" fill="none" stroke="#0f766e" stroke-width="2.2"/>
+<circle cx="146.0" cy="456.0" r="9" fill="none" stroke="#0f766e" stroke-width="2.2"/>
+<circle cx="146.0" cy="495.19999999999993" r="9" fill="none" stroke="#0f766e" stroke-width="2.2"/>
+<circle cx="419.0" cy="770.9999999999999" r="9" fill="none" stroke="#e11d48" stroke-width="2.2"/>
+<circle cx="461.0" cy="770.9999999999999" r="9" fill="none" stroke="#e11d48" stroke-width="2.2"/>
+<circle cx="503.0" cy="770.9999999999999" r="9" fill="none" stroke="#e11d48" stroke-width="2.2"/>
+<text x="755.0" y="167.99999999999997" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#fff">起点</text>
+<text x="755.0" y="756.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#fff">启停2</text>
+<text x="461.0" y="462.0" text-anchor="middle" font-family="sans-serif" font-size="20" fill="#334155">十字路</text>
+<text x="461.0" y="181.59999999999994" text-anchor="middle" font-family="sans-serif" font-size="19" fill="#334155">原料盘</text>
+<text x="461.0" y="767.0" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#334155">2.4 m</text>
+<text x="70" y="456.0" text-anchor="middle" transform="rotate(-90,70,456.0)" font-family="sans-serif" font-size="18" fill="#334155">2.4 m</text>
+<text x="189.4" y="461.0" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#334155">暂存</text>
+<text x="461.0" y="727.6" text-anchor="middle" font-family="sans-serif" font-size="18" fill="#334155">粗加工</text>
+<text x="835" y="165" font-family="sans-serif" font-size="21" fill="#0f172a">颜色说明</text>
+<rect x="837" y="192" width="30" height="30" fill="#c8cbcf" stroke="#475569"/>
+<text x="882" y="214" font-size="18" font-family="sans-serif" fill="#334155">灰色行车道</text>
+<rect x="837" y="248" width="30" height="30" fill="#fff5b8" stroke="#475569"/>
+<text x="882" y="270" font-size="18" font-family="sans-serif" fill="#334155">黄色禁行区</text>
+<rect x="837" y="304" width="30" height="30" fill="#175cd3" stroke="#475569"/>
+<text x="882" y="326" font-size="18" font-family="sans-serif" fill="#334155">蓝色启停区</text>
+<rect x="837" y="360" width="30" height="30" fill="#ffffff" stroke="#475569"/>
+<text x="882" y="382" font-size="18" font-family="sans-serif" fill="#334155">操作功能区</text>
+<rect x="837" y="416" width="30" height="30" fill="#ffffff" stroke="#475569"/>
+<text x="882" y="438" font-size="18" font-family="sans-serif" fill="#334155">原料转盘</text>
+<text x="835" y="540" font-family="sans-serif" font-size="18" fill="#334155">障碍物：比赛现场随机放置</text>
+<text x="835" y="573" font-family="sans-serif" font-size="18" fill="#334155">二维码板：位置不固定</text>
+<text x="125" y="867" font-family="sans-serif" font-size="18" fill="#475569">地图坐标：左下 (0,0)，右上 (2.4,2.4)；现场实际位置允许偏差。</text>
+</svg>

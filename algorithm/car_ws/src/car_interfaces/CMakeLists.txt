@@ -12,6 +12,9 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Ulog43.msg"
   "msg/VisionEvent.msg"
   "msg/MechanismState.msg"
+  "msg/CommandFeedback.msg"
+  "msg/PowerTelemetry.msg"
+  "msg/LinkStatus.msg"
   DEPENDENCIES std_msgs
 )
 

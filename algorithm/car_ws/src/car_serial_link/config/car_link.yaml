@@ -1,0 +1,10 @@
+car_serial_bridge:
+  ros__parameters:
+    port: /tmp/car_link_demo_uart
+    baud: 115200
+    stale_ms: 500
+    publish_joint_states: true
+    pulses_per_meter: 1750.0
+    wheel_ppr: 440.0
+    wheelbase_half_m: 0.093
+    track_half_m: 0.110
