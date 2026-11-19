@@ -1,6 +1,6 @@
 
 #!/usr/bin/env bash
-# car 项目安全同步工具 v3.0
+# car 项目安全同步工具 v3.1（运行日志防污染补丁）
 # Ubuntu/Linux, Bash 4.4+, Git 2.34+
 set -Eeuo pipefail
 
@@ -104,6 +104,14 @@ cd "$REPO"
 ROOT="$(pwd -P)"
 GIT_DIR="$(git rev-parse --absolute-git-dir)"
 LOG_DIR="$GIT_DIR/car-sync"
+# 防止多个同步/合并操作同时运行
+case "$MODE" in
+  sync|rollback|retry-push|update-stm32|check-stm32|stm32-diff)
+    command -v flock >/dev/null 2>&1 || die '缺少 flock（util-linux）'
+    exec 9>"$GIT_DIR/car-sync-run.lock"
+    flock -n 9 || die '已有另一条 car 同步/合并操作正在执行，请勿并发运行'
+    ;;
+esac
 
 cleanup() {
   if [[ -n "$STAGE" && -e "$STAGE/.git" ]]; then
@@ -127,7 +135,14 @@ require_main() {
   git rev-parse -q --verify HEAD >/dev/null || die '当前 main 尚无提交'
 }
 require_clean() {
-  [[ -z "$(git status --porcelain --untracked-files=normal)" ]] || die '主工作区存在未提交或未跟踪文件；请先处理'
+  local dirty
+  dirty="$(git -c core.quotePath=false status --short --untracked-files=normal)"
+  if [[ -n "$dirty" ]]; then
+    warn '工作区仍有以下未提交或未跟踪文件：'
+    printf '%s\n' "$dirty" >&2
+    warn '如果是后台程序持续更新的 .log，请先停止程序，并取消日志文件的 Git 跟踪。'
+    die '安全停止：工作区不干净；本地已有提交不会丢失'
+  fi
 }
 check_origin() {
   local actual
@@ -172,7 +187,8 @@ show_commit() {
 # 保护的路径：任何单个删除均需专门确认。
 protected_path() {
   case "$1" in
-    STM32F4/*|algorithm/*|stm32_openmv_/*|pi/*|item/*|sync_car.sh|.gitignore|.car-sync/*) return 0 ;;
+    sim2real/data/web_modes/*.log) return 1 ;;  # 测试日志取消跟踪不视为关键源码误删
+    STM32F4/*|algorithm/*|stm32_openmv_/*|pi/*|item/*|sim2real/*|sync_car.sh|car_branch.sh|.gitignore|.car-sync/*) return 0 ;;
     *) return 1 ;;
   esac
 }
@@ -342,6 +358,8 @@ make_rules() {
 *.obj
 *.elf
 *.map
+# sim2real Web 测试产生的动态日志（本地保留、不上传）
+sim2real/data/web_modes/*.log
 RULES_TEXT
 }
 ensure_ignore() {
