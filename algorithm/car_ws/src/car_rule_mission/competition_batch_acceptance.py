@@ -121,8 +121,8 @@ def _case_set(total, seed):
     all_edges = sorted(EDGES)
     # Deterministic regression: no obstacles, isolated endpoints (NO_ROUTE),
     # plus random configurations of 0..3 locked roads.
-    fixed = [tuple(), tuple(sorted(['C2-C3', 'B3-C3'])),
-             tuple(sorted(['A1-A2', 'A1-B1']))]
+    fixed = [tuple(), tuple(sorted(['C1-C2', 'B1-C1'])),
+             tuple(sorted(['C2-C3', 'B3-C3']))]
     for i in range(total):
         blocked = fixed[i] if i < len(fixed) else tuple(sorted(
             rng.sample(all_edges, rng.randint(0, min(3, len(all_edges))))))
