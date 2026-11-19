@@ -1,0 +1,17 @@
+
+══════════════════════════════════════════════════════════
+ Competition V11.0 simulator SERVER V11.0.0 is running
+══════════════════════════════════════════════════════════
+  On this computer: http://127.0.0.1:8080/
+  ALGORITHMS: A* / Dijkstra / D* Lite
+  REAL-TIME: launch start_ros_bridge.sh when /odom is published
+  CAMERAS: OpenMV H7 Plus USB + Raspberry Pi 5 77deg via /api/cameras
+  Camera upload token is stored locally: data/camera_token.txt
+  BUILD CHECK: http://127.0.0.1:8080/api/build
+  Shared scene sync is enabled for all visitors
+  Scenes are saved in data/shared_scene.json across restarts
+  Stop the server: press Ctrl+C in this terminal
+  For external networks: run bash start_public_tunnel.sh
+══════════════════════════════════════════════════════════
+
+127.0.0.1 - - [19/Nov/2026 18:34:09] "GET /api/health HTTP/1.1" 200 -

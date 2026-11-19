@@ -17,6 +17,7 @@ import threading
 import secrets
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
+from web_mode_gateway import mode_get, mode_post
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
@@ -355,6 +356,8 @@ class Handler(SimpleHTTPRequestHandler):
             pass
 
     def do_GET(self):
+        if mode_get(self):
+            return
         parsed = urlsplit(self.path)
         if parsed.path == "/api/ros/state":
             self.respond_json(200, ros_status())
@@ -421,6 +424,8 @@ class Handler(SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
+        if mode_post(self):
+            return
         path = urlsplit(self.path).path
         if path in ("/api/ros/state", "/api/ros/grid"):
             if not is_loopback(self.client_address[0]):

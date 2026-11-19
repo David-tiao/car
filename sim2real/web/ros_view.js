@@ -136,7 +136,7 @@ function markStatus(data){
 function escapeHtml(s){return String(s||'').replace(/[&<>"']/g,x=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[x]));}
 async function getGrid(layer,seq){
  try{
-   const r=await fetch('/api/ros/grid/'+layer,{cache:'no-store'});
+   const r=await fetch((window.CarWebMode?.rosUrl||'/api/ros')+'/grid/'+layer,{cache:'no-store'});
    if(!r.ok)throw Error(`HTTP ${r.status}`);
    const v=await r.json();if(!v.grid||v.seq!==seq)return;
    state.layers[layer]=gridImage(layer,v.grid);state.lastGrid[layer]=seq;
@@ -144,9 +144,10 @@ async function getGrid(layer,seq){
  }catch(e){console.warn('ROS grid read failed',layer,e)}
 }
 async function poll(){
+ if(window.CarWebMode?.mode==='sim')return;
  if(state.loading)return;state.loading=true;
  try{
-   const r=await fetch('/api/ros/state',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
+   const r=await fetch((window.CarWebMode?.rosUrl||'/api/ros')+'/state',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);
    const data=await r.json();state.snapshot=data;markStatus(data);
    for(const [name,v] of Object.entries(data.grids||{}))if(v.seq>0&&v.seq!==state.lastGrid[name])await getGrid(name,v.seq);
    render();

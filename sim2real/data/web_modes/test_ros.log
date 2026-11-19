@@ -1,0 +1,11 @@
+[INFO] [launch]: All log files can be found below /home/tao/.ros/log/2026-11-19-18-34-09-846165-tao-ZhaoYang-Yue-Pro-15-IRL-2076556
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [car_serial_mock_mcu-1]: process started with pid [2076557]
+[INFO] [car_serial_bridge-2]: process started with pid [2076559]
+[INFO] [car_data_monitor-3]: process started with pid [2076561]
+[car_serial_mock_mcu-1] [INFO] [1795084449.934228677] [car_serial_mock_mcu]: MOCK ONLY; CAR-LINK PTY /tmp/car_link_demo_uart -> /dev/pts/8
+[car_serial_mock_mcu-1] [WARN] [1795084449.934293279] [car_serial_mock_mcu]: Synthetic MCU data; command events are simulated, no real motor control
+[car_serial_bridge-2] [WARN] [1795084449.939362036] [car_serial_bridge]: CAR-LINK V1 RECEIVE ONLY: no command transmitter or motor control exists
+[car_data_monitor-3] [INFO] [1795084449.942610528] [car_data_monitor]: C++ monitor started: offline/replay safe; NO motor commands
+[car_serial_bridge-2] [INFO] [1795084449.949445649] [car_serial_bridge]: Connected to CAR-LINK read-only port: /tmp/car_link_demo_uart
+[car_serial_bridge-2] [INFO] [1795084449.989490078] [car_serial_bridge]: STM32 HELLO session=539365657 minor=0 capabilities=0x00000007

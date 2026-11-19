@@ -20,7 +20,7 @@
   ];
   const state={obstacles:[],start:{x:2.25,y:2.25},goal:{x:.33,y:1.2},startZone:1,tool:'obstacle',mode:'mission',planner:'astar',goalPolicy:'other',
     robotWidth:.26,robotLength:.29,safetyMargin:0,navStep:NAV_STEP,gridStep:DEFAULT_GRID_STEP,velocity:.25,handling:.30,showGrid:true,pathView:'global',turnDirection:'cw',
-    runSource:'simulation',rotorDwell:4,rotorRate:45,rotorAngle:120,rawX:1.2,rawY:2.4,qrY:1.2,alignOffset:.015,alignSpeed:.04,alignYaw:2,armReach:.09,armSpeed:.1,ringFollow:true,
+    runSource:(window.CarWebMode?.runSource||'simulation'),rotorDwell:4,rotorRate:45,rotorAngle:120,rawX:1.2,rawY:2.4,qrY:1.2,alignOffset:.015,alignSpeed:.04,alignYaw:2,armReach:.09,armSpeed:.1,ringFollow:true,
     task:'156+123+516+231',plan:null, sim:null, turnOrigin:0};
   const shared={ready:false,inbound:false,dirty:false,pushing:false,revision:0,seq:0,timer:null};
   // Live mode is display-only. The ROS bridge is the ONLY publisher of /api/telemetry.
@@ -99,6 +99,13 @@
     const playback=/REPLAY|TEST|OFFLINE/i.test(live.source);
     $('modeStatus').textContent=isLive?(fresh?(playback?'回放 / 测试数据在线':'实时数据已接入'):'等待实车数据'):'模拟模式就绪';
     $('modeDescription').textContent=isLive?'当前：实车监视。网页只按实测 /odom 更新位置与轨迹，不发送电机指令；无数据时不会自行运动。':'当前：模拟运行。按规划路线、模拟速度和抓放参数播放，不代表真实底盘反馈。';
+    if(window.CarWebMode?.mode==='test'){
+      $('modeStatus').textContent=fresh?'模拟 MCU 数据在线':'等待模拟 MCU 数据';
+      $('modeDescription').textContent='测试集：CAR-LINK 伪串口经过 ROS 2 再传入网页，所有位姿均为模拟数据。';
+    } else if(window.CarWebMode?.mode==='keyboard'){
+      $('modeStatus').textContent='实车键盘控制禁用';
+      $('modeDescription').textContent='映射集预留：只读实车反馈，不可向 STM32 发运动指令。';
+    }
   }
   function bindDirectory(){
     document.querySelectorAll('button[data-run-mode]').forEach(btn=>btn.addEventListener('click',()=>{
@@ -111,6 +118,7 @@
     syncModeShell();
   }
   function switchRunSource(mode){if(!['simulation','live'].includes(mode))return;
+    if(window.CarWebMode && mode!==window.CarWebMode.runSource)return;
     if(state.sim){state.sim.running=false;state.sim.phase='idle';state.sim.poseOverride=null;state.sim.armExtension=0;state.sim.motion=null;state.sim.armMove=null;}
     state.runSource=mode;live.anchor=null;live.pose=null;live.trail=[];live.lastSeq=0;
     syncRunUI();activateSettingsTab(mode==='live'?'live':'planner');paintLiveTrail();paintRobot();updateCameraStreamMode();
@@ -143,6 +151,8 @@
   function updateLiveReadout(){
     const isLive=state.runSource==='live',fresh=live.online&&(Date.now()-live.lastSeen<2000);
     $('liveState').textContent=isLive?(fresh?(/REPLAY|TEST|OFFLINE/i.test(live.source)?'测试/回放数据在线（非实车）':/growing_file/i.test(live.source)?'实时日志接入（待核对来源）':'ROS2 实车数据在线'):live.pose?'数据中断 / 超时':'等待 ROS2 /odom'):'未启用';
+    if(window.CarWebMode?.mode==='test')$('liveState').textContent=fresh?'模拟 STM32 /odom 在线':'等待模拟 STM32 /odom';
+    if(window.CarWebMode?.mode==='keyboard')$('liveState').textContent=fresh?'实车反馈在线（不可控制）':'等待实车反馈（不可控制）';
     $('liveState').dataset.online=fresh?'true':'false';
     if(!isLive)return;
     for(const [id,v,digits,unit] of [['liveVx',live.latest?.vx,3,'m/s'],['liveVy',live.latest?.vy,3,'m/s'],['liveWz',live.latest?.wz,2,'rad/s'],
@@ -151,8 +161,11 @@
     }
     $('liveSource').textContent=live.source+' · '+live.frame;syncModeShell();
   }
-  async function pollTelemetry(){if(live.polling)return;live.polling=true;
-    try{const res=await fetch('/api/telemetry?after='+live.lastSeq,{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);
+  async function pollTelemetry(){
+    if(window.CarWebMode?.mode==='sim')return;
+    if(live.polling)return;live.polling=true;
+    const endpoint=window.CarWebMode?.telemetryUrl||'/api/telemetry';
+    try{const res=await fetch(endpoint+'?after='+live.lastSeq,{cache:'no-store'});if(!res.ok)throw Error('HTTP '+res.status);
       const packet=await res.json();live.online=!!packet.online;
       for(const s of packet.samples||[]){
         if(!Number.isFinite(s.x)||!Number.isFinite(s.y)||!Number.isFinite(s.yaw))continue;
@@ -771,6 +784,7 @@
   function start(){applyFixtureValues();try{const hash=location.hash.startsWith('#scene=')?location.hash.slice(7):null,saved=localStorage.getItem('competition_simulator_v6');
       if(hash)applyScenario(JSON.parse(decodeURIComponent(escape(atob(hash.replace(/-/g,'+').replace(/_/g,'/'))))));else if(saved)applyScenario(JSON.parse(saved));
     }catch(e){console.warn('Saved scene unavailable',e)}
+    if(window.CarWebMode)state.runSource=window.CarWebMode.runSource;
     syncUI();attach();bindDirectory();recalc();state.turnOrigin=performance.now();requestAnimationFrame(animationLoop);startShared();
     window.setInterval(pollTelemetry,140);window.setInterval(updateLiveReadout,500);pollTelemetry();
     window.setInterval(updateCameraStatus,1100);updateCameraStreamMode();window.addEventListener('sim2real:cameratoggle',updateCameraStreamMode);

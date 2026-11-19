@@ -32,9 +32,17 @@ def post(server, route, payload, timeout=.7):
             raise OSError('HTTP '+str(response.status))
 
 
+def web_route(channel, leaf):
+    if channel not in ('test', 'real'):
+        return '/api/' + leaf
+    return '/api/' + channel + '/' + leaf
+
+
 def main():
     parser=argparse.ArgumentParser(description='ROS2 LaserScan, OccupancyGrid, Nav2 paths/costmaps, TF -> car website')
     parser.add_argument('--server',default='http://127.0.0.1:8080')
+    parser.add_argument('--web-channel', choices=('legacy', 'test', 'real'), default='legacy',
+                        help='Isolate outgoing HTTP data by data provenance')
     parser.add_argument('--hz',default=4.0,type=float,help='Dashboard snapshot publishing rate (1..10 Hz)')
     parser.add_argument('--telemetry-hz',default=15.0,type=float,help='Website real pose feedback forwarding rate (1..30 Hz)')
     parser.add_argument('--no-telemetry',action='store_true',help='Disable /odom forwarding if an old odom bridge is already running')
@@ -136,6 +144,16 @@ def main():
             self.scan=m
 
         def on_odom(self,m):
+            if args.web_channel == 'real':
+                nodes = self.get_node_names_and_namespaces()
+                if any('mock' in name.lower() or 'synthetic' in name.lower()
+                       for name, _ in nodes):
+                    return  # Reject ROS domains containing mock publishers.
+                publishers = self.get_publishers_info_by_topic(args.odom)
+                if not any(p.node_name in ('car_serial_bridge', 'car_ulog43_bridge')
+                           for p in publishers):
+                    return  # Unknown odom publisher is not confirmed STM32 telemetry.
+
             self.odom=m
             if args.no_telemetry:return
             now=time.monotonic()
@@ -145,7 +163,7 @@ def main():
             telemetry={'x':float(p.x),'y':float(p.y),'yaw':yaw_quat(m.pose.pose.orientation),
                        'vx':float(v.linear.x),'vy':float(v.linear.y),'wz':float(v.angular.z),
                        'frame':m.header.frame_id or 'odom','source':'ros2_odom'}
-            try:post(args.server,'/api/telemetry',telemetry,timeout=.35)
+            try:post(args.server,web_route(args.web_channel,'telemetry'),telemetry,timeout=.35)
             except (URLError,OSError,ValueError) as e:
                 if now-self.last_warn>6:
                     self.last_warn=now
@@ -264,7 +282,7 @@ def main():
                     'nodes':self.graph_nodes,'nav':self.nav,'diagnostics':self.diagnostics,
                     'bridge':{'name':'ros2_visualization_bridge','graph_topics':self.graph_topics}}
             try:
-                post(args.server,'/api/ros/state',packet)
+                post(args.server,web_route(args.web_channel,'ros/state'),packet)
                 self.published+=1
                 if self.published%100==0:self.get_logger().info(f'Published {self.published} ROS visualization snapshots')
             except (URLError,OSError,ValueError) as e:
@@ -278,7 +296,7 @@ def main():
                 min_delay=0 if layer=='map' else (1.5 if layer=='local_costmap' else 2.0)
                 if now-self.last_grid_sent.get(layer,0)<min_delay:continue
                 try:
-                    post(args.server,'/api/ros/grid',obj, timeout=1.5)
+                    post(args.server,web_route(args.web_channel,'ros/grid'),obj, timeout=1.5)
                     self.last_grid_sent[layer]=now
                     if self.pending_grids.get(layer) is obj:
                         self.pending_grids.pop(layer,None)

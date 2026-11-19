@@ -1,0 +1,8 @@
+Traceback (most recent call last):
+  File "/home/tao/Desktop/car/sim2real/ros2_visualization_bridge.py", line 315, in <module>
+    if __name__=='__main__':main()
+  File "/home/tao/Desktop/car/sim2real/ros2_visualization_bridge.py", line 308, in main
+    node=Viewer()
+  File "/home/tao/Desktop/car/sim2real/ros2_visualization_bridge.py", line 128, in __init__
+    self.subscriptions=[self.create_subscription(msgtype,name,lambda m,f=cb,role=role:(self.touch(role),f(m)),qos)
+AttributeError: can't set attribute 'subscriptions'
