@@ -91,10 +91,16 @@ class PtyMissionSession:
             chunk = _read_one(self.master)
             if chunk:
                 reply += self.peer.on_bytes(chunk, self.engine.expected_qr)
-                break
+                if reply:
+                    break
         if reply:
             _write_all(self.master, reply)
-        received = self._drain(self.slave, self.host_parser) if reply else []
+        received = []
+        if reply:
+            for _ in range(8):
+                received.extend(self._drain(self.slave, self.host_parser))
+                if any(f.msg_type in (COMPLETED, FAILED, REJECTED) for f in received):
+                    break
         names = {ACK: 'ACK', REJECTED: 'REJECTED', STARTED: 'STARTED',
                  PROGRESS: 'PROGRESS', COMPLETED: 'COMPLETED', FAILED: 'FAILED'}
         this_events = []
