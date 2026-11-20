@@ -52,10 +52,10 @@ def main():
     class Feedback(Node):
         def __init__(self):
             super().__init__("car_keyboard_ros2_web_feedback")
-            self.subscriptions = []
+            self._keyboard_subscriptions = []
             self.last_notice = 0.0
             for key, topic in TOPICS.items():
-                self.subscriptions.append(self.create_subscription(
+                self._keyboard_subscriptions.append(self.create_subscription(
                     TwistStamped, topic,
                     lambda msg, source=key: self.forward(source, msg), 10))
             self.get_logger().info(
