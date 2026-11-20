@@ -188,6 +188,12 @@ class KeyboardMapping:
                   "twist": {k: round(float(payload[k]), 5)
                             for k in ("vx", "vy", "wz")}}
         with self.lock:
+            command = self.effective()
+            record["desired_at_receive"] = {k: command[k] for k in ("vx", "vy", "wz")}
+            record["delta"] = {k: round(command[k] - record["twist"][k], 5)
+                               for k in ("vx", "vy", "wz")}
+            record["delta"]["linear_norm_mps"] = round(math.hypot(
+                record["delta"]["vx"], record["delta"]["vy"]), 5)
             self.ros_receipts[source] = record
             self.ros_history.append(record)
         return {"accepted": True, "source": source,
