@@ -57,7 +57,7 @@ class KeyboardMapping:
         self.ros_receipts = {}
         self.ros_history = deque(maxlen=600)
         self.diag_packets = deque(maxlen=700)
-        self.digital_twin = KeyboardChassisTwin()
+        self.digital_twin = KeyboardChassisTwin(mode="direct")
         self.last_mock_reset_seq = -1
         self.command = {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         self.keys = []
@@ -144,7 +144,7 @@ class KeyboardMapping:
                 self.latest_error = None
                 self.last_odom_seq = 0
                 self.digital_twin.reset(
-                    self.digital_twin.zone, self.digital_twin.blocked_cells)
+                    self.digital_twin.zone, [])
             new_keys = sorted(keys)
             new_twist = mapped_twist(new_keys, speed, turn)
             changed = (new_keys != self.keys or deadman != self.deadman or
@@ -322,11 +322,15 @@ class KeyboardMapping:
                     raise ValueError("Unknown mock start zone")
                 if seq is not None:
                     self.last_mock_reset_seq = seq
-                return self.digital_twin.reset(zone, cells)
+                # In the /keyboard local mode the scene is a visual
+                # background only. Obstacle cells never constrain or reset
+                # the direct ROS2-driven preview.
+                return self.digital_twin.reset(
+                    zone, [] if self.route_mode == "local_ros2" else cells)
             if action == "fault":
-                if set(payload) != {"action", "fault_mode"}:
-                    raise ValueError("Invalid mock fault payload")
-                return self.digital_twin.set_fault(payload["fault_mode"])
+                # Keep fault models in the independent offline fault suite,
+                # NEVER in the PC-only keyboard mapping view.
+                raise ValueError("Keyboard mapping is direct ROS2 preview; no fault FSM")
             raise ValueError("Only mock reset/fault actions are available")
 
     def link_health(self):
@@ -343,11 +347,11 @@ class KeyboardMapping:
                 reason, hint = ("PI_ROUTE_SELECTED",
                                 "请选择本机 ROS2 回环；当前没有树莓派")
             elif not command["active"]:
-                reason, hint = ("DEADMAN_NOT_ACTIVE",
-                                "勾选键盘使能并持续按住 Shift+W；也可按住本机测试按钮")
+                reason, hint = ("NO_KEYS_OR_TIMEOUT",
+                                "本机直控：直接按住 W/A/S/D/Q/E；松开即停止。无 Shift 使能要求")
             elif not any(abs(command[k]) > 0.00001 for k in ("vx", "vy", "wz")):
                 reason, hint = ("NO_MOVEMENT_KEYS",
-                                "Shift 已使能，但没有按住 W/A/S/D/Q/E")
+                                "没有非零键盘运动指令，W/S 或 A/D 反向组合会互相抵消")
             elif feedback.get("online") is not True:
                 reason, hint = ("ROS2_ECHO_OFFLINE",
                                 "期望速度已产生；检查电脑 ROS2 双节点和 /car/teleop/local_test_twist 回传")
@@ -355,15 +359,9 @@ class KeyboardMapping:
                          for k in ("vx", "vy", "wz")):
                 reason, hint = ("ROS2_ECHO_ZERO",
                                 "ROS2 话题已接收，但速度仍为零；检查按键发送、时间戳与刷新")
-            elif model["state"] == "OBSTACLE_STOP":
-                reason, hint = ("MOCK_OBSTACLE_STOP",
-                                "模拟底盘撞到禁行格/固定区；请复位模拟底盘并检查红色障碍")
-            elif model["fault_mode"] != "none":
-                reason, hint = ("MOCK_FAULT_SELECTED",
-                                "当前启用了模拟故障：" + model["fault_mode"])
             elif model["state"] == "RUNNING":
                 reason, hint = ("MOCK_MOVING",
-                                "ROS2 已接收，模拟车已经计算位移；若图上没动请检查紫色 MOCK 图层")
+                                "ROS2 已接收，虚拟车正在按订阅到的速度直接运动；与场地障碍无关")
             else:
                 reason, hint = ("WAIT_MOCK_POLL",
                                 "ROS2 已收到非零速度；检查 /api/keyboard/dryrun 定时刷新")
