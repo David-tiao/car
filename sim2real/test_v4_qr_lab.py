@@ -16,6 +16,7 @@ SCENARIOS = {
     "bad_xor": "二维码帧 XOR 损坏",
     "stale_session": "旧扫码会话号",
     "duplicate_seq": "相同帧序号重复发送",
+    "qr_ack_lost": "二维码 ACK 丢失后重发",
     "invalid_task": "任务码不合法",
     "missing_job_ack": "启动 ACK 丢失",
     "missing_qr": "二维码一直未到达",
@@ -146,6 +147,15 @@ class QrExperiment:
         if self.state == "QR_ACCEPTED" and parsed_body.startswith("QR,"):
             self.log("OpenMV → STM32", body, wire.strip(), False, "QR_ALREADY_ACCEPTED")
             return False
+        if self.state == "WAIT_DONE" and parsed_body.startswith("QR,"):
+            parts = parsed_body.split(",")
+            same = (len(parts) == 3 and parts[2].isdigit()
+                    and int(parts[2]) == self.session and parts[1] == self.task_code)
+            self.log("OpenMV → STM32", body, wire.strip(), same,
+                     "QR_RETRY_ACK_ONLY" if same else "QR_RETRY_CONFLICT")
+            if same:
+                self.tx("ACK,QR,{}".format(self.session))
+            return same
         if self.state == "WAIT_DONE" and parsed_body == "DONE,QR":
             self.log("OpenMV → STM32", body, wire.strip())
             self.state = "WAIT_IDLE"
@@ -204,6 +214,11 @@ def run_case(scenario):
             if scenario == "duplicate_seq":
                 assert not s.receive(qr_body, seq=accepted_seq)
             assert s.ack_qr()
+            if scenario == "qr_ack_lost":
+                # First ACK was lost on the wire; OpenMV retries with a
+                # fresh frame sequence, and STM32 only re-ACKs same code.
+                assert s.receive(qr_body)
+                assert s.accepted_qr == 1
             assert s.receive("DONE,QR")
             assert s.receive("IDLE")
     return {"schema": "car_v4_qr_lab_v1",
@@ -215,7 +230,7 @@ def run_case(scenario):
             "state": s.state, "accepted_qr": s.accepted_qr,
             "events": s.events,
             "passed": ((s.state == "DONE" and s.accepted_qr == 1)
-                       if scenario in ("success", "duplicate_seq") else
+                       if scenario in ("success", "duplicate_seq", "qr_ack_lost") else
                        (s.state == ("CANCELLED" if scenario == "cancel" else "FAULT")
                         and s.accepted_qr == 0))}
 
