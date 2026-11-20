@@ -302,6 +302,13 @@ def status():
             "model_kind": ("PYTHON_SIMEXECUTOR_NOT_COMPILED_STM32"
                            if engine != "code_fsm" else
                            "COMPILED_STM32_RACEFSM_QR_AND_TASK_GATE_HOST_ONLY"),
+            "motion_provenance": ("PYTHON_CARLINK_MOCK_ROUTE"
+                                  if engine != "code_fsm" else
+                                  "PYTHON_DIJKSTRA_VISUAL_PREVIEW_NOT_NATIVE_C_MOTION"),
+            "native_c_motion_obstacle_aware": False,
+            "native_c_motion_control": ("NOT_EXECUTED"
+                                        if engine != "code_fsm" else
+                                        "DIRECT_POSITION_GOALS_NO_BLOCKED_ROAD_INPUT"),
             "endpoint_scope": "TEST_ONLY",
             "generation": GENERATION,
             "case": dict(CASE) if CASE is not None else None,
