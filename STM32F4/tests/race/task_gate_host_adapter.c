@@ -86,6 +86,7 @@ int HostQr_Error(void) { return (int)qr.error; }
 int HostQr_Completed(void) { return (int)qr.action_index; }
 int HostQr_Session(void) { return (int)qr.scan_session; }
 int HostQr_Valid(void) { return qr.qr_valid && qr.state == RACE_DONE; }
+int HostQr_QrAccepted(void) { return qr.qr_valid; }
 
 int HostTask_InitScanned(void)
 {
