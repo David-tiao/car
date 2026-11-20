@@ -213,7 +213,7 @@
       return out;
     }
     function currentMap(){
-      const field=window.CarField?.getTestFieldSnapshot?.();
+      const field=window.Sim2RealCore?.getTestFieldSnapshot?.();
       return {
         action:'reset',
         start_zone:['upper_right','lower_right'].includes(field?.start_zone)?
