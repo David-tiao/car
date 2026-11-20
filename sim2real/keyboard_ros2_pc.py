@@ -61,6 +61,7 @@ def main():
     try:
         import rclpy
         from rclpy.node import Node
+        from rclpy.executors import ExternalShutdownException
         from geometry_msgs.msg import TwistStamped
         from std_msgs.msg import String
     except ImportError as exc:
@@ -142,11 +143,14 @@ def main():
     node = KeyboardPc()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # Humble can signal Ctrl+C by already shutting down the ROS context.
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # Never call shutdown() twice: SIGINT may have shut the context down.
+        if rclpy.ok():
+            rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
