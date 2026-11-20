@@ -56,8 +56,10 @@
       const visible = report.events.slice(0, index);
       badge.textContent = '场景：'+report.label+' · '+(report.passed?'预期 PASS':'异常')+
                           ' · 当前帧 '+index+'/'+total;
-      detail.textContent = '最终状态 '+report.state+' · session '+report.session+
-          ' · 接受 QR 数 '+report.accepted_qr+' · 源 CONTRACT_MODEL / MOCK（无实体硬件）';
+      const current = visible.length ? visible[visible.length - 1].state : 'IDLE';
+      detail.textContent = '当前状态 '+current+' · 最终状态 '+report.state+
+          ' · session '+report.session+' · 接受 QR 数 '+report.accepted_qr+
+          ' · 源 CONTRACT_MODEL / MOCK（无实体硬件）';
       log.textContent = visible.map((e, n) =>
         String(n+1).padStart(2,'0')+' '+e.direction+' '+e.body+
         '\n    '+(e.wire||'(状态变化)')+
