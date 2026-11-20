@@ -134,10 +134,11 @@
       if(!t)return false;
       if(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='SELECT')
         return true;
-      // The "enable keyboard" checkbox remains focused after click; it is
-      // not a text editor and must not swallow Shift+W/A/S/D/Q/E.
+      // Non-text input controls (checkboxes, speed sliders, buttons) must
+      // not swallow WASDQE just because they retain keyboard focus.
       return t.tagName==='INPUT' &&
-        !['checkbox','radio','button'].includes(String(t.type).toLowerCase());
+        !['checkbox','radio','button','range','color'].includes(
+          String(t.type).toLowerCase());
     };
     const localOnly=()=>
       ['127.0.0.1','localhost','::1'].includes(window.location.hostname);
