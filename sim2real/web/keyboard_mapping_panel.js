@@ -294,6 +294,7 @@
       twinPanel.hidden=routeMode!=='local_ros2';
       holdTestButton.disabled=routeMode!=='local_ros2';
       enabledLabel.hidden=routeMode==='local_ros2';
+      noMechanisms.hidden=routeMode==='local_ros2';
       enabled.checked=routeMode==='local_ros2';
       help.textContent=routeMode==='local_ros2'?
         'W/S 前进后退 · A/D 左右横移 · Q/E 左右转向。直接按，不用 Shift；松开就停。方向基于车体 base_link，不考虑场地障碍。':
