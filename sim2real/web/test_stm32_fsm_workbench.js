@@ -225,6 +225,7 @@
       segments=[];
       try{
         const data=await request({action:'reset'});
+        latestGeneration=data.generation;
         render(data);
         state.textContent='模拟 STM32 已停止并重置 · 可直接重新初始化任务';
         log.textContent='当前模拟已清空，下一次初始化会从头开始';
@@ -251,11 +252,13 @@
       reset.disabled=false;
       try{
         if(action==='start'){
-          const data=await request({action:'start',engine:selected,
+          const payload={action:'start',engine:selected,
              start_zone:zone.value,task_code:qr.value.trim(),
              blocked_roads:roads.value.split(',').map(x=>x.trim()).filter(Boolean),
              blocked_cells:fieldSnapshot?.blocked_cells||[],
-             fault:fault.value});
+             fault:fault.value};
+          if(Number.isInteger(latestGeneration))payload.expected_generation=latestGeneration;
+          const data=await request(payload);
           if(seq!==epoch)return;
           latestGeneration=data.generation;
           render(data);
@@ -332,6 +335,8 @@
           blocked_roads:roads.value.split(',').map(x=>x.trim()).filter(Boolean)
         });
         if(id!==previewSerial)return;
+        if(!busy&&!resetting&&Number.isInteger(data.generation))
+          latestGeneration=data.generation;
         const preview=data.preview;
         if(!preview||preview.source_type!=='MAP_EDITOR_TEST_ONLY')throw Error('地图封路预览来源错误');
         const summary=preview.cell_mapping.map(m=>
@@ -352,13 +357,9 @@
       if(old && (old.blocked_cells.slice().sort((a,b)=>a-b).join(',')!==
                   next.blocked_cells.slice().sort((a,b)=>a-b).join(',') ||
                  old.start_zone!==next.start_zone) && !needsInit){
-        epoch++;
-        needsInit=true;step.disabled=true;run.disabled=true;
-        state.textContent='地图障碍格或启停区已改变：旧模拟路线失效，请重新初始化任务';
-        state.dataset.state='FAULT';
-        try{await request({action:'reset'});}
-        catch(err){mapInfo.textContent='清理旧模拟会话失败：'+String(err);}
-        if(group){group.remove();group=null;vehicle=null;trail=null;}
+        await resetImmediately();
+        state.textContent='地图障碍格或启停区已改变：旧模拟已停止，请重新初始化任务';
+        state.dataset.state='READY';
       }
       refreshFieldPreview();
     }
@@ -373,10 +374,17 @@
     });
     refreshFieldPreview();
     for(const b of buttons)b.addEventListener('click',()=>send(b.dataset.action));
+    const bootstrapEpoch=epoch;
     fetch(API,{cache:'no-store'}).then(r=>r.json()).then(data=>{
-      validate(data);render(data);
+      if(bootstrapEpoch!==epoch||resetting)return;
+      validate(data);
+      latestGeneration=data.generation;
+      render(data);
       if(data.snapshot)resetMap([data.snapshot.x_m,data.snapshot.y_m]);
-    }).catch(e=>{state.textContent='模拟接口不可用：'+String(e);});
+    }).catch(e=>{
+      if(bootstrapEpoch===epoch)
+        state.textContent='模拟接口不可用：'+String(e);
+    });
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);
   else mount();
