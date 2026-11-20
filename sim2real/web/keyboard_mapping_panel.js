@@ -195,7 +195,7 @@
       post(packet).then(()=>{
         if(!pendingStop && packet.client_seq===sequence && enabled.checked)
           status.textContent=shift?
-            '已发送 ROS2 候选速度（非实体电机）':
+            '按键意图已交给本机服务器 · 等待 ROS2 回环确认':
             '映射准备就绪 · 按住 Shift 使能';
       }).catch(e=>{
         // A superseded keydown must not overwrite the STOP indicator.
