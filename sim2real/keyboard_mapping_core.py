@@ -215,7 +215,13 @@ class KeyboardMapping:
                 self.history.append({
                     "time_s": round(stamp, 3), "odom_seq": seq,
                     "command": {k: command[k] for k in ("vx", "vy", "wz")},
-                    "actual": measured, "error": dict(self.latest_error),
+                    "actual": measured, "actual_pose": pose,
+                    "integrated_target_pose": {
+                        "x": round(self.reference_pose[0], 5),
+                        "y": round(self.reference_pose[1], 5),
+                        "yaw": round(self.reference_pose[2], 5)
+                    } if self.reference_pose is not None else None,
+                    "error": dict(self.latest_error),
                     "sample_source": sample["source"], "frame": sample["frame"]})
             errors = [e["error"]["linear_norm_mps"] for e in self.history]
             rms = math.sqrt(sum(v*v for v in errors)/len(errors)) if errors else None
