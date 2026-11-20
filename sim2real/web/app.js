@@ -484,6 +484,15 @@
     syncRunUI();
     if(wasRunning)tell('地图设置已更新，仿真已重置并重新规划。');
     persist();if(shared.ready&&!shared.inbound)markDirty();
+    // TEST FSM follows the same visible red 480mm cells as the map. A
+    // scenario edit invalidates any old route; never quietly reuse it.
+    if(window.CarWebMode?.mode==='test'){
+      window.dispatchEvent(new CustomEvent('sim2real:field-changed',{
+        detail:{blocked_cells:state.obstacles.map(o=>{
+          const g=guideId(o);return numberedCell(g.c,g.r);
+        }),start_zone:state.startZone===2?'lower_right':'upper_right'}
+      }));
+    }
   }
   function taskActions(i){const p=parseTask(state.task);if(!p.valid)return [];
     const batch=i<4?p.batch1:p.batch2;
@@ -808,6 +817,14 @@
       state.sim.armExtension=Math.max(0,Math.min(.15,extension));paintRobot();return true;},
     cancelMission:()=>{if(state.sim){state.sim.running=false;state.sim.phase='idle';state.sim.poseOverride=null;}},
     mapCoordinate:evt=>posAt(evt),
+    getTestFieldSnapshot:()=>({
+      source_type:'MAP_EDITOR_TEST_ONLY',
+      cell_size_m:state.gridStep,
+      blocked_cells:state.obstacles.map(o=>{
+        const g=guideId(o);return numberedCell(g.c,g.r);
+      }),
+      start_zone:state.startZone===2?'lower_right':'upper_right'
+    }),
   };
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
