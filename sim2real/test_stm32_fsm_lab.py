@@ -26,7 +26,7 @@ if str(SIM_CODE) not in sys.path:
 from mission_execution import MissionError, parse_task_code
 from mission_test_session import PtyMissionSession
 from rule_mission_core import PlanError, build_mission
-from road_topology import NODES, shortest
+from road_topology import NODES, EDGES, canonical, shortest
 
 LOCK = threading.RLock()
 SESSION = None
@@ -40,12 +40,48 @@ FAULTS = {"none": (None, None),
 ZONES = {"upper_right", "lower_right"}
 ENGINES = {"pty", "code_fsm"}
 MAX_RUN_STEPS = 80
+CELL_WIDTH_M = 0.48
+CELL_MARGIN_M = 0.000001
 TASK_KINDS = ("PICK", "GO_ROUGH", "PLACE_ROUGH", "RETRIEVE_ROUGH",
               "GO_STORAGE", "PLACE_STORAGE", "GO_MATERIAL",
               "STACK_STORAGE", "RETURN_START")
 TASK_GATE_STATES = ("READY", "WAIT_ACK", "WAIT_RESULT", "DONE", "FAULT")
 TASK_GATE_ERRORS = ("NONE", "REJECTED", "FAILED", "ACK_TIMEOUT",
                     "RESULT_TIMEOUT", "CANCELLED", "PLAN")
+
+
+def roads_from_cells(cells):
+    """Conservative projection: 5x5 occupied red cells -> 3x3 road edges.
+
+    A blocked cell closes every straight topology segment intersecting its
+    full 480mm footprint. No invented geometry, no automatic detour through a
+    red cell. Cell 17 intersects B2-B3, not the two unrelated horizontal edges.
+    """
+    if not isinstance(cells, list) or len(cells) > 2 or any(
+            type(n) is not int or not 0 <= n < 25 for n in cells):
+        raise ValueError("Map blocked_cells must contain 0-2 cell IDs (0..24)")
+    if len(set(cells)) != len(cells):
+        raise ValueError("Duplicate blocked cells")
+    roads = set()
+    for index in cells:
+        row = index // 5
+        k = index % 5
+        col = k if row % 2 == 0 else 4-k
+        x0, x1 = col * CELL_WIDTH_M, (col+1) * CELL_WIDTH_M
+        y0, y1 = row * CELL_WIDTH_M, (row+1) * CELL_WIDTH_M
+        for road, (a, b) in EDGES.items():
+            ax, ay = NODES[a]
+            bx, by = NODES[b]
+            # All current topology edges are axis-aligned.
+            if abs(ax-bx) < CELL_MARGIN_M:
+                intersects = (x0-CELL_MARGIN_M <= ax <= x1+CELL_MARGIN_M and
+                              max(min(ay, by), y0) <= min(max(ay, by), y1))
+            else:
+                intersects = (y0-CELL_MARGIN_M <= ay <= y1+CELL_MARGIN_M and
+                              max(min(ax, bx), x0) <= min(max(ax, bx), x1))
+            if intersects:
+                roads.add(road)
+    return sorted(roads)
 
 
 def node_position(name):
@@ -229,8 +265,10 @@ def _exact_keys(payload, keys):
 def _start(payload):
     global SESSION, CASE, GENERATION, UPDATED_AT, LAST_TRANSITION
     allowed = {"action", "start_zone", "task_code", "blocked_roads", "fault"}
+    extended = allowed | {"blocked_cells"}
     keys = set(payload) if isinstance(payload, dict) else set()
-    if keys not in (allowed, allowed | {"engine"}):
+    if keys not in (allowed, allowed | {"engine"}, extended,
+                    extended | {"engine"}):
         raise ValueError("Unexpected fields in mock start")
     engine = payload.get("engine", "pty")
     zone, task, roads, fault = (payload["start_zone"], payload["task_code"],
@@ -244,7 +282,14 @@ def _start(payload):
         raise ValueError("Blocked roads must be an array of at most 8")
     if not all(isinstance(x, str) and len(x) <= 8 for x in roads):
         raise ValueError("Invalid blocked road")
-    plan = build_mission(zone, roads, provenance="DEMO_ONLY")
+    cells = payload.get("blocked_cells", [])
+    mapped_roads = roads_from_cells(cells)
+    try:
+        declared_roads = [canonical(x) for x in roads]
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise ValueError("Unknown blocked road ID") from exc
+    blocked_roads = sorted(set(declared_roads) | set(mapped_roads))
+    plan = build_mission(zone, blocked_roads, provenance="DEMO_ONLY")
     if plan["status"] != "DEMO_ROUTE_ONLY":
         raise ValueError("NO_ROUTE; simulated STM32 will not depart")
     if engine == "pty":
@@ -256,7 +301,9 @@ def _start(payload):
     old = SESSION
     SESSION = new_session
     CASE = {"start_zone": zone, "task_code": task,
-            "blocked_roads": sorted(roads), "fault": fault, "engine": engine}
+            "blocked_roads": blocked_roads,
+            "blocked_cells": list(cells), "mapped_roads": mapped_roads,
+            "fault": fault, "engine": engine}
     GENERATION += 1
     UPDATED_AT = time.monotonic()
     LAST_TRANSITION = {
