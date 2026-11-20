@@ -12,8 +12,7 @@
   }
   function mount() {
     const shell = el('section', document.body);
-    const live = document.getElementById('livePanel') ||
-                 document.getElementById('carModeSwitch');
+    const live = document.getElementById('carModeSwitch');
     if (live) live.after(shell);
     shell.id = 'realMockStm32Workbench';
     shell.style.cssText = 'max-width:1500px;margin:12px auto;padding:18px;border:2px dashed #beae70;border-radius:12px;background:#162636;color:#e6eff4;font:14px/1.6 system-ui,sans-serif';
