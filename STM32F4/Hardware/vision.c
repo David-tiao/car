@@ -355,8 +355,7 @@ static void process_legacy_line(VisionContext *vision, uint32_t now_ms)
     (void)now_ms;
     /* Legacy #SEQ is allowed only when a zero-session QR job explicitly runs.
      * Otherwise a late unframed QR line could bypass the V4 session gate. */
-    if (vision->phase == VISION_RUNNING && vision->job_code == 1U &&
-        vision->qr_session == 0U &&
+    if (vision->qr_session == 0U &&
         parse_legacy_qr(vision->legacy_line, vision->qr_code))
         vision->qr_ready = 1U;
 }
@@ -589,6 +588,7 @@ int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms)
     if (written <= 0 || written >= (int)sizeof(body)) return 0;
     vision->phase = VISION_WAIT_ACK;
     vision->job_code = (uint8_t)code;
+    vision->qr_session = 0U;
     vision->last_request_ms = now_ms;
     vision->result = VISION_RESULT_NONE;
     vision->pos.valid = 0U;
