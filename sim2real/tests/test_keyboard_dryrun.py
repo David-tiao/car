@@ -172,7 +172,7 @@ class DigitalTwinTests(unittest.TestCase):
             h = StubRequest("/api/keyboard/dryrun", reset)
             self.assertTrue(mapping.handle_post(h))
             self.assertEqual(h.code, 200)
-            self.assertEqual(h.data["blocked_cells"], [17])
+            self.assertEqual(h.data["blocked_cells"], [])
             h = StubRequest("/api/keyboard/dryrun")
             self.assertTrue(mapping.handle_get(h, lambda: None))
             self.assertEqual(h.data["source_type"], "MOCK_KINEMATIC_ONLY")
@@ -189,9 +189,10 @@ class DigitalTwinTests(unittest.TestCase):
         ui = (ROOT / "web/keyboard_mapping_panel.js").read_text(encoding="utf-8")
         self.assertIn("MOCK_KINEMATIC_ONLY", ui)
         self.assertIn("field_preview_m_not_odom", ui)
-        self.assertIn("Sim2RealCore?.getTestFieldSnapshot", ui)
-        self.assertIn("motor_stall", ui)
-        self.assertIn("link_loss", ui)
+        self.assertIn("preview_mode!=='direct'", ui)
+        self.assertNotIn("sim2real:field-changed", ui)
+        self.assertNotIn("motor_stall", ui)
+        self.assertNotIn("link_loss", ui)
         self.assertIn("keyboardMockChassisLayer", ui)
 
 
