@@ -119,8 +119,7 @@
     twinStatus.className='keyboard-twin-status';
     const twinStats=$('div',twinPanel,'直通位姿：— · 实际订阅速度：—');
     twinStats.className='keyboard-twin-stats';
-    // Keep the simulation controls above long REAL-error graphs so the
-    // field and movement/FAULT buttons can be viewed together.
+    // Keep the direct preview beside the map and input buttons.
     controls.after(twinPanel);
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
     pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
@@ -143,8 +142,8 @@
     const localOnly=()=>
       ['127.0.0.1','localhost','::1'].includes(window.location.hostname);
 
-    let mockLayer=null, lastMapSignature=null, mockResetInProgress=false;
-    let mockResetVersion=0, lastResetReason='', needsRearmAfterReset=false;
+    let mockLayer=null, mockResetInProgress=false;
+    let mockResetVersion=0;
     let refreshRequestSeq=0, refreshAppliedSeq=0;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
@@ -221,27 +220,17 @@
       return out;
     }
     function currentMap(){
-      const field=window.Sim2RealCore?.getTestFieldSnapshot?.();
-      return {
-        action:'reset',
-        start_zone:['upper_right','lower_right'].includes(field?.start_zone)?
-          field.start_zone:'upper_right',
-        blocked_cells:Array.isArray(field?.blocked_cells)?
-          field.blocked_cells:[]
-      };
+      // In keyboard mode the field drawing is visual context ONLY.
+      // No red obstacles, mission destination or map-change event affects
+      // direct WASDQE movement or position.
+      return {action:'reset',start_zone:'upper_right',blocked_cells:[]};
     }
     async function resetMock(stopKeys=true, reason='手动复位'){
       if(!localOnly())return;
       // Invalidate any in-flight GET /dryrun response: the previous state
       // must never redraw an old vehicle position after a scene reset.
       refreshAppliedSeq=++refreshRequestSeq;
-      // A scene-sync/map update may finish while a previous reset is still
-      // awaiting HTTP. The latest scene wins; prevent old async responses
-      // from repainting the new car at an obsolete start pose.
       const payload=currentMap();
-      const signature=JSON.stringify(payload);
-      if(stopKeys && signature===lastMapSignature && reason==='地图变化')
-        return;
       payload.reset_seq=nextSeq();
       const version=++mockResetVersion;
       mockResetInProgress=true;
@@ -252,13 +241,9 @@
         }
         const twin=await mockPost(payload);
         if(version!==mockResetVersion)return;
-        lastMapSignature=signature;
-        lastResetReason=reason;
-        needsRearmAfterReset=stopKeys;
-        twinFault.value='none';
         paintMock(twin);
         if(stopKeys){
-          const note='MOCK 已复位（'+reason+'）；原按键已清零，请松开再重新按住 Shift+W，或重新按住本机前进按钮。';
+          const note='网页位置已手动归零；直接按住 W/A/S/D/Q/E 继续。';
           twinStatus.textContent=note;
           healthStatus.textContent=note;
           healthStatus.dataset.reason='SCENE_REARM_REQUIRED';
@@ -272,37 +257,10 @@
       }
     }
     twinReset.addEventListener('click',()=>resetMock(true,'手动复位'));
-    twinQa.addEventListener('click',async()=>{
-      twinQa.disabled=true;
-      twinQaResults.textContent='运行软件模型故障矩阵…';
-      try{
-        const res=await fetch(ENDPOINT+'/mock_acceptance',{cache:'no-store'});
-        const result=await res.json();
-        if(!res.ok||result.source_type!=='MOCK_KINEMATIC_ONLY'||
-           result.hardware_authorized!==false)
-          throw Error('离线验收返回非法结果');
-        twinQaResults.textContent=
-          (result.passed?'离线模型：PASS':'离线模型：FAIL')+
-          ' · '+result.summary.PASS+'/'+result.cases.length+' 项\n'+
-          result.cases.map(c=>(c.passed?'✓ ':'✗ ')+c.case+
-            ' — '+c.description).join('\n');
-      }catch(err){
-        twinQaResults.textContent='测试执行失败：'+err;
-      }finally{twinQa.disabled=false;}
-    });
-    twinFault.addEventListener('change',async()=>{
-      try{
-        const data=await mockPost({action:'fault',
-          fault_mode:twinFault.value});
-        paintMock(data);
-      }catch(err){twinStatus.textContent='故障注入失败：'+err;}
-    });
-    window.addEventListener('sim2real:field-changed',()=>{
-      const signature=JSON.stringify(currentMap());
-      if(signature!==lastMapSignature)
-        resetMock(true,'地图变化');
-    });
-    const deadmanHeld=()=>enabled.checked&&(shift||holdTest);
+    // In PC-only direct mode there is no Shift, enable checkbox or FSM.
+    // In the FUTURE Pi/STM32 route the strict Shift deadman stays enabled.
+    const deadmanHeld=()=>routeMode==='local_ros2'?
+      active.size>0:enabled.checked&&(shift||holdTest);
     const wantKeys=()=>deadmanHeld()?[...active]:[];
     const desiredBody=()=>({
       action:'keys',client_seq:nextSeq(),keys:wantKeys().sort(),
@@ -324,7 +282,7 @@
         button.setAttribute('aria-pressed',String(selected));
       }
       routeNotice.textContent=routeMode==='local_ros2' ?
-        '本机备用链路：键盘 → 电脑 ROS2 /car/teleop/local_test_twist → 独立 ROS2 订阅节点 → 网页。只验证话题传输，不是车辆实际运动。':
+        '本机直通：W/A/S/D/Q/E → ROS2 → 网页积分预览。无 Shift、任务状态机、障碍停车或自动回起点；没有真实电机控制。':
         '完整链路：电脑 ROS2 /car/teleop/desired_twist → 树莓派 ROS2 候选 → STM32（UART 尚未接入）→ REAL /odom 实测回传。未装设备时应显示离线。';
       pipeline.textContent=routeMode==='local_ros2' ?
         '网页键盘 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → 本机 ROS2 订阅 → 网页':
@@ -334,6 +292,13 @@
         'REAL /odom 速度跟踪误差趋势（必须连接实车）';
       twinPanel.hidden=routeMode!=='local_ros2';
       holdTestButton.disabled=routeMode!=='local_ros2';
+      enabledLabel.hidden=routeMode==='local_ros2';
+      enabled.checked=routeMode==='local_ros2';
+      help.textContent=routeMode==='local_ros2'?
+        'W/S 前进后退 · A/D 左右横移 · Q/E 左右转向。直接按，不用 Shift；松开就停。方向基于车体 base_link，不考虑场地障碍。':
+        '完整链路预留：须勾选使能并按住 Shift+W/A/S/D/Q/E；不发送真实电机指令。';
+      for(const key of ['actual','pose','error','rms','position','fresh'])
+        metric[key].parentElement.hidden=routeMode==='local_ros2';
       if(twinPanel.hidden&&mockLayer){mockLayer.remove();mockLayer=null;}
     }
     async function switchRoute(mode){
@@ -385,10 +350,10 @@
       sendBusy=true;
       const packet=desiredBody();
       post(packet).then(()=>{
-        if(!pendingStop && packet.client_seq===sequence && enabled.checked)
-          status.textContent=(shift||holdTest)?
-            '按键意图已交给本机服务器 · 等待 ROS2 回环确认':
-            '映射准备就绪 · 按住 Shift 使能';
+        if(!pendingStop&&packet.client_seq===sequence)
+          status.textContent=deadmanHeld()?
+            '按键已发至本机 HTTP · 等待 ROS2 订阅反馈':
+            '键盘已松开 · ROS2 零速度';
       }).catch(e=>{
         // A superseded keydown must not overwrite the STOP indicator.
         if(!pendingStop && packet.client_seq===sequence)
@@ -427,27 +392,31 @@
       if(editing(ev.target)||ev.ctrlKey||ev.altKey||ev.metaKey)return;
       const key=ev.key.toLowerCase();
       if(key==='shift'){
-        if(!shift){shift=true;sendNow();refreshKeys();}
+        if(routeMode!=='local_ros2'&&!shift){
+          shift=true;sendNow();refreshKeys();
+        }
         return;
       }
       if(ev.code==='Space'||key==='escape'){
         ev.preventDefault();stopNow();return;
       }
-      if(!KEYS.has(key)||!enabled.checked)return;
+      if(!KEYS.has(key)||
+        (routeMode!=='local_ros2'&&!enabled.checked))return;
       ev.preventDefault();
       active.add(key);refreshKeys();sendNow();
     });
     window.addEventListener('keyup',ev=>{
       const key=ev.key.toLowerCase();
       if(key==='shift'){
-        shift=false;stopNow();return;
+        if(routeMode!=='local_ros2'){shift=false;stopNow();}
+        return;
       }
       if(!KEYS.has(key))return;
       active.delete(key);refreshKeys();sendNow();
     });
     for(const [key,b] of keyButtons){
       b.addEventListener('pointerdown',ev=>{
-        if(!enabled.checked)return;
+        if(routeMode!=='local_ros2'&&!enabled.checked)return;
         active.add(key);refreshKeys();sendNow();
         try{b.setPointerCapture(ev.pointerId);}catch(_){}
         ev.preventDefault();
@@ -530,13 +499,8 @@
         if(health.source_type!=='LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY'||
           health.hardware_authorized!==false)
           throw Error('链路诊断数据来源不合法');
-        if(health.desired?.active)needsRearmAfterReset=false;
-        healthStatus.textContent=needsRearmAfterReset?
-          'MAP_RESET_REARM_REQUIRED：场地或模拟底盘已复位（'+lastResetReason+
-          '）。请先松开，再重新按住 Shift+W 或本机前进按钮。':
-          '链路诊断 '+health.reason+'：'+health.hint;
-        healthStatus.dataset.reason=needsRearmAfterReset?
-          'MAP_RESET_REARM_REQUIRED':health.reason;
+        healthStatus.textContent='ROS2 直通诊断 '+health.reason+'：'+health.hint;
+        healthStatus.dataset.reason=health.reason;
         if(routeMode==='local_ros2')paintMock(mock);
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
@@ -629,8 +593,8 @@
     draw([]);
     resetMock(false).then(refresh);
     setInterval(()=>{
-      // Both the physical Shift key and the on-screen pointer-hold button
-      // are deadman sources. Without this, mouse driving stops after 300ms.
+      // This is only a network-loss watchdog heartbeat, NOT a motion FSM:
+      // refresh active direct keys while held; release transmits zero.
       if(deadmanHeld()&&active.size>0&&!document.hidden)sendNow();
     },100);
     setInterval(refresh,250);
