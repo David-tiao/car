@@ -96,6 +96,27 @@
     const graphHeading=$('h3',graph,'本机 ROS2 回环差值趋势（不是实体小车误差）');
     const chart=$('canvas',graph);chart.width=800;chart.height=175;
     chart.setAttribute('aria-label','参考速度与实际速度偏差曲线');
+
+    const twinPanel=$('section',panel);
+    twinPanel.className='keyboard-twin-panel';
+    $('h3',twinPanel,'虚拟麦轮底盘 · 场地运动预览（MOCK）');
+    const twinHint=$('p',twinPanel,
+      '运动输入来自电脑 ROS2 真正订阅到的本机话题；模型包含加速度和场地障碍检查，但没有实际电机、编码器、轮胎滑移或雷达。');
+    twinHint.className='keyboard-note';
+    const twinToolbar=$('div',twinPanel);twinToolbar.className='keyboard-twin-toolbar';
+    const twinReset=$('button',twinToolbar,'复位虚拟底盘');
+    twinReset.type='button';
+    const faultLabel=$('label',twinToolbar,'软件故障注入');
+    const twinFault=$('select',faultLabel);
+    for(const [value,title] of [
+      ['none','无故障'],['motor_stall','模拟电机卡滞'],
+      ['slow_response','模拟加速迟缓'],['link_loss','模拟控制链丢失']]){
+      const op=$('option',twinFault,title);op.value=value;
+    }
+    const twinStatus=$('div',twinPanel,'MOCK 底盘：等待本机 ROS 2 回环');
+    twinStatus.className='keyboard-twin-status';
+    const twinStats=$('div',twinPanel,'运动位置：— · 模拟速度：— · 模型误差：—');
+    twinStats.className='keyboard-twin-stats';
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
     pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
     const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
@@ -115,6 +136,120 @@
     };
     const localOnly=()=>
       ['127.0.0.1','localhost','::1'].includes(window.location.hostname);
+
+    let mockLayer=null, lastMapSignature=null, mockResetInProgress=false;
+    const svgNS='http://www.w3.org/2000/svg';
+    const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
+    function paintMock(data){
+      if(routeMode!=='local_ros2'){
+        if(mockLayer)mockLayer.remove();
+        mockLayer=null;return;
+      }
+      if(data?.source_type!=='MOCK_KINEMATIC_ONLY'||
+         data.hardware_authorized!==false||data.real_odom!==false||
+         data.frame!=='field_preview_m_not_odom'){
+        throw Error('虚拟底盘数据来源不符合 MOCK 隔离要求');
+      }
+      twinStatus.textContent='MOCK · '+data.state+
+        (data.collision_reason?' · 已停止：'+data.collision_reason:'')+
+        ' · '+data.fault_mode;
+      twinStats.textContent=
+        `位置 (${fmt(data.x_m)}, ${fmt(data.y_m)}) m · `+
+        `航向 ${fmt(data.yaw_rad)} rad · `+
+        `速度 ${fmt(data.velocity.vx)}, ${fmt(data.velocity.vy)}, ${fmt(data.velocity.wz)} · `+
+        `模型速度误差 ${fmt(data.model_error.linear_norm_mps)} m/s`;
+      const svg=document.getElementById('fieldSvg');
+      if(!svg)return;
+      if(!mockLayer||!mockLayer.isConnected){
+        mockLayer=document.createElementNS(svgNS,'g');
+        mockLayer.id='keyboardMockChassisLayer';
+        mockLayer.setAttribute('pointer-events','none');
+        svg.append(mockLayer);
+        const trail=document.createElementNS(svgNS,'polyline');
+        trail.id='keyboardMockChassisTrail';
+        trail.setAttribute('stroke','#bd7cfa');
+        trail.setAttribute('stroke-width','4');
+        trail.setAttribute('stroke-dasharray','6 5');
+        trail.setAttribute('fill','none');
+        mockLayer.append(trail);
+        const car=document.createElementNS(svgNS,'g');
+        car.id='keyboardMockChassisBody';
+        mockLayer.append(car);
+        const body=document.createElementNS(svgNS,'rect');
+        for(const [k,v] of Object.entries({x:-11,y:-15,width:22,height:30,rx:5,
+          fill:'#b773e5',stroke:'#fff', 'stroke-width':2})){
+          body.setAttribute(k,String(v));
+        }
+        car.append(body);
+        const forward=document.createElementNS(svgNS,'path');
+        forward.setAttribute('d','M -6,-15 L 0,-22 L 6,-15 Z');
+        forward.setAttribute('fill','#fff');
+        car.append(forward);
+        const text=document.createElementNS(svgNS,'text');
+        text.id='keyboardMockChassisCaption';
+        text.textContent='MOCK';
+        for(const [k,v] of Object.entries({'font-size':15,'font-weight':900,
+          'paint-order':'stroke',stroke:'#fff','stroke-width':3,fill:'#7531a3'})){
+          text.setAttribute(k,String(v));
+        }
+        mockLayer.append(text);
+      }
+      const trail=mockLayer.querySelector('#keyboardMockChassisTrail');
+      trail?.setAttribute('points',(data.trace||[]).map(p=>
+        fx(p[0]).toFixed(1)+','+fy(p[1]).toFixed(1)).join(' '));
+      const angle=90-data.yaw_rad*180/Math.PI;
+      mockLayer.querySelector('#keyboardMockChassisBody')?.setAttribute(
+        'transform',`translate(${fx(data.x_m).toFixed(2)} ${fy(data.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
+      const text=mockLayer.querySelector('#keyboardMockChassisCaption');
+      text?.setAttribute('x',String(fx(data.x_m)+15));
+      text?.setAttribute('y',String(fy(data.y_m)-16));
+    }
+    async function mockPost(payload){
+      const res=await fetch(ENDPOINT+'/dryrun',{method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload),cache:'no-store'});
+      const out=await res.json();
+      if(!res.ok)throw Error(out.error||('HTTP '+res.status));
+      return out;
+    }
+    function currentMap(){
+      const field=window.CarField?.getTestFieldSnapshot?.();
+      return {
+        action:'reset',
+        start_zone:['upper_right','lower_right'].includes(field?.start_zone)?
+          field.start_zone:'upper_right',
+        blocked_cells:Array.isArray(field?.blocked_cells)?
+          field.blocked_cells:[]
+      };
+    }
+    async function resetMock(stopKeys=true){
+      if(mockResetInProgress||!localOnly())return;
+      mockResetInProgress=true;
+      try{
+        if(stopKeys)await stopNow();
+        const payload=currentMap();
+        lastMapSignature=JSON.stringify(payload);
+        const twin=await mockPost(payload);
+        twinFault.value='none';
+        paintMock(twin);
+      }catch(err){
+        twinStatus.textContent='MOCK 复位失败：'+err;
+      }finally{
+        mockResetInProgress=false;
+      }
+    }
+    twinReset.addEventListener('click',()=>resetMock(true));
+    twinFault.addEventListener('change',async()=>{
+      try{
+        const data=await mockPost({action:'fault',
+          fault_mode:twinFault.value});
+        paintMock(data);
+      }catch(err){twinStatus.textContent='故障注入失败：'+err;}
+    });
+    window.addEventListener('sim2real:field-changed',()=>{
+      const signature=JSON.stringify(currentMap());
+      if(signature!==lastMapSignature)resetMock(true);
+    });
     const wantKeys=()=>enabled.checked&&shift?[...active]:[];
     const desiredBody=()=>({
       action:'keys',client_seq:nextSeq(),keys:wantKeys().sort(),
@@ -144,6 +279,8 @@
       graphHeading.textContent=routeMode==='local_ros2'?
         '本机 ROS2 收发差值趋势（非小车运动误差）':
         'REAL /odom 速度跟踪误差趋势（必须连接实车）';
+      twinPanel.hidden=routeMode!=='local_ros2';
+      if(twinPanel.hidden&&mockLayer){mockLayer.remove();mockLayer=null;}
     }
     async function switchRoute(mode){
       if(routeChanging||mode===routeMode)return;
@@ -300,12 +437,14 @@
     async function refresh(){
       if(disposed)return;
       try{
-        const [rs,rh]=await Promise.all([
+        const [rs,rh,rm]=await Promise.all([
           fetch(ENDPOINT+'/status',{cache:'no-store'}),
-          fetch(ENDPOINT+'/history',{cache:'no-store'})
+          fetch(ENDPOINT+'/history',{cache:'no-store'}),
+          fetch(ENDPOINT+'/dryrun',{cache:'no-store'})
         ]);
-        if(!rs.ok||!rh.ok)throw Error('HTTP 状态接口离线');
-        const data=await rs.json(),history=await rh.json();
+        if(!rs.ok||!rh.ok||!rm.ok)throw Error('HTTP 状态接口离线');
+        const data=await rs.json(),history=await rh.json(),mock=await rm.json();
+        if(routeMode==='local_ros2')paintMock(mock);
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
         if(data.route_mode!=='local_ros2'&&data.route_mode!=='pi_stm32')
@@ -392,6 +531,7 @@
       status.textContent='需在运行 HTTP 服务的电脑上通过 localhost 打开映射集';
     }
     draw([]);
+    resetMock(false);
     refresh();
     setInterval(()=>{
       if(enabled.checked&&shift&&!document.hidden)sendNow();
