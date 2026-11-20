@@ -10,7 +10,7 @@
     sim: ['纯模拟集', 'SIM', '网页本地运动仿真；不使用 ROS 2 或实体底盘反馈'],
     test: ['测试集', 'TEST', '模拟 MCU → 伪串口 → CAR-LINK → ROS 2 → 网页'],
     real: ['运行集', 'REAL', '真实 STM32 → ROS 2 → 网页；仅监控，不发控制指令'],
-    keyboard: ['映射集', 'DRY RUN', '键盘 → PC ROS2 → 树莓派 ROS2 候选接口；STM32 电机发送未授权'],
+    keyboard: ['映射集', 'DRY RUN', '本机 ROS2 回环（无需树莓派）/ 将来接入 Pi→STM32；实体电机指令仍禁用'],
   };
   const config = Object.freeze({
     mode, channel,
