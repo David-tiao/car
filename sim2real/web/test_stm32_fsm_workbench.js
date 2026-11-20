@@ -170,7 +170,12 @@
     function render(data){
       validate(data);
       const s=data.snapshot;
-      needsInit=!(s && data.engine===selected);
+      const field=currentField();
+      const compatible=!data.case || (field &&
+        JSON.stringify((data.case.blocked_cells||[]).slice().sort((a,b)=>a-b))===
+        JSON.stringify(field.blocked_cells.slice().sort((a,b)=>a-b)) &&
+        data.case.start_zone===field.start_zone);
+      needsInit=!(s && data.engine===selected && compatible);
       step.disabled=busy||needsInit;run.disabled=busy||needsInit;
       if(!s){
         state.textContent='MOCK · 尚未启动';progress.textContent='—';
@@ -283,14 +288,16 @@
       }
     }
     async function onFieldChanged(){
-      const old=fieldSnapshot?.blocked_cells?.join(',')||'';
+      const old=fieldSnapshot;
       const next=currentField();
       if(!next)return;
       fieldSnapshot=next;
-      if(old!==next.blocked_cells.join(',') && !needsInit){
+      if(old && (old.blocked_cells.slice().sort((a,b)=>a-b).join(',')!==
+                  next.blocked_cells.slice().sort((a,b)=>a-b).join(',') ||
+                 old.start_zone!==next.start_zone) && !needsInit){
         epoch++;
         needsInit=true;step.disabled=true;run.disabled=true;
-        state.textContent='地图障碍格已改变：旧模拟路线失效，请重新初始化任务';
+        state.textContent='地图障碍格或启停区已改变：旧模拟路线失效，请重新初始化任务';
         state.dataset.state='FAULT';
         try{await request({action:'reset'});}
         catch(err){mapInfo.textContent='清理旧模拟会话失败：'+String(err);}
