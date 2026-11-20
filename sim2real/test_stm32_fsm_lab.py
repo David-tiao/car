@@ -101,49 +101,70 @@ class HostTaskEvent(ctypes.Structure):
     ]
 
 
+class HostQrEvent(ctypes.Structure):
+    _fields_ = [
+        ("action_index", ctypes.c_uint8), ("kind", ctypes.c_uint8),
+        ("state", ctypes.c_uint8), ("error", ctypes.c_uint8),
+        ("qr_confirmed", ctypes.c_uint8), ("qr_valid", ctypes.c_uint8),
+        ("scan_session", ctypes.c_uint32),
+        ("hardware_authorized", ctypes.c_uint8),
+    ]
+
+
 class CTaskSession:
-    """Isolated, GCC-compiled STM32 C task gate; no physical control path."""
+    """Runs real RaceFsm's 8 QR actions THEN real 34-action RaceTaskPlan.
+
+    A host-only C adapter supplies synthetic healthy, settled feedback;
+    SVG paths are *separate* rule-mission route previews, not C motor outputs.
+    """
 
     def __init__(self, plan, task, fault):
         if shutil.which("gcc") is None:
             raise ValueError("C 状态机模式需要主机安装 gcc")
         self.tmp = tempfile.TemporaryDirectory(prefix="car_stm32_cfsm_")
         try:
-            so = Path(self.tmp.name) / "libstm32_task_gate_host.so"
             base = ROOT / "STM32F4"
+            so = Path(self.tmp.name) / "libstm32_qr_task_host.so"
             cmd = ["gcc", "-shared", "-fPIC", "-O2", "-std=c99",
-                   "-Wall", "-Wextra", "-Werror", "-I" + str(base / "App"),
+                   "-Wall", "-Wextra", "-Werror",
+                   "-I" + str(base / "App"), "-I" + str(base / "Config"),
+                   str(base / "App/race_fsm.c"),
                    str(base / "App/race_task_plan.c"),
                    str(base / "App/race_task_gate.c"),
                    str(base / "tests/race/task_gate_host_adapter.c"),
-                   "-o", str(so)]
+                   "-lm", "-o", str(so)]
             subprocess.run(cmd, check=True, capture_output=True, text=True,
                            timeout=25)
             self.lib = ctypes.CDLL(str(so))
-            self.lib.HostTask_Init.argtypes = [
-                ctypes.POINTER(ctypes.c_uint8), ctypes.POINTER(ctypes.c_uint8)]
-            self.lib.HostTask_Init.restype = ctypes.c_int
+            self.lib.HostQr_Init.argtypes = [ctypes.c_int]
+            self.lib.HostQr_Init.restype = ctypes.c_int
+            self.lib.HostQr_Step.argtypes = [
+                ctypes.c_char_p, ctypes.POINTER(HostQrEvent)]
+            self.lib.HostQr_Step.restype = ctypes.c_int
+            self.lib.HostQr_Fail.argtypes = [ctypes.c_int]
+            self.lib.HostQr_Fail.restype = ctypes.c_int
+            self.lib.HostTask_InitScanned.restype = ctypes.c_int
             self.lib.HostTask_Step.argtypes = [
                 ctypes.c_uint32, ctypes.c_int, ctypes.POINTER(HostTaskEvent)]
             self.lib.HostTask_Step.restype = ctypes.c_int
-            for method in ("HostTask_State", "HostTask_Completed",
+            for method in ("HostQr_State", "HostQr_Error", "HostQr_Completed",
+                           "HostQr_Session", "HostQr_Valid",
+                           "HostTask_State", "HostTask_Completed",
                            "HostTask_PlanIndex", "HostTask_PlanCount"):
                 getattr(self.lib, method).restype = ctypes.c_int
-            task_parts = parse_task_code(task)
-            colors = (ctypes.c_uint8 * 6)(
-                *(task_parts.batch1_colors + task_parts.batch2_colors))
-            rings = (ctypes.c_uint8 * 6)(
-                *(task_parts.batch1_rough_rings + task_parts.batch2_rough_rings))
-            self.total = self.lib.HostTask_Init(colors, rings)
-            if self.total != 34:
-                raise ValueError("C 任务表生成失败，预期 34 个动作")
+            zone = 1 if plan["start_zone"] == "upper_right" else 2
+            self.qr_total = self.lib.HostQr_Init(zone)
+            if self.qr_total != 8:
+                raise ValueError("STM32 C QR 扫码路由不是预期的 8 个动作")
         except Exception:
             self.tmp.cleanup()
             raise
-
+        self.total = 8 + 34
+        self.phase = "QR_ROUTE"
+        self.task = task
         self.fault = fault
         self.plan = plan
-        self.start_node = "B3"  # RaceTaskPlan begins after QR at material area
+        self.start_node = plan["waypoints"][0]
         self.node = self.start_node
         self.position = tuple(NODES[self.node])
         self.events = []
@@ -152,25 +173,96 @@ class CTaskSession:
         self.home_confirmed = False
         self.now_ms = 0
         self.error = ""
+        self.last_route = [self.node]
+
+    @property
+    def completed(self):
+        return self.lib.HostQr_Completed() + (
+            self.lib.HostTask_Completed() if self.phase == "TASK" else 0)
 
     @property
     def state(self):
+        if self.phase == "QR_ROUTE":
+            return "FAULT" if self.lib.HostQr_State() == 3 else "READY"
         return TASK_GATE_STATES[self.lib.HostTask_State()]
+
+    def _drive(self, path):
+        """Only a planned, unblocked graph route may move the MOCK SVG car."""
+        if not path or path[0] != self.node:
+            raise ValueError("Invalid preview road path start")
+        if any(not shortest(a, b, set(self.plan["blocked_roads"])) or
+               len(shortest(a, b, set(self.plan["blocked_roads"]))) != 2
+               for a, b in zip(path, path[1:])):
+            raise ValueError("Preview route intersects blocked road")
+        self.node = path[-1]
+        self.position = tuple(NODES[self.node])
+        return path
+
+    def _advance_qr(self):
+        index = self.lib.HostQr_Completed()
+        before = self.node
+        if self.fault in ("failed_at_3", "missing_ack_at_2") and index + 1 == (
+            3 if self.fault == "failed_at_3" else 2):
+            self.lib.HostQr_Fail(0)
+            self.error = "INJECTED_LINK_FAILURE"
+            return self._record(index + 1, "QR_ROUTE_FAULT", False, [before])
+        if self.fault == "qr_timeout" and index == 4:
+            self.lib.HostQr_Fail(1)
+            self.error = "SCAN_TIMEOUT"
+            return self._record(index + 1, "SCAN_QR", False, [before])
+        event = HostQrEvent()
+        if not self.lib.HostQr_Step(self.task.encode("ascii"),
+                                    ctypes.byref(event)):
+            raise ValueError("Native RaceFsm did not progress on this QR step")
+        if event.hardware_authorized:
+            raise ValueError("C QR route illegally authorized real hardware")
+        kind = ("QR_MOVE", "QR_TURN", "QR_SETTLE", "SCAN_QR")[event.kind]
+        trail = [before]
+        # Map projection follows Dijkstra, *not* the physical C trajectory.
+        if index == 1:
+            trail = self._drive(self.plan["legs"][0]["node_path"])
+        elif index in (5, 6):
+            all_nodes = self.plan["legs"][1]["node_path"]
+            mid = max(0, len(all_nodes) - 2)
+            split = all_nodes[:mid + 1] if index == 5 else all_nodes[mid:]
+            if split[0] != self.node:
+                raise ValueError("Blocked-route projection lost continuity")
+            trail = self._drive(split)
+        if event.qr_confirmed:
+            kind = "SCAN_QR"
+        if self.lib.HostQr_State() == 2:
+            if not self.lib.HostQr_Valid() or self.lib.HostTask_InitScanned() != 34:
+                self.lib.HostQr_Fail(0)
+                raise ValueError("C RaceTaskPlan must start only after confirmed QR")
+            self.phase = "TASK"
+        return self._record(index + 1, kind, True, trail,
+                            scan_session=int(event.scan_session),
+                            qr_confirmed=bool(event.qr_confirmed))
+
+    def _record(self, cmd_id, kind, success, trail, **fields):
+        self.last_route = trail
+        event = "QR_CONFIRMED" if fields.get("qr_confirmed") else (
+            "COMPLETED" if success else "FAULT")
+        result = {"cmd_id": int(cmd_id), "event": event,
+                  "kind": kind, "reason": self.error}
+        self.events.append(result)
+        self.last = {"cmd_id": int(cmd_id), "kind": kind, "event": event,
+                     **fields}
+        self.now_ms += 31000
+        return trail
 
     def advance(self):
         if self.state != "READY":
             return []
+        if self.phase == "QR_ROUTE":
+            return self._advance_qr()
         before = self.node
         event = HostTaskEvent()
-        command_number = self.lib.HostTask_Completed() + 1
-        fault_code = (
-            2 if self.fault == "failed_at_3" and command_number == 3 else
-            1 if self.fault == "missing_ack_at_2" and command_number == 2 else 0
-        )
-        if not self.lib.HostTask_Step(self.now_ms, fault_code, ctypes.byref(event)):
-            raise ValueError("C FSM refused task transition")
+        number = self.completed + 1
+        if not self.lib.HostTask_Step(self.now_ms, 0, ctypes.byref(event)):
+            raise ValueError("Native RaceTaskGate refused task transition")
         if event.hardware_authorized:
-            raise ValueError("C test gate illegally authorized hardware")
+            raise ValueError("C task gate illegally authorized hardware")
         kind = TASK_KINDS[event.kind]
         success = self.state != "FAULT"
         trail = [before]
@@ -181,11 +273,10 @@ class CTaskSession:
                 "RETURN_START": self.plan["waypoints"][0],
             }.get(kind)
             if goal is not None:
-                trail = shortest(before, goal, set(self.plan["blocked_roads"]))
-                if not trail:
-                    raise ValueError("C task requires a blocked route")
-                self.node = goal
-                self.position = tuple(NODES[goal])
+                route = shortest(before, goal, set(self.plan["blocked_roads"]))
+                if not route:
+                    raise ValueError("C task preview route was blocked")
+                trail = self._drive(route)
             if kind in ("PICK", "RETRIEVE_ROUGH"):
                 self.pick_count += 1
             if kind in ("PLACE_ROUGH", "PLACE_STORAGE", "STACK_STORAGE"):
@@ -196,23 +287,21 @@ class CTaskSession:
                 self.home_confirmed = True
         else:
             self.error = TASK_GATE_ERRORS[event.error]
-        result = {"cmd_id": int(event.cmd_id),
-                  "event": "COMPLETED" if success else "FAULT",
-                  "reason": self.error}
-        self.events.append(result)
-        self.last = {"cmd_id": int(event.cmd_id), "kind": kind,
-                     "event": result["event"], "batch": int(event.batch) + 1,
-                     "color_id": int(event.color), "ring_id": int(event.position)}
-        self.now_ms += 31000
+        self._record(number, kind, success, trail,
+                     batch=int(event.batch) + 1,
+                     color_id=int(event.color), ring_id=int(event.position))
         return trail
 
     def snapshot(self):
         return {
-            "schema": "car_c_race_task_gate_v1",
+            "schema": "car_c_qr_and_task_gate_v2",
             "source_type": "MOCK", "mode": "SIM_ONLY",
             "hardware_authorized": False,
             "state": self.state, "error": self.error,
-            "completed_steps": self.lib.HostTask_Completed(),
+            "phase": self.phase,
+            "qr_valid": bool(self.lib.HostQr_Valid()),
+            "qr_session": self.lib.HostQr_Session(),
+            "completed_steps": self.completed,
             "total_steps": self.total,
             "pick_count": self.pick_count,
             "place_count": self.place_count,
@@ -223,13 +312,12 @@ class CTaskSession:
             "node": self.node, "x_m": round(self.position[0], 4),
             "y_m": round(self.position[1], 4),
             "pose_source": "DISCRETE_ROAD_NODE",
-            "mock_executions": self.lib.HostTask_Completed(),
-            "events": self.events[-16:],
+            "mock_executions": self.completed,
+            "events": self.events[-20:],
         }
 
     def close(self):
         self.tmp.cleanup()
-
 
 def _safe_snapshot():
     return None if SESSION is None else SESSION.snapshot()
