@@ -11,6 +11,7 @@ python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_ros2_node_start
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_link_health.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_local_smoke.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_recovery.py' -v
+python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_direct.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_four_modes.py' -v
 python3 sim2real/keyboard_fault_lab.py --out-dir /tmp/car_keyboard_fault_lab
 python3 sim2real/keyboard_offline_analysis.py --out-dir /tmp/car_keyboard_offline_analysis
