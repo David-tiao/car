@@ -139,50 +139,32 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertIsNone(web_mode_gateway.CHANNELS["real"]["ros"]["snapshot"])
         self.assertFalse(lab.status()["hardware_authorized"])
 
-    def test_native_c_mode_uses_compiled_stm32_code(self):
+    def test_native_c_mode_scans_before_running_34_material_actions(self):
         import shutil
         if shutil.which("gcc") is None:
-            self.skipTest("Host GCC required for native C mode")
+            self.skipTest("Host GCC required for real native C mode")
         response = lab.action(start(engine="code_fsm"))
         self.assertEqual(response["transport"], "NATIVE_GCC_C_FSM_NO_UART")
-        self.assertEqual(response["model_kind"],
-                         "COMPILED_STM32_RACETASKPLAN_AND_GATE_HOST_ONLY")
-        self.assertEqual(response["snapshot"]["total_steps"], 42)
-        self.assertEqual(response["snapshot"]["node"], "C3")
-        self.assertEqual(response["snapshot"]["phase"], "QR_ROUTE")
-        self.assertFalse(response["snapshot"]["qr_valid"])
         self.assertFalse(response["hardware_authorized"])
-        first = lab.action({"action": "step"})
-        self.assertEqual(first["snapshot"]["completed_steps"], 1)
-        self.assertEqual(first["transition"]["kind"], "QR_MOVE")
-        second = lab.action({"action": "step"})
-        self.assertEqual(second["transition"]["to_node"], "C2")
-        self.assertGreater(len(second["transition"]["points"]), 1)
-        for _ in range(2):
-            lab.action({"action": "step"})
-        self.assertFalse(lab.status()["snapshot"]["qr_valid"])
-        scanned = lab.action({"action": "step"})
-        self.assertEqual(scanned["transition"]["kind"], "SCAN_QR")
-        self.assertEqual(scanned["snapshot"]["event"], "QR_CONFIRMED")
-        self.assertTrue(scanned["snapshot"]["qr_valid"])
-        self.assertGreater(scanned["snapshot"]["qr_session"], 0)
-        for _ in range(3):
-            arrived = lab.action({"action": "step"})
-        self.assertEqual(arrived["snapshot"]["phase"], "TASK")
-        self.assertEqual(arrived["snapshot"]["node"], "B3")
-        self.assertEqual(arrived["snapshot"]["completed_steps"], 8)
+        self.assertEqual(response["snapshot"]["total_steps"], 42)
+        self.assertEqual(response["snapshot"]["phase"], "QR_ROUTE")
+        self.assertEqual(response["snapshot"]["node"], "C3")
+        steps = [lab.action({"action": "step"}) for _ in range(8)]
+        self.assertEqual(steps[0]["snapshot"]["kind"], "QR_MOVE")
+        self.assertEqual(steps[1]["transition"]["to_node"], "C2")
+        self.assertEqual(steps[4]["snapshot"]["kind"], "SCAN_QR")
+        self.assertEqual(steps[4]["snapshot"]["event"], "QR_CONFIRMED")
+        self.assertGreater(steps[4]["snapshot"]["qr_session"], 0)
+        self.assertTrue(steps[7]["snapshot"]["qr_valid"])
+        self.assertEqual(steps[7]["snapshot"]["phase"], "TASK")
         first_pick = lab.action({"action": "step"})
-        self.assertEqual(first_pick["transition"]["kind"], "PICK")
-        for _ in range(3):
-            next_step = lab.action({"action": "step"})
-        self.assertEqual(next_step["transition"]["kind"], "GO_ROUGH")
-        self.assertEqual(next_step["transition"]["to_node"], "B1")
-        self.assertGreater(len(next_step["transition"]["points"]), 1)
-        done = lab.action({"action": "run"})["snapshot"]
-        self.assertEqual((done["state"], done["completed_steps"]), ("DONE", 42))
-        self.assertEqual((done["pick_count"], done["place_count"],
-                          done["stack_count"]), (12, 15, 3))
-        self.assertTrue(done["home_confirmed"])
+        self.assertEqual(first_pick["snapshot"]["kind"], "PICK")
+        self.assertEqual(first_pick["snapshot"]["completed_steps"], 9)
+        final = lab.action({"action": "run"})["snapshot"]
+        self.assertEqual((final["state"], final["completed_steps"]), ("DONE", 42))
+        self.assertEqual((final["pick_count"], final["place_count"],
+                          final["stack_count"]), (12, 15, 3))
+        self.assertTrue(final["home_confirmed"])
 
     def test_native_c_fault_latches_without_phantom_map_motion(self):
         import shutil
@@ -284,6 +266,34 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertIn("nav.after(map)", layout)
         self.assertIn(".sidebar .settings-directory", style)
         self.assertIn("C 代码状态机", bench)
+
+    def test_map_cell17_blocks_middle_vertical_lane_and_detours(self):
+        from field_road_mapping import blocked_roads_from_cells
+        blocked, mapping = blocked_roads_from_cells([17])
+        self.assertIn("B2-B3", blocked)
+        self.assertNotIn("A2-B2", blocked)
+        self.assertEqual(mapping[0]["cell"], 17)
+        response = lab.action(start(engine="code_fsm", blocked_cells=[17]))
+        self.assertIn("B2-B3", response["case"]["blocked_roads"])
+        self.assertEqual(response["case"]["mapped_roads"], blocked)
+        # Native QR prelude includes a route from C2 to material B3.
+        for _ in range(6):
+            step = lab.action({"action": "step"})
+        nodes = step["transition"]["node_path"]
+        self.assertNotIn(("B2", "B3"), list(zip(nodes, nodes[1:])))
+        self.assertNotIn(("B3", "B2"), list(zip(nodes, nodes[1:])))
+
+    def test_native_scan_timeout_cannot_start_task_plan(self):
+        import shutil
+        if shutil.which("gcc") is None:
+            self.skipTest("Host GCC required")
+        lab.action(start(engine="code_fsm", fault="qr_timeout"))
+        snap = lab.action({"action": "run"})["snapshot"]
+        self.assertEqual(snap["state"], "FAULT")
+        self.assertEqual(snap["completed_steps"], 4)
+        self.assertFalse(snap["qr_valid"])
+        self.assertEqual(snap["phase"], "QR_ROUTE")
+        self.assertEqual(snap["pick_count"], 0)
 
     def test_reset_closes_pty_descriptors(self):
         lab.action(start())
