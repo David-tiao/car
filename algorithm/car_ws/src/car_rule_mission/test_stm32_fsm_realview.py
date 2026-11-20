@@ -78,8 +78,10 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertEqual(error["state"], "FAULT")
         self.assertEqual(error["mock_executions"], 3)
         self.assertEqual(error["completed_steps"], 2)
-        again = lab.action({"action": "step"})["snapshot"]
+        repeat = lab.action({"action": "step"})
+        again = repeat["snapshot"]
         self.assertEqual(again["mock_executions"], 3)
+        self.assertIsNone(repeat["transition"])
 
     def test_ack_dropout_latches_and_does_not_repeat_command(self):
         lab.action(start(fault="missing_ack_at_2"))
