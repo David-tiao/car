@@ -409,6 +409,11 @@ def action(payload):
                 payload["blocked_cells"], payload["blocked_roads"])
             return {**status(), "preview": {
                 "blocked_roads": roads, "cell_mapping": mapping,
+                "road_segments": [{
+                    "road": rid,
+                    "from": node_position(rid.split("-")[0]),
+                    "to": node_position(rid.split("-")[1]),
+                } for rid in roads],
                 "source_type": "MAP_EDITOR_TEST_ONLY"}}
         if command == "start":
             _start(payload)
