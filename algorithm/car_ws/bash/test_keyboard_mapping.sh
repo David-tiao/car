@@ -14,6 +14,7 @@ root=Path(sys.argv[1])
 for file in ("sim2real/keyboard_mapping_core.py",
              "sim2real/keyboard_ros2_pc.py",
              "sim2real/keyboard_ros2_pi.py",
+             "sim2real/keyboard_ros2_web_feedback.py",
              "sim2real/web_mode_gateway.py"):
     ast.parse((root/file).read_text(encoding="utf-8"), filename=file)
     print("SYNTAX OK:", file)
@@ -23,4 +24,8 @@ if command -v node >/dev/null 2>&1; then
   node --check sim2real/web/mode_router.js
   node sim2real/tests/test_mode_router.js
 fi
-echo '[PASS] KEYBOARD MAP: no motor command, REAL-only error and ROS2 candidate protocol'
+bash -n algorithm/car_ws/bash/start_keyboard_local_ros2.sh
+bash -n algorithm/car_ws/bash/start_keyboard_pc_ros2.sh
+bash -n algorithm/car_ws/bash/start_keyboard_pi_ros2.sh
+bash -n algorithm/car_ws/bash/start_keyboard_web_feedback_ros2.sh
+echo '[PASS] KEYBOARD MAP: PC local ROS2 echo + Pi candidate + REAL odom error, no motor control'
