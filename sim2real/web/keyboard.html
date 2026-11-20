@@ -33,7 +33,7 @@
 <header>
   <nav aria-label="页面导航"><a href="/sim">纯模拟集</a><a href="/test">ROS2 测试集</a><a href="/real">实车监控</a><strong>键盘映射 · 只读</strong></nav>
   <h1>ROS2 键盘映射 → 网页运动反馈</h1>
-  <p>键盘映射由电脑上的 ROS2 节点决定。网页只接收桥接后的 <code>/cmd_vel</code> 数据，不接管按键、不发送运动指令、不运行任务状态机。</p>
+  <p>从本机进入页面将自动启动只读 ROS2 订阅（默认 <code>/cmd_vel</code>）。原键盘控制节点仍负责发布指令；本页不接管按键、不发送运动指令、不运行任务状态机。</p>
 </header>
 <main>
   <section class="overview" aria-label="ROS2 运动值">
@@ -47,7 +47,7 @@
     <div>估算位置：<strong id="pos">x 0.000 m / y 0.000 m / θ 0.0°</strong></div>
     <div>数据性质：<strong>按 ROS2 速度指令积分的模拟轨迹，不是编码器/里程计实测位置。</strong></div>
     <div>若键盘节点不发布新速度，超过默认 0.5 秒，网页速度归零；只影响显示，不修改 ROS2 话题或底盘控制。</div>
-    <div id="hint">启动：<code>bash algorithm/car_ws/bash/web.sh keyboard</code>，之后在原有 ROS2 键盘终端操作。</div>
+    <div id="hint">在本机启动网页服务 <code>car</code>，进入本页面即自动启动只读 ROS2 订阅；原键盘控制节点仍需运行。</div>
   </section>
 </main>
 </body>

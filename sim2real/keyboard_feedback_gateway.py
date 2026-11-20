@@ -8,6 +8,7 @@ import threading
 import time
 from http.server import SimpleHTTPRequestHandler
 from urllib.parse import urlsplit
+from keyboard_feedback_autostart import ensure_started, status as bridge_status
 
 _LOCK = threading.Lock()
 _RECORD = {'seq': 0, 'received_mono': 0.0, 'sample': None}
@@ -23,8 +24,20 @@ def _loopback(addr):
 def keyboard_get(handler):
     path = urlsplit(handler.path).path
     if path == '/keyboard':
+        # Only requests originating on this computer may start a ROS2 subscriber.
+        fetch_site = handler.headers.get('Sec-Fetch-Site', '')
+        if (getattr(handler.server, 'keyboard_autostart_enabled', False)
+                and _loopback(handler.client_address[0])
+                and fetch_site in ('', 'none', 'same-origin')):
+            with _LOCK:
+                current = _RECORD['received_mono']
+                has_bridge = bool(current and time.monotonic() - current < 2.0)
+            ensure_started(handler.server.server_port, existing_feedback=has_bridge)
         handler.path = '/keyboard.html'
         SimpleHTTPRequestHandler.do_GET(handler)
+        return True
+    if path == '/api/keyboard/bridge':
+        handler.respond_json(200, bridge_status())
         return True
     if path != '/api/keyboard/feedback':
         return False

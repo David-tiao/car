@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sim2Real V13 four-mode launcher. Original `car` shortcut is unchanged.
 # sim: browser-only; test: Mock MCU -> ROS2 -> HTTP; real: verified serial -> ROS2 -> HTTP.
-# keyboard: preview only; sending motor commands is explicitly NOT implemented.
+# keyboard: read-only; local /keyboard visits auto-start a ROS2 subscriber, never motor control.
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 WS="$(cd -- "$HERE/.." && pwd -P)"
@@ -50,14 +50,17 @@ case "$CMD" in
   doctor)
     require_site
     echo "[PASS] Standalone Sim2Real: $SIM"
+    [[ -f "$SIM/keyboard_feedback_autostart.py" && -f "$SIM/web/keyboard.html" ]] || {
+      echo '[FAIL] Keyboard auto subscriber files missing' >&2; exit 3;
+    }
     for pkg in car_web_test car_web_real car_web_sim; do
       [[ -f "$WS/src/$pkg/package.xml" && -f "$WS/src/$pkg/CMakeLists.txt" ]] || {
         echo "[FAIL] ROS2 adapter package incomplete: $pkg" >&2; exit 3;
       }
       echo "[PASS] ROS2 adapter: $pkg"
     done
-    [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[PASS] Keyboard mode disabled'
-    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py" "$SIM/keyboard_feedback_gateway.py" "$SIM/ros2_keyboard_feedback_bridge.py"
+    [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[INFO] Browser /keyboard feedback is standalone (not a colcon package)'
+    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py" "$SIM/keyboard_feedback_gateway.py" "$SIM/keyboard_feedback_autostart.py" "$SIM/ros2_keyboard_feedback_bridge.py"
     /usr/bin/python3 -m py_compile "$SIM/test_inspection.py" "$SIM/test_telemetry_bridge.py"
     echo '[PASS] Python syntax; original car shortcut unaffected'
     echo '[INFO] doctor does not validate physical STM32, laser, OpenMV or ROS2 runtime.'

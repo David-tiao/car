@@ -9,6 +9,7 @@
   let lastSequence = -1;
   let connected = false;
   let awaiting = false;
+  let bridgeInfo = null;
   let lastWidth = 0, lastHeight = 0;
   const scale = 76; // visual pixels per meter; not a movement constraint
 
@@ -88,6 +89,13 @@
       connected = Boolean(data.online);
       $('link').dataset.online = String(connected);
       $('link').textContent = !connected ? '等待 ROS2' : data.command_recent ? '指令在线' : '桥接在线 · 无新指令';
+      if (!connected && bridgeInfo) {
+        $('hint').textContent = bridgeInfo.message
+          ? 'ROS2 订阅启动失败：' + bridgeInfo.message + '；日志：' + bridgeInfo.log
+          : bridgeInfo.running
+            ? 'ROS2 订阅已自动启动，等待原键盘节点发布速度话题：' + bridgeInfo.topic
+            : '尚未启动订阅：请从这台电脑打开 /keyboard';
+      }
       if (connected && data.sample) {
         const s = data.sample;
         newest = s;
@@ -115,6 +123,14 @@
       draw();
     }
   }
+  async function checkBridge() {
+    try {
+      const response = await fetch('/api/keyboard/bridge', {cache:'no-store'});
+      if (response.ok) bridgeInfo = await response.json();
+    } catch (_) { bridgeInfo = null; }
+  }
+  setInterval(checkBridge,1200);
+  checkBridge();
   setInterval(poll,100);
   window.addEventListener('resize',draw);
   poll();

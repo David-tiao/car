@@ -18,6 +18,7 @@ import secrets
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit
 from web_mode_gateway import mode_get, mode_post
+from keyboard_feedback_autostart import stop as stop_keyboard_feedback_observer
 
 ROOT = Path(__file__).resolve().parent
 WEB = ROOT / "web"
@@ -580,6 +581,7 @@ def main():
     try:
         server = ThreadingHTTPServer((args.host, args.port), Handler)
         server.daemon_threads = True
+        server.keyboard_autostart_enabled = True  # Only local /keyboard GET may trigger ROS2 subscriber.
     except OSError as exc:
         parser.exit(1, f"无法启动 HTTP 服务：{exc}\n可能端口已被占用，可改用 --port 8081。\n")
     print("\n" + "═" * 58, flush=True)
@@ -607,6 +609,7 @@ def main():
     except KeyboardInterrupt:
         print("\nServer stopped.", flush=True)
     finally:
+        stop_keyboard_feedback_observer()
         server.server_close()
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -104,6 +105,22 @@ class HttpTests(unittest.TestCase):
                         data=json.dumps(obj).encode('utf-8'),method='POST',
                         headers={'Content-Type':'application/json',**(headers or {})})
         return urlopen(request,timeout=2)
+
+    def test_local_page_visit_requests_auto_subscribe_only_when_enabled(self):
+        self.server.keyboard_autostart_enabled = True
+        try:
+            with patch('keyboard_feedback_gateway.ensure_started') as mocked:
+                self.assertIn('keyboard viewer', self.get('/keyboard'))
+                mocked.assert_called_once()
+                self.assertEqual(mocked.call_args.args[0], self.server.server_port)
+            with patch('keyboard_feedback_gateway.ensure_started') as mocked:
+                request = Request(self.base + '/keyboard',
+                                  headers={'Sec-Fetch-Site': 'cross-site'})
+                with urlopen(request, timeout=2) as response:
+                    self.assertEqual(response.status, 200)
+                mocked.assert_not_called()
+        finally:
+            self.server.keyboard_autostart_enabled = False
 
     def test_page_and_feedback_isolation(self):
         self.assertIn('keyboard viewer',self.get('/keyboard'))

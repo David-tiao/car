@@ -53,5 +53,5 @@ curl -s http://127.0.0.1:8080/api/telemetry
 ## 四运行集（新增）
 
 原 `car` 快捷命令保持不变：打开首页即纯模拟，页面导航可访问 `/sim`、`/test`、`/real`、`/keyboard`。
-测试和实车通过不同的 `/api/test/*`、`/api/real/*` 传输数据；`keyboard` 为 ROS2 `/cmd_vel` 的只读运动反馈页面；不会向 ROS2 或 STM32 下发控制。
+测试和实车通过不同的 `/api/test/*`、`/api/real/*` 传输数据；`keyboard` 为 ROS2 `/cmd_vel` 的只读运动反馈页面；打开页面时由网站进程自动启动 ROS2 订阅，无须额外运行桥接脚本。原有键盘发布节点须独立运行；不会向 ROS2 或 STM32 下发控制。
 完整启动及验收步骤见 `sim2real/FOUR_MODES.md`。

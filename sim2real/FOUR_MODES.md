@@ -67,7 +67,7 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 
 ## 5. 映射集
 
-在电脑 ROS2 环境执行 `bash algorithm/car_ws/bash/web.sh keyboard`，访问 `http://127.0.0.1:8080/keyboard`。现有键盘控制节点继续使用原来的按键映射，网页只从 `/cmd_vel` 获取 vx、vy、wz 并积分成**估算**位置；不需要地图、避障、导航或任务状态机。若话题不是 `/cmd_vel`，启动时添加 `--topic /你的话题`；若消息类型为 `TwistStamped`，添加 `--stamped`。连续超过默认 0.5 秒未收到速度指令，估算速度归零；此行为不向电机发送停车指令。`POST /api/keyboard/command` 仍返回 HTTP 403。网页显示不能证明实体运动。比赛运行期间禁止遥控。
+在电脑上启动原有网页 `car`，然后访问 `http://127.0.0.1:8080/keyboard`。从本机访问该页面将自动启动 ROS2 Humble 只读订阅，不需单独运行桥接脚本。现有键盘控制节点继续使用原来的按键映射，网页只从 `/cmd_vel` 获取 vx、vy、wz 并积分成**估算**位置；不需要地图、避障、导航或任务状态机。默认订阅 `/cmd_vel`（Twist）。其他话题可在启动 `car` 前通过 `CAR_KEYBOARD_TOPIC=/你的话题 car` 指定；`TwistStamped` 可设置 `CAR_KEYBOARD_STAMPED=1 car`。自动订阅只处理 ROS2 → 网页反馈，不会启动原键盘控制发布节点。也保留 `bash algorithm/car_ws/bash/web.sh keyboard --topic /你的话题 --stamped` 手动入口。连续超过默认 0.5 秒未收到速度指令，估算速度归零；此行为不向电机发送停车指令。`POST /api/keyboard/command` 仍返回 HTTP 403。网页显示不能证明实体运动。比赛运行期间禁止遥控。
 
 ## 6. 架构与边界
 
@@ -75,6 +75,7 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 - `sim2real/web_mode_runner.py`：测试/实车一键启动与进程组清理，自动复用现有 `car` 网站。
 - `sim2real/web/mode_router.js`：四模式入口和状态提示。
 - `sim2real/keyboard_feedback_gateway.py`：只读键盘反馈通道及数据校验。
+- `sim2real/keyboard_feedback_autostart.py`：本机打开 `/keyboard` 后启动一个 ROS2 只读订阅，不修改底盘控制。
 - `sim2real/ros2_keyboard_feedback_bridge.py`：订阅已有 ROS2 速度话题，仅用于估算轨迹。
 - `sim2real/web/keyboard.html` 和 `keyboard.js`：独立自由运动反馈网页。
 - `algorithm/car_ws/bash/web.sh`：`sim|test|real|keyboard|doctor` 入口，保留原 `sim` 行为。

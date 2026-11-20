@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 import sys
 import time
 from urllib.error import HTTPError, URLError
@@ -69,6 +70,7 @@ def main():
     parser.add_argument('--server', default='http://127.0.0.1:8080')
     parser.add_argument('--hz', type=float, default=20.0)
     parser.add_argument('--timeout', type=float, default=0.5, help='Stop estimating after this much command silence')
+    parser.add_argument('--parent-pid', type=int, default=0, help='Exit if the website that started us exits')
     args = parser.parse_args()
     if not args.server.startswith(('http://127.0.0.1:', 'http://localhost:', 'http://[::1]:')):
         parser.error('--server must point to localhost')
@@ -101,6 +103,8 @@ def main():
                 self.get_logger().warning('Rejected non-finite ROS2 Twist')
 
         def send_feedback(self):
+            if args.parent_pid and os.getppid() != args.parent_pid:
+                raise SystemExit(0)  # Parent website has exited; avoid orphan subscriber.
             pose, velocity, recent = observer.snapshot()
             payload = dict(zip(('x', 'y', 'yaw', 'vx', 'vy', 'wz'), (*pose, *velocity)))
             payload['command_recent'] = bool(recent)
