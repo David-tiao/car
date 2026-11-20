@@ -311,6 +311,59 @@ class KeyboardMapping:
                 return self.digital_twin.set_fault(payload["fault_mode"])
             raise ValueError("Only mock reset/fault actions are available")
 
+    def link_health(self):
+        """Explain where a local keyboard->ROS2->MOCK run is stopped.
+
+        Source-typed inspection only. Reading this diagnostic never advances
+        the mock, alters keyboard intent, or sends any motor output.
+        """
+        with self.lock:
+            command = self.effective()
+            feedback = self.ros2_status()
+            model = self.digital_twin.snapshot()
+            if self.route_mode != "local_ros2":
+                reason, hint = ("PI_ROUTE_SELECTED",
+                                "请选择本机 ROS2 回环；当前没有树莓派")
+            elif not command["active"]:
+                reason, hint = ("DEADMAN_NOT_ACTIVE",
+                                "勾选键盘使能并持续按住 Shift+W；也可按住本机测试按钮")
+            elif not any(abs(command[k]) > 0.00001 for k in ("vx", "vy", "wz")):
+                reason, hint = ("NO_MOVEMENT_KEYS",
+                                "Shift 已使能，但没有按住 W/A/S/D/Q/E")
+            elif feedback.get("online") is not True:
+                reason, hint = ("ROS2_ECHO_OFFLINE",
+                                "期望速度已产生；检查电脑 ROS2 双节点和 /car/teleop/local_test_twist 回传")
+            elif not any(abs(feedback["observed"][k]) > 0.00001
+                         for k in ("vx", "vy", "wz")):
+                reason, hint = ("ROS2_ECHO_ZERO",
+                                "ROS2 话题已接收，但速度仍为零；检查按键发送、时间戳与刷新")
+            elif model["state"] == "OBSTACLE_STOP":
+                reason, hint = ("MOCK_OBSTACLE_STOP",
+                                "模拟底盘撞到禁行格/固定区；请复位模拟底盘并检查红色障碍")
+            elif model["fault_mode"] != "none":
+                reason, hint = ("MOCK_FAULT_SELECTED",
+                                "当前启用了模拟故障：" + model["fault_mode"])
+            elif model["state"] == "RUNNING":
+                reason, hint = ("MOCK_MOVING",
+                                "ROS2 已接收，模拟车已经计算位移；若图上没动请检查紫色 MOCK 图层")
+            else:
+                reason, hint = ("WAIT_MOCK_POLL",
+                                "ROS2 已收到非零速度；检查 /api/keyboard/dryrun 定时刷新")
+            return {
+                "schema": "car_keyboard_link_health_v1",
+                "source_type": "LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY",
+                "hardware_authorized": False,
+                "stm32_tx_enabled": False,
+                "reason": reason, "hint": hint,
+                "route_mode": self.route_mode,
+                "desired": command,
+                "ros2_feedback": feedback,
+                "mock": {k: model[k] for k in
+                         ("state", "fault_mode", "collision_reason", "x_m",
+                          "y_m", "velocity", "input_twist", "samples",
+                          "generation")},
+            }
+
     def compare(self, row, now=None):
         """Compare only when REAL odom is fresh and received AFTER intent.
 
@@ -435,7 +488,8 @@ def handle_get(handler, real_reader):
     path = urlsplit(handler.path).path
     if path not in (PATH + "/status", PATH + "/intent", PATH + "/history",
                     PATH + "/dryrun", PATH + "/mock_acceptance",
-                    PATH + "/diagnostics", PATH + "/diag_history"):
+                    PATH + "/diagnostics", PATH + "/diag_history",
+                    PATH + "/health"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard diagnostics restricted to localhost"})
@@ -447,6 +501,8 @@ def handle_get(handler, real_reader):
     elif path.endswith("/mock_acceptance"):
         from keyboard_fault_lab import acceptance
         handler.respond_json(200, acceptance())
+    elif path.endswith("/health"):
+        handler.respond_json(200, STATE.link_health())
     elif path.endswith("/diagnostics"):
         handler.respond_json(200, STATE.network_diagnostics())
     elif path.endswith("/diag_history"):
