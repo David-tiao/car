@@ -301,6 +301,56 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertEqual(snap["phase"], "QR_ROUTE")
         self.assertEqual(snap["pick_count"], 0)
 
+    def test_stop_reset_invalidates_previous_step_generation(self):
+        initialized = lab.action(start())
+        old_generation = initialized["generation"]
+        first = lab.action({"action": "step",
+                            "expected_generation": old_generation})
+        self.assertEqual(first["snapshot"]["completed_steps"], 1)
+        cleared = lab.action({"action": "reset"})
+        self.assertGreater(cleared["generation"], old_generation)
+        self.assertIsNone(cleared["snapshot"])
+        restarted = lab.action(start())
+        self.assertEqual(restarted["snapshot"]["completed_steps"], 0)
+        with self.assertRaisesRegex(ValueError, "STALE_MOCK_SESSION"):
+            lab.action({"action": "step",
+                        "expected_generation": old_generation})
+        self.assertEqual(lab.status()["snapshot"]["completed_steps"], 0)
+        step = lab.action({"action": "step",
+                           "expected_generation": restarted["generation"]})
+        self.assertEqual(step["snapshot"]["completed_steps"], 1)
+
+    def test_stop_reset_rejects_delayed_old_start(self):
+        first = lab.action(start())
+        before = first["generation"]
+        lab.action({"action": "reset"})
+        stale = start()
+        stale["expected_generation"] = before
+        with self.assertRaisesRegex(ValueError, "STALE_MOCK_SESSION"):
+            lab.action(stale)
+        self.assertIsNone(lab.status()["snapshot"])
+
+    def test_native_c_motion_warns_about_direct_unplanned_targets(self):
+        from pathlib import Path
+        c = (ROOT / "STM32F4" / "App" / "race_fsm.c").read_text(
+            encoding="utf-8")
+        board = (ROOT / "STM32F4" / "App" / "app_race.c").read_text(
+            encoding="utf-8")
+        self.assertIn("Race_StartQrRoute", c)
+        self.assertIn("RACE_ACTION_MOVE", c)
+        self.assertIn("Mecanum_SetPositionMode", board)
+        self.assertNotIn("plan_mission", c)
+        self.assertNotIn("blocked_roads", c)
+        init = lab.action(start(engine="code_fsm"))
+        self.assertFalse(init["native_c_motion_obstacle_aware"])
+        self.assertEqual(init["native_c_motion_control"],
+                         "DIRECT_POSITION_GOALS_NO_BLOCKED_ROAD_INPUT")
+        self.assertEqual(init["motion_provenance"],
+                         "PYTHON_DIJKSTRA_VISUAL_PREVIEW_NOT_NATIVE_C_MOTION")
+        web = (ROOT / "sim2real" / "web" /
+               "test_stm32_fsm_workbench.js").read_text(encoding="utf-8")
+        self.assertIn("C 固件的扫码移动使用固定坐标目标", web)
+
     def test_reset_closes_pty_descriptors(self):
         lab.action(start())
         old = lab.SESSION
