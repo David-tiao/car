@@ -114,7 +114,7 @@ class CTaskSession:
                 ctypes.c_uint32, ctypes.c_int, ctypes.POINTER(HostTaskEvent)]
             self.lib.HostTask_Step.restype = ctypes.c_int
             for method in ("HostQr_State", "HostQr_Error", "HostQr_Completed",
-                           "HostQr_Session", "HostQr_Valid",
+                           "HostQr_Session", "HostQr_Valid", "HostQr_QrAccepted",
                            "HostTask_State", "HostTask_Completed",
                            "HostTask_PlanIndex", "HostTask_PlanCount"):
                 getattr(self.lib, method).restype = ctypes.c_int
@@ -265,7 +265,7 @@ class CTaskSession:
             "hardware_authorized": False,
             "state": self.state, "error": self.error,
             "phase": self.phase,
-            "qr_valid": bool(self.lib.HostQr_Valid()),
+            "qr_valid": bool(self.lib.HostQr_QrAccepted()),
             "qr_session": self.lib.HostQr_Session(),
             "completed_steps": self.completed,
             "total_steps": self.total,
