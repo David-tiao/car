@@ -82,8 +82,8 @@
           <details><summary>查看最近一次 TEST 诊断原始 JSON</summary><pre id="ctRaw">—</pre></details>
         </div>
       </div>`;
-    const nav=$('carModeSwitch');
-    if(nav)nav.after(panel);else document.querySelector('main')?.before(panel);
+    const focus=document.querySelector('.field-hero-panel') || $('carModeSwitch');
+    if(focus)focus.after(panel);else document.querySelector('main')?.before(panel);
     const topics=$('ctTopics');
     for(const name of Object.keys(names)) {
       const item=document.createElement('div');item.className='ct-topic';item.id='ctTopic'+name;

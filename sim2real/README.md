@@ -53,5 +53,7 @@ curl -s http://127.0.0.1:8080/api/telemetry
 ## 四运行集（新增）
 
 原 `car` 快捷命令保持不变：打开首页即纯模拟，页面导航可访问 `/sim`、`/test`、`/real`、`/keyboard`。
-测试和实车通过不同的 `/api/test/*`、`/api/real/*` 传输数据；`keyboard` 为 ROS2 `/cmd_vel` 的只读运动反馈页面；打开页面时由网站进程自动启动 ROS2 订阅，无须额外运行桥接脚本。原有键盘发布节点须独立运行；不会向 ROS2 或 STM32 下发控制。
+测试和实车通过不同的 `/api/test/*`、`/api/real/*` 传输数据；`keyboard` 使用原有 WASDQE 交互面板。Ubuntu 本机打开 `/keyboard` 时，网站自动启动现有的 PC ROS2 发布节点与网页反馈订阅节点，使用 `/car/teleop/local_test_twist`（`TwistStamped`），网页按实际 ROS2 回环数据渲染紫色 MOCK 小车，动画按浏览器刷新率更新。需要 ROS2 Humble，缺失时查询 `/api/keyboard/autostart`；可设置 `CAR_KEYBOARD_AUTOSTART=0` 禁用自动启动。**这不意味着 STM32 已连接，实体 UART TX/电机控制仍禁用。**
+
+原 `/cmd_vel` 独立只读观察器保留为旧代码兼容，但**不再是 `/keyboard` 默认页面或默认通信路径**。
 完整启动及验收步骤见 `sim2real/FOUR_MODES.md`。

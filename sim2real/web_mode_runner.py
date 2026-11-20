@@ -66,8 +66,6 @@ def require_site(port, mode=None):
             raise RuntimeError(f'Port {port} is occupied by a non-Sim2Real service')
         if not (probe(url + '/api/mode/status') or {}).get('channels'):
             raise RuntimeError('Existing car web process is an older version; stop car and restart it after installation')
-        if mode == 'keyboard' and (probe(url + '/api/keyboard/feedback') or {}).get('source_type') != 'KEYBOARD':
-            raise RuntimeError('Running car website is older than keyboard feedback patch; restart car')
         if mode == 'test' and (probe(url + '/api/test/inspection') or {}).get('source_type') != 'MOCK':
             raise RuntimeError('Running car website has old TEST API: stop it and rerun car')
         print('[REUSE] Existing Sim2Real HTTP server (for example, started by car)', flush=True)
@@ -104,33 +102,13 @@ def ros_pkg_exists(package):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('mode', choices=('test', 'real', 'keyboard'))
+    parser.add_argument('mode', choices=('test', 'real'))
     parser.add_argument('--port', type=int, default=int(os.environ.get('CAR_PORT', '8080')))
     parser.add_argument('--real-port', default=os.environ.get('CAR_REAL_PORT', ''))
-    parser.add_argument('--topic', default=os.environ.get('CAR_KEYBOARD_TOPIC', '/cmd_vel'))
-    parser.add_argument('--stamped', action='store_true')
-    parser.add_argument('--hz', type=float, default=20.0)
-    parser.add_argument('--timeout', type=float, default=0.5)
     parser.add_argument('--protocol', choices=('carlink', 'ulog43'), default=os.environ.get('CAR_REAL_PROTOCOL', 'carlink'))
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error('Port must be within 1024..65535')
-    if args.mode == 'keyboard':
-        url = require_site(args.port, 'keyboard')
-        command = [sys.executable, str(ROOT/'ros2_keyboard_feedback_bridge.py'),
-                   '--server', url, '--topic', args.topic, '--hz', str(args.hz),
-                   '--timeout', str(args.timeout)]
-        if args.stamped:
-            command.append('--stamped')
-        spawn('keyboard_feedback_bridge', command)
-        print(f'[WEB] {url}/keyboard', flush=True)
-        print('[OBSERVE] Browser follows existing ROS2 velocity topic; NO motor commands issued.', flush=True)
-        print('[STOP] Ctrl+C stops only this session and its child processes.', flush=True)
-        while True:
-            for process in CHILDREN:
-                if process.poll() is not None:
-                    raise RuntimeError(f'Keyboard child exited (code {process.returncode}); check {LOG_DIR}')
-            time.sleep(.4)
     if args.mode == 'test':
         os.environ['ROS_DOMAIN_ID'] = os.environ.get('CAR_TEST_ROS_DOMAIN_ID', '73')
         print('[ISOLATION] TEST domain=' + os.environ['ROS_DOMAIN_ID'], flush=True)
