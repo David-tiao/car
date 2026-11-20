@@ -19,6 +19,10 @@
         const slot=document.createElement('div');
         slot.id='fieldWorkbenchSlot';
         body.append(slot);
+      } else if(window.CarWebMode?.mode==='keyboard'){
+        const slot=document.createElement('div');
+        slot.id='fieldKeyboardSlot';
+        body.append(slot);
       }
     }
     // Keep existing map event listeners bound by app.js: append moves the node,
