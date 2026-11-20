@@ -323,17 +323,21 @@
         metric.ros_latency.textContent=r.online?
           `${r.status} · ${fmt(r.approx_ros2_latency_ms,1)} ms（估计）`:
           r.status||'ROS2 订阅端离线';
-        metric.pose.textContent=`${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw)}`;
+        const realMode=routeMode==='pi_stm32';
+        metric.pose.textContent=realMode?
+          `${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw)}`:'—（本机无实体里程计）';
         metric.desired.textContent=`${fmt(d.vx)} / ${fmt(d.vy)} / ${fmt(d.wz)}`;
-        metric.actual.textContent=`${fmt(m.vx)} / ${fmt(m.vy)} / ${fmt(m.wz)}`;
-        metric.error.textContent=c.error?
-          `${fmt(e.vx)} / ${fmt(e.vy)} / ${fmt(e.wz)}`:'—（未满足对比条件）';
-        metric.rms.textContent=c.rms_linear_mps!=null?
+        metric.actual.textContent=realMode?
+          `${fmt(m.vx)} / ${fmt(m.vy)} / ${fmt(m.wz)}`:'—（ROS2 回环不等于实测）';
+        metric.error.textContent=realMode&&c.error?
+          `${fmt(e.vx)} / ${fmt(e.vy)} / ${fmt(e.wz)}`:'—（无实体跟踪数据）';
+        metric.rms.textContent=realMode&&c.rms_linear_mps!=null?
           fmt(c.rms_linear_mps)+' m/s':'—';
-        metric.position.textContent=c.error?
+        metric.position.textContent=realMode&&c.error?
           fmt(e.relative_position_error_m)+' m / '+fmt(e.relative_yaw_error_rad)+' rad':'—';
-        metric.fresh.textContent=c.status+
-          (c.odom_age_s!=null?' · '+fmt(c.odom_age_s)+' s':'');
+        metric.fresh.textContent=realMode?
+          c.status+(c.odom_age_s!=null?' · '+fmt(c.odom_age_s)+' s':''):
+          'LOCAL_ROS2_ONLY · 无实际车体反馈';
         const realHistory=Array.isArray(history.samples)?history.samples:[];
         const rosHistory=Array.isArray(history.ros2_samples)?history.ros2_samples:[];
         lastHistory=routeMode==='local_ros2'?
@@ -351,6 +355,17 @@
         'integrated_target_x','integrated_target_y','integrated_target_yaw',
         'error_vx','error_vy','error_wz','error_linear_norm',
         'relative_position_error_m','relative_yaw_error_rad','source'];
+      if(routeMode==='local_ros2'){
+        for(const [a,b] of [['actual_vx','ros2_received_vx'],
+                             ['actual_vy','ros2_received_vy'],
+                             ['actual_wz','ros2_received_wz'],
+                             ['error_vx','ros2_command_delta_vx'],
+                             ['error_vy','ros2_command_delta_vy'],
+                             ['error_wz','ros2_command_delta_wz']]){
+          const index=cols.indexOf(a);
+          if(index>=0)cols[index]=b;
+        }
+      }
       const rows=[cols.join(',')];
       for(const x of lastHistory){
         rows.push([x.time_s??x.received_wall_s,x.odom_seq??'',
