@@ -110,6 +110,18 @@ class MappingTests(unittest.TestCase):
         self.assertGreater(second["rms_linear_mps"], 0)
         self.assertIn("relative_position_error_m", second["error"])
 
+    def test_stop_reports_measured_braking_residual_only_for_short_window(self):
+        self.state.accept(keys(1, pressed=["w"]))
+        self.state.accept({"action": "stop", "client_seq": 2})
+        report = self.state.compare(real_sample(10, vx=0.04))
+        self.assertEqual(report["status"], "STOP_SETTLING")
+        self.assertAlmostEqual(report["error"]["vx"], -0.04)
+        self.assertEqual(report["error"]["linear_norm_mps"], 0.04)
+        self.state.stop_settle_until = time.monotonic() - 1
+        report = self.state.compare(real_sample(11, vx=0.02))
+        self.assertEqual(report["status"], "DEADMAN_NOT_HELD")
+        self.assertIsNone(report["error"])
+
     def test_no_sensor_no_fabricated_measurement_or_error(self):
         self.state.accept(keys(1, pressed=["w"]))
         x = self.state.snapshot({"online": False, "sample": None, "age_s": None})
