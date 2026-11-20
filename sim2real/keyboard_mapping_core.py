@@ -400,7 +400,7 @@ def _local(ip):
 def handle_get(handler, real_reader):
     path = urlsplit(handler.path).path
     if path not in (PATH + "/status", PATH + "/intent", PATH + "/history",
-                    PATH + "/dryrun"):
+                    PATH + "/dryrun", PATH + "/mock_acceptance"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard diagnostics restricted to localhost"})
@@ -409,6 +409,9 @@ def handle_get(handler, real_reader):
         handler.respond_json(200, STATE.effective())
     elif path.endswith("/dryrun"):
         handler.respond_json(200, STATE.dryrun_snapshot())
+    elif path.endswith("/mock_acceptance"):
+        from keyboard_fault_lab import acceptance
+        handler.respond_json(200, acceptance())
     elif path.endswith("/history"):
         with STATE.lock:
             handler.respond_json(200, {"schema": "car_keyboard_error_history_v1",
