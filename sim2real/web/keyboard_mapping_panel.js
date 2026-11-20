@@ -146,6 +146,10 @@
     let mockLayer=null, mockResetInProgress=false;
     let mockResetVersion=0;
     let refreshRequestSeq=0, refreshAppliedSeq=0;
+    // ROS2/HTTP remains the authoritative MOCK pose. requestAnimationFrame
+    // only extrapolates the last fresh subscribed velocity for <=120ms.
+    let motionSnapshot=null, motionReceivedAt=0, motionBusy=false, motionEpoch=0;
+    let queuedDesired=false;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
     function paintMock(data){
@@ -160,6 +164,10 @@
       }
       if(data.preview_mode!=='direct')
         throw Error('映射集禁止启用碰撞/任务状态机预览');
+      if(!window.CarKeyboardPreviewMotion?.valid(data))
+        throw Error('ROS2 反馈运动数据不完整');
+      motionSnapshot=data;
+      motionReceivedAt=performance.now();
       twinStatus.textContent='电脑 ROS2 → 直通积分 · '+
         (data.state==='RUNNING'?'正在按订阅速度运动':'已停止（松键归零）');
       twinStats.textContent=
@@ -205,12 +213,45 @@
       const trail=mockLayer.querySelector('#keyboardMockChassisTrail');
       trail?.setAttribute('points',(data.trace||[]).map(p=>
         fx(p[0]).toFixed(1)+','+fy(p[1]).toFixed(1)).join(' '));
-      const angle=90-data.yaw_rad*180/Math.PI;
+      renderMockPose(data);
+    }
+    function renderMockPose(pose) {
+      if(!mockLayer||!mockLayer.isConnected)return;
+      const angle=90-pose.yaw_rad*180/Math.PI;
       mockLayer.querySelector('#keyboardMockChassisBody')?.setAttribute(
-        'transform',`translate(${fx(data.x_m).toFixed(2)} ${fy(data.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
+        'transform',`translate(${fx(pose.x_m).toFixed(2)} ${fy(pose.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
       const text=mockLayer.querySelector('#keyboardMockChassisCaption');
-      text?.setAttribute('x',String(fx(data.x_m)+15));
-      text?.setAttribute('y',String(fy(data.y_m)-16));
+      text?.setAttribute('x',String(fx(pose.x_m)+15));
+      text?.setAttribute('y',String(fy(pose.y_m)-16));
+    }
+    function animateMock() {
+      // Only the rendered pose is predicted; no writes to ROS2 or backend model.
+      if(!disposed && routeMode==='local_ros2' && motionSnapshot &&
+         !mockResetInProgress && !document.hidden) {
+        renderMockPose(window.CarKeyboardPreviewMotion.predict(
+          motionSnapshot, performance.now()-motionReceivedAt));
+      }
+      if(!disposed)requestAnimationFrame(animateMock);
+    }
+    async function refreshMotion() {
+      if(disposed||routeMode!=='local_ros2'||mockResetInProgress||
+         motionBusy||document.hidden)return;
+      motionBusy=true;
+      const startedEpoch=motionEpoch;
+      try {
+        const response=await fetch(ENDPOINT+'/dryrun',{cache:'no-store'});
+        if(!response.ok)throw Error('HTTP '+response.status);
+        const mock=await response.json();
+        if(startedEpoch!==motionEpoch||routeMode!=='local_ros2'||
+           mockResetInProgress)return;
+        paintMock(mock);
+      }catch(err){
+        // On HTTP outage the short extrapolation cap prevents endless motion.
+        if(startedEpoch===motionEpoch)
+          twinStatus.textContent='ROS2 位姿采样不可用：'+String(err);
+      }finally{
+        motionBusy=false;
+      }
     }
     async function mockPost(payload){
       const res=await fetch(ENDPOINT+'/dryrun',{method:'POST',
@@ -231,6 +272,8 @@
       // Invalidate any in-flight GET /dryrun response: the previous state
       // must never redraw an old vehicle position after a scene reset.
       refreshAppliedSeq=++refreshRequestSeq;
+      motionEpoch++; // Discard any pre-reset in-flight motion snapshot.
+      motionSnapshot=null;
       const payload=currentMap();
       payload.reset_seq=nextSeq();
       const version=++mockResetVersion;
@@ -306,6 +349,8 @@
     async function switchRoute(mode){
       if(routeChanging||mode===routeMode)return;
       routeChanging=true;
+      motionEpoch++; // Discard any old route's in-flight motion snapshot.
+      motionSnapshot=null;
       enabled.checked=false;active.clear();shift=false;holdTest=false;
       refreshKeys();
       for(const b of [routeLocal,routePi])b.disabled=true;
@@ -330,6 +375,15 @@
     routePi.addEventListener('click',()=>switchRoute('pi_stm32'));
     async function stopNow(disable=false){
       active.clear();
+      queuedDesired=false;
+      // A released key must stop the visual prediction immediately, without
+      // waiting for the next HTTP round trip or creating a fake ROS2 receipt.
+      motionEpoch++;
+      if(motionSnapshot) {
+        motionSnapshot={...motionSnapshot,state:'STOPPED',
+          velocity:{vx:0,vy:0,wz:0},
+          input_provenance:'ZERO_NO_FRESH_LOCAL_ROS2_OR_DEADMAN'};
+      }
       shift=false;holdTest=false;
       if(disable)enabled.checked=false;
       for(const b of keyButtons.values())b.classList.remove('pressed');
@@ -341,14 +395,26 @@
         status.textContent='已停止候选指令 · STM32 实际发送仍禁止';
         status.dataset.state='stopped';
       }catch(err){status.textContent='停车请求失败，服务器 300ms 超时自动输出零速度：'+err;}
-      finally{pendingStop=false;}
+      finally{
+        pendingStop=false;
+        if(queuedDesired) {
+          queuedDesired=false;
+          sendNow();
+        }
+      }
     }
     function sendNow(){
       if(!localOnly()){
         status.textContent='映射集仅允许从本机 localhost 操作';
         return;
       }
-      if(sendBusy||pendingStop||routeChanging)return;
+      if(routeChanging)return;
+      if(sendBusy||pendingStop){
+        // Keep the latest key combination; do not lose A/D while W's POST
+        // is still in flight. client_seq still rejects late older packets.
+        queuedDesired=true;
+        return;
+      }
       sendBusy=true;
       const packet=desiredBody();
       post(packet).then(()=>{
@@ -360,7 +426,13 @@
         // A superseded keydown must not overwrite the STOP indicator.
         if(!pendingStop && packet.client_seq===sequence)
           status.textContent='键盘候选指令未送达：'+e;
-      }).finally(()=>{sendBusy=false;});
+      }).finally(()=>{
+        sendBusy=false;
+        if(queuedDesired && !pendingStop && !routeChanging) {
+          queuedDesired=false;
+          sendNow();
+        }
+      });
     }
     function refreshKeys(){
       for(const [key,b] of keyButtons)b.classList.toggle(
@@ -405,6 +477,7 @@
       if(!KEYS.has(key)||
         (routeMode!=='local_ros2'&&!enabled.checked))return;
       ev.preventDefault();
+      if(active.has(key))return; // OS key-repeat must not flood HTTP.
       active.add(key);refreshKeys();sendNow();
     });
     window.addEventListener('keyup',ev=>{
@@ -413,18 +486,20 @@
         if(routeMode!=='local_ros2'){shift=false;stopNow();}
         return;
       }
-      if(!KEYS.has(key))return;
+      if(!KEYS.has(key)||!active.has(key))return;
       active.delete(key);refreshKeys();sendNow();
     });
     for(const [key,b] of keyButtons){
       b.addEventListener('pointerdown',ev=>{
         if(routeMode!=='local_ros2'&&!enabled.checked)return;
-        active.add(key);refreshKeys();sendNow();
+        if(!active.has(key)) {
+          active.add(key);refreshKeys();sendNow();
+        }
         try{b.setPointerCapture(ev.pointerId);}catch(_){}
         ev.preventDefault();
       });
       const released=()=>{
-        active.delete(key);refreshKeys();sendNow();
+        if(active.delete(key)){refreshKeys();sendNow();}
       };
       b.addEventListener('pointerup',released);
       b.addEventListener('pointercancel',released);
@@ -484,16 +559,15 @@
       if(disposed)return;
       const requestSeq=++refreshRequestSeq;
       try{
-        const [rs,rh,rm,ra]=await Promise.all([
+        const [rs,rh,ra]=await Promise.all([
           fetch(ENDPOINT+'/status',{cache:'no-store'}),
           fetch(ENDPOINT+'/history',{cache:'no-store'}),
-          fetch(ENDPOINT+'/dryrun',{cache:'no-store'}),
           fetch(ENDPOINT+'/health',{cache:'no-store'})
         ]);
-        if(!rs.ok||!rh.ok||!rm.ok||!ra.ok)throw Error(
+        if(!rs.ok||!rh.ok||!ra.ok)throw Error(
           '映射集 API 不完整；更新代码后需要重启 server.py');
         const data=await rs.json(),history=await rh.json(),
-          mock=await rm.json(),health=await ra.json();
+          health=await ra.json();
         // HTTP GETs can return out of order. Never repaint stale vehicle
         // positions or older control status on top of newer samples.
         if(requestSeq<=refreshAppliedSeq||mockResetInProgress)return;
@@ -503,7 +577,6 @@
           throw Error('链路诊断数据来源不合法');
         healthStatus.textContent='ROS2 直通诊断 '+health.reason+'：'+health.hint;
         healthStatus.dataset.reason=health.reason;
-        if(routeMode==='local_ros2')paintMock(mock);
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
         if(data.route_mode!=='local_ros2'&&data.route_mode!=='pi_stm32')
@@ -593,13 +666,16 @@
       status.textContent='需在运行 HTTP 服务的电脑上通过 localhost 打开映射集';
     }
     draw([]);
+    refreshMotion();
     refresh();
+    if(window.requestAnimationFrame)requestAnimationFrame(animateMock);
+    setInterval(refreshMotion,75); // 13Hz authoritative motion snapshots.
     setInterval(()=>{
       // This is only a network-loss watchdog heartbeat, NOT a motion FSM:
       // refresh active direct keys while held; release transmits zero.
       if(deadmanHeld()&&active.size>0&&!document.hidden)sendNow();
     },100);
-    setInterval(refresh,250);
+    setInterval(refresh,300); // Metrics / history need not block 60fps SVG.
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',mount);
   else mount();

@@ -1,5 +1,7 @@
 # 映射集当前行为：键盘直通（2026-11-20）
 
+**动画流畅性优化：** 本机 ROS2 的位置快照独立以约 75ms 更新，紫色 MOCK 车通过浏览器 `requestAnimationFrame` 按屏幕刷新率绘制（通常 60Hz）。帧间只按**最后一次实际订阅的速度消息**最多外推 120ms，以消除 250ms 一跳的视觉问题；超出这个窗口不再继续前进，刷新/松键/重置也不伪造 ROS2 消息。数据卡片和误差统计约每 300ms 更新。键盘长按不会因系统键盘重复事件重复发送请求；组合键变更可在上一 HTTP 请求结束后立刻补发最新状态。**这只是网页渲染优化，不是实体运动实测或新的电机控制通道。**
+
 **网页自动启动 ROS2（新增）：** 在 Ubuntu 本机启动网站后，打开 `/keyboard` 将自动启动现有的 PC ROS2 发布与 Web 订阅回传两个节点；不需要第二个终端运行 `start_keyboard_local_ros2.sh`。保留原有 WASDQE 按键、限速及消息格式，本机话题依旧是 `/car/teleop/local_test_twist` (`TwistStamped`)。运行环境需有 `/opt/ros/humble/setup.bash`；如果自动启动失败，查看 `/api/keyboard/autostart` 和 `sim2real/data/web_modes/keyboard_local_autostart.log`。设置 `CAR_KEYBOARD_AUTOSTART=0` 可关闭自动启动并继续使用下文的手动方式。网站退出时清理自动启动的两个节点，不会启动 Pi 或 STM32 实体驱动。
 
 **本机模式已改为最简单的电脑 ROS 2 → 网页反馈，不使用任务 FSM 或场地约束。**

@@ -49,6 +49,8 @@ for file in ("sim2real/keyboard_mapping_core.py",
 PY
 if command -v node >/dev/null 2>&1; then
   node --check sim2real/web/keyboard_mapping_panel.js
+  node --check sim2real/web/keyboard_preview_motion.js
+  node sim2real/tests/test_keyboard_preview_motion.js
   node --check sim2real/web/mode_router.js
   node sim2real/tests/test_mode_router.js
 fi
