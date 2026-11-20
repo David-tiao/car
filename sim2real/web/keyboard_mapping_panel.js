@@ -106,6 +106,8 @@
     const twinToolbar=$('div',twinPanel);twinToolbar.className='keyboard-twin-toolbar';
     const twinReset=$('button',twinToolbar,'复位虚拟底盘');
     twinReset.type='button';
+    const twinQa=$('button',twinToolbar,'运行 7 项离线验收');
+    twinQa.type='button';
     const faultLabel=$('label',twinToolbar,'软件故障注入');
     const twinFault=$('select',faultLabel);
     for(const [value,title] of [
@@ -117,6 +119,8 @@
     twinStatus.className='keyboard-twin-status';
     const twinStats=$('div',twinPanel,'运动位置：— · 模拟速度：— · 模型误差：—');
     twinStats.className='keyboard-twin-stats';
+    const twinQaResults=$('pre',twinPanel,'七项验收尚未运行');
+    twinQaResults.className='keyboard-twin-qa';
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
     pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
     const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
@@ -239,6 +243,24 @@
       }
     }
     twinReset.addEventListener('click',()=>resetMock(true));
+    twinQa.addEventListener('click',async()=>{
+      twinQa.disabled=true;
+      twinQaResults.textContent='运行软件模型故障矩阵…';
+      try{
+        const res=await fetch(ENDPOINT+'/mock_acceptance',{cache:'no-store'});
+        const result=await res.json();
+        if(!res.ok||result.source_type!=='MOCK_KINEMATIC_ONLY'||
+           result.hardware_authorized!==false)
+          throw Error('离线验收返回非法结果');
+        twinQaResults.textContent=
+          (result.passed?'离线模型：PASS':'离线模型：FAIL')+
+          ' · '+result.summary.PASS+'/'+result.cases.length+' 项\n'+
+          result.cases.map(c=>(c.passed?'✓ ':'✗ ')+c.case+
+            ' — '+c.description).join('\n');
+      }catch(err){
+        twinQaResults.textContent='测试执行失败：'+err;
+      }finally{twinQa.disabled=false;}
+    });
     twinFault.addEventListener('change',async()=>{
       try{
         const data=await mockPost({action:'fault',
