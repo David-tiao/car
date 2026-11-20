@@ -153,6 +153,7 @@
       ['127.0.0.1','localhost','::1'].includes(window.location.hostname);
 
     let mockLayer=null, lastMapSignature=null, mockResetInProgress=false;
+    let mockResetVersion=0, lastResetReason='';
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
     function paintMock(data){
@@ -237,23 +238,43 @@
           field.blocked_cells:[]
       };
     }
-    async function resetMock(stopKeys=true){
-      if(mockResetInProgress||!localOnly())return;
+    async function resetMock(stopKeys=true, reason='手动复位'){
+      if(!localOnly())return;
+      // A scene-sync/map update may finish while a previous reset is still
+      // awaiting HTTP. The latest scene wins; prevent old async responses
+      // from repainting the new car at an obsolete start pose.
+      const payload=currentMap();
+      const signature=JSON.stringify(payload);
+      if(stopKeys && signature===lastMapSignature && reason==='地图变化')
+        return;
+      const version=++mockResetVersion;
       mockResetInProgress=true;
       try{
-        if(stopKeys)await stopNow();
-        const payload=currentMap();
-        lastMapSignature=JSON.stringify(payload);
+        if(stopKeys){
+          await stopNow();
+          if(version!==mockResetVersion)return;
+        }
         const twin=await mockPost(payload);
+        if(version!==mockResetVersion)return;
+        lastMapSignature=signature;
+        lastResetReason=reason;
         twinFault.value='none';
         paintMock(twin);
+        if(stopKeys){
+          const note='MOCK 已复位（'+reason+'）；原按键已清零，请松开再重新按住 Shift+W，或重新按住本机前进按钮。';
+          twinStatus.textContent=note;
+          healthStatus.textContent=note;
+          healthStatus.dataset.reason='SCENE_REARM_REQUIRED';
+          status.textContent=note;
+        }
       }catch(err){
-        twinStatus.textContent='MOCK 复位失败：'+err;
+        if(version===mockResetVersion)
+          twinStatus.textContent='MOCK 复位失败：'+err;
       }finally{
-        mockResetInProgress=false;
+        if(version===mockResetVersion)mockResetInProgress=false;
       }
     }
-    twinReset.addEventListener('click',()=>resetMock(true));
+    twinReset.addEventListener('click',()=>resetMock(true,'手动复位'));
     twinQa.addEventListener('click',async()=>{
       twinQa.disabled=true;
       twinQaResults.textContent='运行软件模型故障矩阵…';
@@ -281,7 +302,8 @@
     });
     window.addEventListener('sim2real:field-changed',()=>{
       const signature=JSON.stringify(currentMap());
-      if(signature!==lastMapSignature)resetMock(true);
+      if(signature!==lastMapSignature)
+        resetMock(true,'地图变化');
     });
     const deadmanHeld=()=>enabled.checked&&(shift||holdTest);
     const wantKeys=()=>deadmanHeld()?[...active]:[];
@@ -600,7 +622,9 @@
     draw([]);
     resetMock(false).then(refresh);
     setInterval(()=>{
-      if(enabled.checked&&shift&&!document.hidden)sendNow();
+      // Both the physical Shift key and the on-screen pointer-hold button
+      // are deadman sources. Without this, mouse driving stops after 300ms.
+      if(deadmanHeld()&&active.size>0&&!document.hidden)sendNow();
     },100);
     setInterval(refresh,250);
   }
