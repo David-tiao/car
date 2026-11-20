@@ -87,6 +87,8 @@ class KeyboardRecoveryTests(unittest.TestCase):
         self.assertIn("const deadmanHeld=()=>enabled.checked&&(shift||holdTest)", ui)
         self.assertIn("payload.reset_seq=nextSeq()", ui)
         self.assertIn("signature===lastMapSignature", ui)
+        self.assertIn("requestSeq<=refreshAppliedSeq", ui)
+        self.assertIn("refreshAppliedSeq=++refreshRequestSeq", ui)
         self.assertIn("请松开再重新按住 Shift+W", ui)
 
     def test_competition_robot_is_hidden_in_keyboard_mode(self):
