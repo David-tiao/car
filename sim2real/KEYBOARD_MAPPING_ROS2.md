@@ -1,5 +1,7 @@
 # 映射集当前行为：键盘直通（2026-11-20）
 
+**网页自动启动 ROS2（新增）：** 在 Ubuntu 本机启动网站后，打开 `/keyboard` 将自动启动现有的 PC ROS2 发布与 Web 订阅回传两个节点；不需要第二个终端运行 `start_keyboard_local_ros2.sh`。保留原有 WASDQE 按键、限速及消息格式，本机话题依旧是 `/car/teleop/local_test_twist` (`TwistStamped`)。运行环境需有 `/opt/ros/humble/setup.bash`；如果自动启动失败，查看 `/api/keyboard/autostart` 和 `sim2real/data/web_modes/keyboard_local_autostart.log`。设置 `CAR_KEYBOARD_AUTOSTART=0` 可关闭自动启动并继续使用下文的手动方式。网站退出时清理自动启动的两个节点，不会启动 Pi 或 STM32 实体驱动。
+
 **本机模式已改为最简单的电脑 ROS 2 → 网页反馈，不使用任务 FSM 或场地约束。**
 该段为最新实现说明；后续文档里提到的 Shift 使能、碰撞停车、加速模型、
 软件故障注入属于此前版本/独立测试实验室，不再适用于默认的 `/keyboard`。

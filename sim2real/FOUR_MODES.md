@@ -67,6 +67,8 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 
 ## 5. 映射集
 
+**新方式：** 在 Ubuntu 本机启动现有网站（`car` 默认为 8080，或 `python3 sim2real/server.py --host 127.0.0.1 --port 8090`），然后从该电脑打开对应端口的 `/keyboard`。网站会自动通过原有 `start_keyboard_local_ros2.sh` 启动 ROS2 PC 发布节点和独立订阅回传节点。保留原 WASDQE 按键映射、现有网页与 `local_test_twist` 话题，不创建新的 `/cmd_vel` 控制通道。需预先安装 ROS2 Humble；缺失时查看 `/api/keyboard/autostart` 或 `sim2real/data/web_modes/keyboard_local_autostart.log`。只有本机访问会启动进程，LAN 访问只显示页面。关闭网站会结束其自动启动的节点。可以设置 `CAR_KEYBOARD_AUTOSTART=0` 禁用自动启动，沿用原手动脚本。**此功能仅为本机软件回环，绝不授权 STM32 电机驱动。**
+
 打开 `http://127.0.0.1:8080/keyboard` 后，默认就是**本机键盘直通 ROS2**：
 直接按 W/S 前后、A/D 左右平移、Q/E 转向，**无 Shift 使能、无任务 FSM、
 无加速斜坡、无地图障碍锁停、无自动复位**。电脑 ROS2 的

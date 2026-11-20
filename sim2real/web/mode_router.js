@@ -95,9 +95,19 @@
           const data = await response.json();
           const label = data.route_mode === 'local_ros2' ?
             '本机 ROS2 回环' : '树莓派候选链路';
+          let autostart = '';
+          try {
+            const report = await fetch('/api/keyboard/autostart', {cache:'no-store'});
+            if (report.ok) {
+              const info = await report.json();
+              autostart = info.running ? ' · 本机ROS2节点运行中'
+                : info.message ? ' · 启动失败（见键盘反馈日志）'
+                : ' · 等待本机打开映射集';
+            }
+          } catch (_) {}
           status.textContent = 'MAPPING · ' + label + ' · ' +
             (data.ros2_feedback?.online ? '话题已收到' : '等待 ROS2 话题') +
-            ' · 电机未连接';
+            autostart + ' · 电机未连接';
         } catch (_) {
           status.textContent = 'MAPPING · 本机映射接口不可用 / 电机未连接';
         }

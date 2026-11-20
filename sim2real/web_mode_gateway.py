@@ -19,6 +19,7 @@ import test_mission_store
 import test_v4_qr_lab
 import test_stm32_fsm_lab
 import keyboard_mapping_core
+import keyboard_local_ros2_autostart
 
 MODES = ('test', 'real')
 LAYER_NAMES = ('map', 'global_costmap', 'local_costmap')
@@ -126,6 +127,8 @@ def _real_odom_for_keyboard():
 
 def mode_get(handler):
     """Return True when request was handled, else allow the old server to run."""
+    if keyboard_local_ros2_autostart.handle_get(handler):
+        return True
     if keyboard_mapping_core.handle_get(handler, _real_odom_for_keyboard):
         return True
     if test_inspection.handle_get(handler):
