@@ -45,7 +45,7 @@
       return input;
     }
     const qr=field('比赛二维码','156+123+516+231');qr.maxLength=15;
-    const roads=field('禁行路段（逗号分隔）','');roads.placeholder='例如 B3-C3';
+    const roads=field('附加手动封路（可留空）','');roads.placeholder='地图红格自动同步；可补充 B3-C3';
     const zoneLabel=$('label',editor,'出发区域');
     const zone=$('select',zoneLabel);
     for(const [id,name] of [['upper_right','右上启停区'],['lower_right','右下启停区']]){
@@ -53,7 +53,7 @@
     }
     const faultLabel=$('label',editor,'故障注入');
     const fault=$('select',faultLabel);
-    for(const [id,name] of [['none','正常执行'],['failed_at_3','第 3 步失败'],['missing_ack_at_2','第 2 步无 ACK']]){
+    for(const [id,name] of [['none','正常执行'],['failed_at_3','第 3 步失败'],['missing_ack_at_2','第 2 步无 ACK'],['qr_timeout','C 扫码超时']]){
       const option=$('option',fault,name);option.value=id;
     }
 
@@ -63,6 +63,7 @@
       const b=$('button',controls,label);b.type='button';b.dataset.action=act;buttons.push(b);
     }
     const [start,step,run,reset]=buttons;
+    const mapInfo=$('div',panel,'等待读取场地障碍格…');mapInfo.className='cfsm-map-status';
     const output=$('div',panel);output.className='cfsm-output';
     const state=$('div',output,'未初始化');state.className='cfsm-status';
     const progress=$('div',output,'等待模拟 STM32 状态机');
@@ -73,6 +74,7 @@
     note.className='cfsm-notice';
 
     let selected='pty',busy=false,needsInit=true,epoch=0,vehicle=null,trail=null,group=null;
+    let fieldSnapshot=null,previewSerial=0,blockedOverlay=null;
     function choose(mode){
       if(selected!==mode)needsInit=true;
       selected=mode;
@@ -81,7 +83,7 @@
         b.setAttribute('aria-pressed',String(active));
         b.classList.toggle('selected',active);
       }
-      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'原生 STM32 C 任务状态机（从原料区 B3 开始）')+
+      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'C RaceFsm 扫码路线（8 步）→ 物料任务计划（34 步）')+
         ' · 切换后请点击初始化任务';
       step.disabled=busy||needsInit;run.disabled=busy||needsInit;
     }
@@ -178,8 +180,8 @@
       state.textContent=`MOCK · ${data.engine==='code_fsm'?'STM32 C':'CAR-LINK PTY'} · ${s.state}${s.error?' · '+s.error:''}`;
       state.dataset.state=s.state;
       progress.textContent=`进度 ${s.completed_steps}/${s.total_steps} · #${s.cmd_id} ${s.kind} · 模拟节点 ${s.node}`;
-      details.textContent=`动作 ${s.event} · 模拟抓取 ${s.pick_count} / 放置 ${s.place_count} / 码垛 ${s.stack_count} · 返程 ${s.home_confirmed?'已完成':'未完成'}`;
-      log.textContent=(s.events||[]).map(e=>`#${e.cmd_id} ${e.event}${e.reason?' — '+e.reason:''}`).join('\n')||'等待 ACK / COMPLETED 回执';
+      details.textContent=`${s.phase||'PTY'} · ${s.event} · 二维码 ${s.qr_valid?'已确认':'等待确认'}${s.qr_session?' · session '+s.qr_session:''} · 模拟抓取 ${s.pick_count} / 放置 ${s.place_count} / 码垛 ${s.stack_count} · 返程 ${s.home_confirmed?'完成':'未完成'}`;
+      log.textContent=(s.events||[]).map(e=>`#${e.cmd_id} ${e.kind||''} · ${e.event}${e.reason?' — '+e.reason:''}`).join('\n')||'等待 ACK / COMPLETED 回执';
     }
     async function request(body){
       const response=await fetch(API,{method:'POST',headers:{'Content-Type':'application/json'},
@@ -204,6 +206,7 @@
           const data=await request({action:'start',engine:selected,
              start_zone:zone.value,task_code:qr.value.trim(),
              blocked_roads:roads.value.split(',').map(x=>x.trim()).filter(Boolean),
+             blocked_cells:fieldSnapshot?.blocked_cells||[],
              fault:fault.value});
           render(data);
           resetMap(data.transition?.points?.[0] || [2.05,2.05]);
@@ -215,6 +218,7 @@
           await singleStep(seq);
         }else{
           for(let n=0;n<80;n++){
+            if(seq!==epoch)break;
             const data=await singleStep(seq);
             if(data.snapshot?.state==='DONE'||data.snapshot?.state==='FAULT')break;
             // Non-drive actions are rendered at their node, without fake travel.
@@ -229,6 +233,78 @@
         run.disabled=needsInit;
       }
     }
+    // Authoritative shared map source: the 5×5 field editor publishes the
+    // occupied red CELL IDs. The backend projects them to blocked road edges.
+    function currentField(){
+      const data=window.Sim2RealCore?.getTestFieldSnapshot?.();
+      if(!data || data.source_type!=='MAP_EDITOR_TEST_ONLY' ||
+         !Array.isArray(data.blocked_cells))return null;
+      return data;
+    }
+    function overlayBlockedRoads(segments){
+      const svg=document.getElementById('fieldSvg');
+      if(!svg)return;
+      if(blockedOverlay)blockedOverlay.remove();
+      blockedOverlay=addSVG(svg,'g',{
+        id:'testBlockedRoadOverlay','pointer-events':'none',
+        'aria-label':'由地图障碍格推导的封闭路段'
+      });
+      for(const seg of segments){
+        const a=point(seg.from),b=point(seg.to);
+        addSVG(blockedOverlay,'line',{
+          x1:a[0],y1:a[1],x2:b[0],y2:b[1],
+          stroke:'#ef4755','stroke-width':12,'stroke-opacity':.48,
+          'stroke-dasharray':'18 9','stroke-linecap':'round'
+        });
+      }
+    }
+    async function refreshFieldPreview(){
+      const snapshot=currentField();
+      if(!snapshot){mapInfo.textContent='场地编辑器尚未就绪';return;}
+      fieldSnapshot=snapshot;
+      zone.value=snapshot.start_zone;
+      const id=++previewSerial;
+      try{
+        const data=await request({
+          action:'preview',blocked_cells:snapshot.blocked_cells,
+          blocked_roads:roads.value.split(',').map(x=>x.trim()).filter(Boolean)
+        });
+        if(id!==previewSerial)return;
+        const preview=data.preview;
+        if(!preview||preview.source_type!=='MAP_EDITOR_TEST_ONLY')throw Error('地图封路预览来源错误');
+        const summary=preview.cell_mapping.map(m=>
+          `CELL ${m.cell} → ${m.roads.length?m.roads.join('、'):'不与道路中心线相交'}`).join('  |  ');
+        mapInfo.textContent='地图自动封路：'+(summary||'无红色障碍格')+
+            ' · 当前禁行路段：'+(preview.blocked_roads.join('、')||'无')+
+            ' · 仅按道路中心线投影，不代表真实车体碰撞校验';
+        overlayBlockedRoads(preview.road_segments||[]);
+      }catch(err){
+        if(id===previewSerial)mapInfo.textContent='地图封路同步失败：'+String(err);
+      }
+    }
+    async function onFieldChanged(){
+      const old=fieldSnapshot?.blocked_cells?.join(',')||'';
+      const next=currentField();
+      if(!next)return;
+      fieldSnapshot=next;
+      if(old!==next.blocked_cells.join(',') && !needsInit){
+        epoch++;
+        needsInit=true;step.disabled=true;run.disabled=true;
+        state.textContent='地图障碍格已改变：旧模拟路线失效，请重新初始化任务';
+        state.dataset.state='FAULT';
+        try{await request({action:'reset'});}
+        catch(err){mapInfo.textContent='清理旧模拟会话失败：'+String(err);}
+        if(group){group.remove();group=null;vehicle=null;trail=null;}
+      }
+      refreshFieldPreview();
+    }
+    window.addEventListener('sim2real:field-changed',onFieldChanged);
+    roads.addEventListener('change',()=>{
+      needsInit=true;step.disabled=true;run.disabled=true;
+      state.textContent='附加封锁路段改变，需重新初始化';
+      refreshFieldPreview();
+    });
+    refreshFieldPreview();
     for(const b of buttons)b.addEventListener('click',()=>send(b.dataset.action));
     fetch(API,{cache:'no-store'}).then(r=>r.json()).then(data=>{
       validate(data);render(data);
