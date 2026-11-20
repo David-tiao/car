@@ -42,6 +42,7 @@ def real_sample(seq, vx=0.09, vy=0.0, wz=0.0, origin="REAL:ros2_odom"):
     return {"online": True, "age_s": 0.05, "sample": {
         "source_type": "REAL", "source": origin, "seq": seq,
         "received_at": time.time()+0.1, "frame": "odom",
+        "twist_frame": "base_link",
         "x": 1.0+seq*0.01, "y": 1.0, "yaw": 0.0,
         "vx": vx, "vy": vy, "wz": wz}}
 
