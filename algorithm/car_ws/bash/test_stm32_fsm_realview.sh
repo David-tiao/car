@@ -3,7 +3,7 @@
 # Runs real anonymous PTY simulator + genuine RaceTaskPlan C source via GCC.
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-ROOT="$(cd -- "$HERE/../../../.." && pwd -P)"
+ROOT="$(cd -- "$HERE/../../.." && pwd -P)"
 MISSION="$ROOT/algorithm/car_ws/src/car_rule_mission"
 STM="$ROOT/STM32F4"
 export PYTHONDONTWRITEBYTECODE=1
