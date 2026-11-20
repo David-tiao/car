@@ -279,7 +279,7 @@ class CTaskSession:
             "y_m": round(self.position[1], 4),
             "pose_source": "DISCRETE_ROAD_NODE",
             "mock_executions": self.completed,
-            "events": self.events[-20:],
+            "events": self.events[-50:],
         }
 
     def close(self):
