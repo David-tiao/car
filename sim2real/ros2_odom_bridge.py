@@ -52,7 +52,7 @@ def main():
             v=msg.twist.twist
             payload={'x':p.x, 'y':p.y, 'yaw':yaw_from_quat(msg.pose.pose.orientation),
                      'vx':v.linear.x, 'vy':v.linear.y, 'wz':v.angular.z,
-                     'source':'ros2_odom', 'frame':msg.header.frame_id or 'odom'}
+                     'source':'ros2_odom', 'frame':msg.header.frame_id or 'odom', 'twist_frame':msg.child_frame_id or ''}
             try:
                 body=json.dumps(payload).encode('utf-8')
                 request=Request(args.server.rstrip('/')+'/api/telemetry',data=body,

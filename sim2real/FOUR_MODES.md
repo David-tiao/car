@@ -7,9 +7,9 @@
 | 纯模拟集 | `http://127.0.0.1:8080/sim` | 本地 JS 仿真算法 | 仅浏览器内部模拟 |
 | 测试集 | `http://127.0.0.1:8080/test` | 模拟 MCU → Linux PTY → ROS 2 → HTTP | 只读 |
 | 运行集 | `http://127.0.0.1:8080/real` | 实际 STM32 → 串口 → ROS 2 → HTTP | 只读 |
-| 映射反馈 | `http://127.0.0.1:8080/keyboard` | 电脑 ROS2 `/cmd_vel` → 网页估算轨迹 | **只读**；不控制 STM32 |
+| 映射集 | `http://127.0.0.1:8080/keyboard` | WASDQE → 本机 PC ROS2 → 网页直接积分（无任务 FSM/障碍锁停）；未来 Pi 链路预留 | **实体 STM32 TX 禁止**，PC ROS2 回环可测试 |
 
-原 `car` 命令仍在 8080 端口启动独立网站；首页 `/` 等价于纯模拟模式，四模式仍从原网页导航切换。`/sim`、`/test`、`/real` 复用既有前端；`/keyboard` 使用独立的极简反馈页，不加载任务规划、地图限位或状态机。
+原 `car` 命令仍在 8080 端口启动独立网站；首页 `/` 等价于纯模拟模式，新增四模式切换菜单。**不要把四套前端复制成四份项目**。所有页面共用 `sim2real/web/index.html`、`app.js`、`planner.js` 等已有资产。
 
 ## 1. 安装后，在 Ubuntu 上验收
 
@@ -22,7 +22,7 @@ python3 -m unittest discover -s tests -p 'test_four_modes.py' -v
 node tests/test_mode_router.js
 ```
 
-预期：doctor 打印各项检查通过；原四模式测试通过，另执行 `python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_feedback.py' -v` 验证键盘反馈积分与隔离接口。这些离线测试不代表 ROS2 或实机已经接通。
+预期：doctor 打印各项检查通过；`unittest` 中 6 项测试全部 `ok`，最后 `OK`。这验证页面路由、接口隔离、数据有效性、跨站拒绝及键盘命令禁用，不代表 ROS 2 或实机已接通。
 
 ## 2. 纯模拟集（原有快捷命令）
 
@@ -67,17 +67,27 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 
 ## 5. 映射集
 
-在电脑上启动原有网页 `car`，然后访问 `http://127.0.0.1:8080/keyboard`。从本机访问该页面将自动启动 ROS2 Humble 只读订阅，不需单独运行桥接脚本。现有键盘控制节点继续使用原来的按键映射，网页只从 `/cmd_vel` 获取 vx、vy、wz 并积分成**估算**位置；不需要地图、避障、导航或任务状态机。默认订阅 `/cmd_vel`（Twist）。其他话题可在启动 `car` 前通过 `CAR_KEYBOARD_TOPIC=/你的话题 car` 指定；`TwistStamped` 可设置 `CAR_KEYBOARD_STAMPED=1 car`。自动订阅只处理 ROS2 → 网页反馈，不会启动原键盘控制发布节点。也保留 `bash algorithm/car_ws/bash/web.sh keyboard --topic /你的话题 --stamped` 手动入口。连续超过默认 0.5 秒未收到速度指令，估算速度归零；此行为不向电机发送停车指令。`POST /api/keyboard/command` 仍返回 HTTP 403。网页显示不能证明实体运动。比赛运行期间禁止遥控。
+**新方式：** 在 Ubuntu 本机启动现有网站（`car` 默认为 8080，或 `python3 sim2real/server.py --host 127.0.0.1 --port 8090`），然后从该电脑打开对应端口的 `/keyboard`。网站会自动通过原有 `start_keyboard_local_ros2.sh` 启动 ROS2 PC 发布节点和独立订阅回传节点。保留原 WASDQE 按键映射、现有网页与 `local_test_twist` 话题，不创建新的 `/cmd_vel` 控制通道。需预先安装 ROS2 Humble；缺失时查看 `/api/keyboard/autostart` 或 `sim2real/data/web_modes/keyboard_local_autostart.log`。只有本机访问会启动进程，LAN 访问只显示页面。关闭网站会结束其自动启动的节点。可以设置 `CAR_KEYBOARD_AUTOSTART=0` 禁用自动启动，沿用原手动脚本。**此功能仅为本机软件回环，绝不授权 STM32 电机驱动。**
+
+打开 `http://127.0.0.1:8080/keyboard` 后，默认就是**本机键盘直通 ROS2**：
+直接按 W/S 前后、A/D 左右平移、Q/E 转向，**无 Shift 使能、无任务 FSM、
+无加速斜坡、无地图障碍锁停、无自动复位**。电脑 ROS2 的
+`/car/teleop/local_test_twist` 由独立订阅节点回传给网页，
+虚拟紫色车只对订阅到的车体速度做数学积分，不是实车里程计。
+松开按钮立即归零，丢失通信的 300ms 看门狗保留。
+
+可手动切换到未来的 PC→Pi→STM32 候选链路，那个模式的安全约束保持原样。
+**实体 UART 尚未连接，网页不会发送 `/cmd_vel`、电机或机构命令。**
+原有 `POST /api/keyboard/command` 仍返回 HTTP 403。
+
+详细安装、验收、误差公式和安全边界见
+[`KEYBOARD_MAPPING_ROS2.md`](KEYBOARD_MAPPING_ROS2.md)。
 
 ## 6. 架构与边界
 
 - `sim2real/web_mode_gateway.py`：测试和实车 HTTP API、隔离缓存、输入校验；保留旧 `/api/*` 接口。
 - `sim2real/web_mode_runner.py`：测试/实车一键启动与进程组清理，自动复用现有 `car` 网站。
 - `sim2real/web/mode_router.js`：四模式入口和状态提示。
-- `sim2real/keyboard_feedback_gateway.py`：只读键盘反馈通道及数据校验。
-- `sim2real/keyboard_feedback_autostart.py`：本机打开 `/keyboard` 后启动一个 ROS2 只读订阅，不修改底盘控制。
-- `sim2real/ros2_keyboard_feedback_bridge.py`：订阅已有 ROS2 速度话题，仅用于估算轨迹。
-- `sim2real/web/keyboard.html` 和 `keyboard.js`：独立自由运动反馈网页。
 - `algorithm/car_ws/bash/web.sh`：`sim|test|real|keyboard|doctor` 入口，保留原 `sim` 行为。
 - `sim2real/ros2_visualization_bridge.py`：`--web-channel test|real` 将 ROS 2 数据送到指定隔离通道。
 - `sim2real/server.py`：只添加独立路由拦截，不替换原有功能。

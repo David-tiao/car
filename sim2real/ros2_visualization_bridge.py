@@ -163,7 +163,7 @@ def main():
             p=m.pose.pose.position;v=m.twist.twist
             telemetry={'x':float(p.x),'y':float(p.y),'yaw':yaw_quat(m.pose.pose.orientation),
                        'vx':float(v.linear.x),'vy':float(v.linear.y),'wz':float(v.angular.z),
-                       'frame':m.header.frame_id or 'odom','source':'ros2_odom'}
+                       'frame':m.header.frame_id or 'odom', 'twist_frame':m.child_frame_id or '', 'source':'ros2_odom'}
             try:post(args.server,web_route(args.web_channel,'telemetry'),telemetry,timeout=.35)
             except (URLError,OSError,ValueError) as e:
                 if now-self.last_warn>6:

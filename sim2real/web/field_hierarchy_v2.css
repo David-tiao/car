@@ -1,0 +1,221 @@
+/* V14 progressive UI hierarchy: blue navigation, coral functional modules,
+ * warm orange mock FSM trace. Underlying planner/map geometry is untouched. */
+:root{
+  --nav-blue:#4f93ff;
+  --nav-blue-deep:#1b4685;
+  --module-coral:#ff7480;
+  --module-coral-dim:#6a3244;
+  --surface-elev:#172a3e;
+  --test-orange:#ffad73;
+}
+.app-shell {max-width:1560px;}
+body {background:radial-gradient(ellipse 95% 35% at 50% -5%,#1a3955 0,transparent 78%),#07121e;}
+.topbar {border-bottom:1px solid #3d6080;}
+.release-banner{border-color:#3c5870;background:linear-gradient(100deg,#12243c,#1e3043);}
+#carModeSwitch{
+  background:linear-gradient(115deg,#11283f,#142a47) !important;
+  border:1px solid #345e94 !important;
+  box-shadow:0 8px 25px #0003;
+}
+#carModeSwitch a{
+  border:1px solid #376394 !important;
+  background:linear-gradient(145deg,#122e52,#173759) !important;
+}
+#carModeSwitch a:hover {border-color:#80afff!important;}
+#carModeSwitch a[aria-current=page]{
+  border-color:#80b9ff !important;
+  background:#234f90 !important;
+  box-shadow:inset 0 3px 0 #6ba4ff,0 4px 14px #0003;
+}
+.field-hero-panel{
+  width:100%; margin:12px auto 12px;
+  border:1px solid #36658a;
+  border-top:4px solid #46cad3;
+  box-shadow:0 14px 40px #020d1780;
+  background:linear-gradient(155deg,#142b44,#0e1e30);
+}
+.field-hero-panel .panel-heading{flex-wrap:wrap;}
+.field-hero-panel .panel-heading h2{font-size:24px;}
+.map-panel-heading-badge{
+  color:#86d5ed;font-size:11px;font-weight:800;
+  letter-spacing:1.7px;align-self:flex-start;
+  flex-basis:100%;margin-bottom:-3px;
+}
+.field-hero-panel .map-stage{
+  background:linear-gradient(160deg,#122e43,#0e1c2e);
+  border-color:#37617e;
+}
+.field-hero-panel .map-frame{max-width:790px;}
+.field-hero-panel .map-actions{
+  padding-top:9px;
+}
+.sidebar .settings-directory{
+  background:linear-gradient(145deg,#142f50,#0e2038);
+  border:1px solid #3d75b8;border-top:4px solid #5e9bff;
+  box-shadow:0 10px 22px #0003;
+}
+.sidebar .settings-directory .eyebrow,
+.sidebar .settings-directory h2,
+.sidebar .directory-number{color:#75acff;}
+.sidebar .directory-item{
+  background:#142e4b;border-color:#2d5884;
+}
+.sidebar .directory-item:hover{background:#214269;border-color:#6d9fff;}
+.sidebar .directory-item.active{
+  background:#244d80;border-color:#78b4ff;
+  box-shadow:inset 4px 0 #79bbff;
+  color:#ffffff;
+}
+.sidebar .directory-item.active .directory-number{color:#c3e1ff;}
+.sidebar .settings-view{
+  border:1px solid #473e52;
+  border-left:4px solid var(--module-coral);
+  background:linear-gradient(145deg,#201e33,#142435);
+}
+.sidebar .settings-view .eyebrow,
+.sidebar .settings-view h2{color:#ff98a2;}
+.maincol > .panel:not(.map-panel),
+#rosPanel,#cameraDashboard,.handling-panel,.route-panel,
+#manualHub,#diagnosticHub{
+  border:1px solid #443d51;
+  border-left:4px solid var(--module-coral);
+  background:linear-gradient(155deg,#202238,#142234);
+}
+.maincol > .panel .eyebrow,.handling-panel .eyebrow,
+.route-panel .eyebrow{color:#ff949d;}
+.metric{border-color:#355c7b;background:linear-gradient(145deg,#172d43,#102238);}
+.metric strong{color:#ffffff;}
+#carTestPanel{
+  border-color:#4a6b98;
+}
+.cfsm-workbench{
+  margin:16px auto 22px;max-width:1500px;
+  padding:20px 22px;
+  border:1px solid #935a4d;
+  border-left:5px solid #f1846b;
+  border-radius:15px;
+  background:linear-gradient(135deg,#252c40,#172439 70%,#182b3c);
+  box-shadow:0 12px 26px #0003;
+  color:#eaf3ff;
+  font:14px/1.6 system-ui,sans-serif;
+}
+.cfsm-heading{padding-bottom:12px;border-bottom:1px solid #5b4d5a;}
+.cfsm-heading h2{margin:4px 0 5px;font-size:21px;}
+.cfsm-heading p{margin:4px 0;color:#afc5d5;font-size:13px;}
+.cfsm-eyebrow{font-size:11px;color:#ffb78a;font-weight:800;letter-spacing:1.7px;}
+.cfsm-toggle{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:11px;margin:16px 0;
+}
+.cfsm-toggle button{
+  padding:13px 15px;text-align:center;
+  border:1px solid #3d74a0;border-radius:10px;
+  background:#142e47;color:#aecfeb;font-weight:750;
+}
+.cfsm-toggle button:hover{border-color:#7eb6ee;}
+.cfsm-toggle button.selected{
+  color:#fff;border-color:#7bb5fa;background:linear-gradient(110deg,#235b99,#294b82);
+  box-shadow:inset 0 -3px 0 #84bfff;
+}
+.cfsm-fields{
+  display:grid;grid-template-columns:1.3fr 1.25fr 1fr 1fr;
+  gap:12px;margin-bottom:14px;
+}
+.cfsm-fields label{display:flex;flex-direction:column;gap:6px;font-size:12px;font-weight:700;color:#bfd5e5;}
+.cfsm-fields input,.cfsm-fields select{
+  min-width:0;padding:10px;border-radius:8px;
+  border:1px solid #52738c;background:#101d2d;color:#f3f8ff;
+}
+.cfsm-fields input:focus,.cfsm-fields select:focus{outline:2px solid #79a7ed;outline-offset:1px;}
+.cfsm-controls{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;}
+.cfsm-controls button{
+  border-radius:9px;padding:9px 17px;border:1px solid #547a9b;
+  background:#24415a;color:#eaf5fd;font-weight:700;
+}
+.cfsm-controls button:first-child{background:#366ee9;border-color:#5893ff;}
+.cfsm-controls button:nth-child(2){background:#2d5376;border-color:#80b6df;}
+.cfsm-controls button:nth-child(3){background:#267a88;border-color:#58aeb5;}
+.cfsm-controls button:last-child{background:#432f42;border-color:#bd737e;}
+.cfsm-controls button:hover:not(:disabled){filter:brightness(1.15);}
+.cfsm-output{
+  display:grid;gap:5px;padding:15px;border-radius:12px;
+  border:1px solid #3b5874;background:#0e1d2f;
+}
+.cfsm-status{font-size:17px;font-weight:800;color:#86dfcc;}
+.cfsm-status[data-state=FAULT]{color:#ff8d92;}
+.cfsm-status[data-state=DONE]{color:#7de4b8;}
+.cfsm-log{
+  max-height:245px;overflow:auto;
+  white-space:pre-wrap;word-break:break-word;
+  margin:7px 0 0;padding:10px;border-radius:7px;
+  background:#081727;color:#b8d4e9;font:12px/1.6 ui-monospace,monospace;
+}
+.cfsm-notice{color:#a9bdcf;font-size:12px;margin:12px 0 0;line-height:1.7;}
+@media(max-width:1050px){.cfsm-fields{grid-template-columns:repeat(2,minmax(0,1fr));}}
+@media(max-width:650px){
+  .field-hero-panel{padding:14px;}
+  .field-hero-panel .panel-heading h2{font-size:19px;}
+  .cfsm-workbench{padding:14px;}
+  .cfsm-fields{grid-template-columns:1fr;}
+  .cfsm-toggle{grid-template-columns:1fr;}
+}
+
+/* Always keep the map visible while clicking the TEST STM32 action buttons. */
+.field-stage-layout.has-workbench{
+  display:grid;
+  grid-template-columns:minmax(0,1.7fr) minmax(340px,1fr);
+  gap:16px;align-items:stretch;
+}
+.field-stage-layout.has-workbench .map-stage{margin-top:12px;min-width:0;}
+.field-stage-layout.has-workbench #fieldWorkbenchSlot{min-width:0;}
+.field-stage-layout.has-workbench .cfsm-workbench{
+  height:100%;margin:12px 0 0;padding:17px 16px;
+  box-shadow:inset 0 2px 0 #ee8e72,0 8px 25px #0004;
+}
+.field-stage-layout.has-workbench .cfsm-heading h2{font-size:18px;}
+.field-stage-layout.has-workbench .cfsm-fields{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:1fr;gap:7px;}
+.field-stage-layout.has-workbench .cfsm-toggle button{padding:9px;}
+.field-stage-layout.has-workbench .cfsm-controls button{
+  padding:8px 12px;flex:1 1 42%;
+}
+.field-stage-layout.has-workbench .cfsm-log{max-height:180px;}
+@media(max-width:1060px){
+  .field-stage-layout.has-workbench{grid-template-columns:1fr;}
+  .field-stage-layout.has-workbench .cfsm-workbench{margin-top:0;}
+  .field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:580px){
+  .field-stage-layout.has-workbench .cfsm-fields{grid-template-columns:1fr;}
+  .field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:1fr;}
+}
+
+/* Obstacle synchronization is explicit and visible beside the native mock car. */
+.cfsm-map-status{
+  color:#ffd7c3;
+  border:1px solid #ac665e;
+  border-radius:9px;
+  background:#3d2536;
+  padding:11px 13px;
+  margin:10px 0 14px;
+  font:600 12px/1.7 system-ui,sans-serif;
+  overflow-wrap:anywhere;
+}
+#testBlockedRoadOverlay{
+  mix-blend-mode:multiply;
+}
+.cfsm-workbench .cfsm-status[data-state=FAULT]{
+  color:#ff9eaa;
+}
+
+/* Native-C warning: a healthy mock Dijkstra preview is not the on-board
+ * STM32 motion path until the controller implements waypoint ingestion. */
+.cfsm-native-route-warning{
+  margin:10px 0 14px;padding:11px 14px;border-radius:9px;
+  border:1px solid #be754c;border-left:4px solid #ffab69;
+  color:#ffe2c5;background:#493126;font-size:12px;line-height:1.7;
+}
+.cfsm-native-route-warning[hidden]{display:none!important;}

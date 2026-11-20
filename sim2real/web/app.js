@@ -368,6 +368,11 @@
     $('turnSummary').textContent=`物料间隔 120° · 每次转 ${state.rotorAngle}° · ${state.rotorRate}°/s（${(360/state.rotorRate).toFixed(1)}s/圈）· 停顿 ${state.rotorDwell.toFixed(1)}s`;
   }
   function paintRobot(point=state.start,heading=0){const layer=$('robotLayer');empty(layer);
+    // /keyboard has its OWN ROS2-driven purple MOCK robot overlay. The
+    // competition simulator's teal robot was being re-painted back at the
+    // start independently of ROS2, misleading users into thinking keyboard
+    // motion had reset. Suppress only that unrelated sprite on /keyboard.
+    if(window.CarWebMode?.mode==='keyboard')return;
     if(state.runSource==='live'){if(!live.pose)return;point={x:live.pose.x,y:live.pose.y};heading=90-live.pose.yaw*180/Math.PI;}
     const sx=fx(state.start.x),sy=fy(state.start.y);
     node('circle',{cx:sx,cy:sy,r:9.5,fill:'none',stroke:'#00a78f','stroke-width':3},layer);
@@ -484,6 +489,16 @@
     syncRunUI();
     if(wasRunning)tell('地图设置已更新，仿真已重置并重新规划。');
     persist();if(shared.ready&&!shared.inbound)markDirty();
+    // TEST FSM follows the same visible red 480mm cells as the map. A
+    // scenario edit invalidates any old route; never quietly reuse it.
+    if(['test','keyboard'].includes(window.CarWebMode?.mode)){
+      window.dispatchEvent(new CustomEvent('sim2real:field-changed',{
+        detail:{blocked_cells:state.obstacles.map(o=>{
+          const g=guideId(o);return numberedCell(g.c,g.r);
+        }),start_zone:state.startZone===2?'lower_right':
+                       state.startZone===1?'upper_right':null}
+      }));
+    }
   }
   function taskActions(i){const p=parseTask(state.task);if(!p.valid)return [];
     const batch=i<4?p.batch1:p.batch2;
@@ -808,6 +823,22 @@
       state.sim.armExtension=Math.max(0,Math.min(.15,extension));paintRobot();return true;},
     cancelMission:()=>{if(state.sim){state.sim.running=false;state.sim.phase='idle';state.sim.poseOverride=null;}},
     mapCoordinate:evt=>posAt(evt),
+    getTestFieldSnapshot:()=>({
+      source_type:'MAP_EDITOR_TEST_ONLY',
+      cell_size_m:state.gridStep,
+      blocked_cells:state.obstacles.map(o=>{
+        const g=guideId(o);return numberedCell(g.c,g.r);
+      }),
+      start_zone:state.startZone===2?'lower_right':
+                 state.startZone===1?'upper_right':null
+    }),
+    setTestStartZone:name=>{
+      if(window.CarWebMode?.mode!=='test' ||
+         !['upper_right','lower_right'].includes(name))return false;
+      state.startZone=name==='upper_right'?1:2;
+      state.start={x:2.25,y:state.startZone===1?2.25:0.15};
+      zoneButtons();recalc();return true;
+    },
   };
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();

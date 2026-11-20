@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Sim2Real V13 four-mode launcher. Original `car` shortcut is unchanged.
 # sim: browser-only; test: Mock MCU -> ROS2 -> HTTP; real: verified serial -> ROS2 -> HTTP.
-# keyboard: read-only; local /keyboard visits auto-start a ROS2 subscriber, never motor control.
+# keyboard: existing WASDQE ROS2 local loopback; actual STM32 motor TX stays disabled.
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 WS="$(cd -- "$HERE/.." && pwd -P)"
@@ -39,8 +39,9 @@ case "$CMD" in
     ;;
   keyboard)
     require_site
-    source_ros
-    exec /usr/bin/python3 "$SIM/web_mode_runner.py" keyboard "$@"
+    echo '[KEYBOARD] Local /keyboard opens existing ROS2 PC pub+sub; no STM32 motor TX.'
+    echo "[PAGE] Open http://127.0.0.1:${CAR_PORT:-8080}/keyboard after site starts."
+    exec /usr/bin/python3 "$SIM/launcher.py" "$@"
     ;;
   build)
     source_ros
@@ -50,8 +51,8 @@ case "$CMD" in
   doctor)
     require_site
     echo "[PASS] Standalone Sim2Real: $SIM"
-    [[ -f "$SIM/keyboard_feedback_autostart.py" && -f "$SIM/web/keyboard.html" ]] || {
-      echo '[FAIL] Keyboard auto subscriber files missing' >&2; exit 3;
+    [[ -f "$SIM/keyboard_local_ros2_autostart.py" && -f "$SIM/keyboard_mapping_core.py" && -f "$SIM/web/keyboard_preview_motion.js" ]] || {
+      echo '[FAIL] Keyboard mapping/autostart/animation files missing' >&2; exit 3;
     }
     for pkg in car_web_test car_web_real car_web_sim; do
       [[ -f "$WS/src/$pkg/package.xml" && -f "$WS/src/$pkg/CMakeLists.txt" ]] || {
@@ -59,8 +60,8 @@ case "$CMD" in
       }
       echo "[PASS] ROS2 adapter: $pkg"
     done
-    [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[INFO] Browser /keyboard feedback is standalone (not a colcon package)'
-    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py" "$SIM/keyboard_feedback_gateway.py" "$SIM/keyboard_feedback_autostart.py" "$SIM/ros2_keyboard_feedback_bridge.py"
+    [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[INFO] Keyboard ROS2 PC loopback is standalone; STM32 motor TX disabled'
+    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py" "$SIM/keyboard_local_ros2_autostart.py" "$SIM/keyboard_mapping_core.py" "$SIM/keyboard_ros2_pc.py" "$SIM/keyboard_ros2_web_feedback.py"
     /usr/bin/python3 -m py_compile "$SIM/test_inspection.py" "$SIM/test_telemetry_bridge.py"
     echo '[PASS] Python syntax; original car shortcut unaffected'
     echo '[INFO] doctor does not validate physical STM32, laser, OpenMV or ROS2 runtime.'
@@ -68,7 +69,7 @@ case "$CMD" in
   tree)
     echo "Standalone web frontend: $SIM/web"
     printf '%s\n' '  /sim      (browser-only simulation)' '  /test     (Mock ROS2 bridge)' \
-      '  /real     (hardware ROS2 telemetry)' '  /keyboard (ROS2 /cmd_vel read-only motion feedback)'
+      '  /real     (hardware ROS2 telemetry)' '  /keyboard (local PC ROS2 WASDQE mapping; no STM32 TX)'
     for pkg in car_web_test car_web_real car_web_sim car_web_keyboard; do
       ls -ld "$WS/src/$pkg" 2>/dev/null || true
     done

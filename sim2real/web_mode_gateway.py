@@ -17,7 +17,9 @@ from urllib.parse import urlsplit, parse_qs
 import test_inspection
 import test_mission_store
 import test_v4_qr_lab
-from keyboard_feedback_gateway import keyboard_get, keyboard_post
+import test_stm32_fsm_lab
+import keyboard_mapping_core
+import keyboard_local_ros2_autostart
 
 MODES = ('test', 'real')
 LAYER_NAMES = ('map', 'global_costmap', 'local_costmap')
@@ -113,15 +115,29 @@ def _telemetry_status(mode, since):
                 'seq': record['seq'], 'samples': rows[-150:]}
 
 
+def _real_odom_for_keyboard():
+    """Read the existing REAL telemetry only; no TEST or simulated fallback."""
+    with LOCK:
+        record = CHANNELS["real"]["telemetry"]
+        age = time.monotonic()-record["last_mono"] if record["seq"] else None
+        return {"online": age is not None and age < 2.0,
+                "age_s": age, "sample": (dict(record["samples"][-1])
+                                     if record["samples"] else None)}
+
+
 def mode_get(handler):
     """Return True when request was handled, else allow the old server to run."""
-    if keyboard_get(handler):
+    if keyboard_local_ros2_autostart.handle_get(handler):
+        return True
+    if keyboard_mapping_core.handle_get(handler, _real_odom_for_keyboard):
         return True
     if test_inspection.handle_get(handler):
         return True
     if test_mission_store.handle_get(handler):
         return True
     if test_v4_qr_lab.handle_get(handler):
+        return True
+    if test_stm32_fsm_lab.handle_get(handler):
         return True
     path = urlsplit(handler.path).path
     if path in ('/sim', '/test', '/real', '/keyboard'):
@@ -177,13 +193,15 @@ def mode_get(handler):
 
 
 def mode_post(handler):
-    if keyboard_post(handler):
+    if keyboard_mapping_core.handle_post(handler):
         return True
     if test_inspection.handle_post(handler):
         return True
     if test_mission_store.handle_post(handler):
         return True
     if test_v4_qr_lab.handle_post(handler):
+        return True
+    if test_stm32_fsm_lab.handle_post(handler):
         return True
     path = urlsplit(handler.path).path
     if path == '/api/test/reference_path':
@@ -255,6 +273,7 @@ def mode_post(handler):
                     raise ValueError('Invalid '+key)
                 row[key] = v
             row['frame'] = str(payload.get('frame', 'odom'))[:64]
+            row['twist_frame'] = str(payload.get('twist_frame', ''))[:64]
             row['source'] = (mode.upper() + ':' + str(payload.get('source', 'ros2_odom')))[:64]
             row['source_type'] = mode.upper()  # NEVER trust a caller-supplied source_type
             with LOCK:

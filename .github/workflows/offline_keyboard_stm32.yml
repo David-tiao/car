@@ -1,0 +1,56 @@
+name: All hardware-free car software acceptance
+
+on:
+  pull_request:
+    paths:
+      - "sim2real/**"
+      - "STM32F4/**"
+      - "algorithm/car_ws/**"
+      - ".github/workflows/offline_keyboard_stm32.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline:
+    name: Python + GCC + JS (no ROS2 or hardware)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Full 14-category software-only acceptance (300 seeded competition cases)
+        run: bash algorithm/car_ws/bash/test_all_offline.sh
+
+      - name: Prove no test endpoint sends physical motor commands
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          candidates = [
+              Path('sim2real/keyboard_dryrun_chassis.py'),
+              Path('sim2real/keyboard_fault_lab.py'),
+              Path('sim2real/keyboard_mapping_core.py'),
+          ]
+          for file in candidates:
+              source = file.read_text(encoding='utf-8')
+              for forbidden in ('serial.Serial(', 'os.open("/dev/tty', 'create_publisher(Twist, "/cmd_vel"'):
+                  assert forbidden not in source, f'{file}: forbidden test hardware entry'
+          print('PASS: keyboard mock and fault runner contain no direct physical UART or cmd_vel TX')
+          PY
+
+      - name: Upload keyboard offline fault-matrix report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: car-full-hardware-free-acceptance
+          path: |
+            /tmp/car_keyboard_fault_lab/
+            /tmp/car_keyboard_offline_analysis/
+            /tmp/car_keyboard_offline_replay/
+            /tmp/car_offline_full_acceptance/
+          if-no-files-found: warn
+          retention-days: 14

@@ -10,7 +10,7 @@
     sim: ['纯模拟集', 'SIM', '网页本地运动仿真；不使用 ROS 2 或实体底盘反馈'],
     test: ['测试集', 'TEST', '模拟 MCU → 伪串口 → CAR-LINK → ROS 2 → 网页'],
     real: ['运行集', 'REAL', '真实 STM32 → ROS 2 → 网页；仅监控，不发控制指令'],
-    keyboard: ['映射反馈', 'READ ONLY', '读取电脑 ROS2 速度指令并实时估算运动；不向实车发指令'],
+    keyboard: ['映射集', 'DIRECT ROS2', 'WASDQE 直接映射 PC ROS2→网页，无遮挡/无任务 FSM；Pi→STM32 链路单独预留'],
   };
   const config = Object.freeze({
     mode, channel,
@@ -79,13 +79,38 @@
     if (mode === 'keyboard') {
       const tip = document.createElement('p');
       tip.style.cssText = 'margin:6px 0;color:#ffc39c;font-weight:700';
-      tip.textContent = '实车键盘控制当前禁用：尚无经过验证的 STM32 双向控制权、急停和命令反馈协议。';
+      tip.textContent = '本机映射：直接按 WASDQE，电脑 ROS2 回环驱动紫色网页小车，无 Shift 和场地运动状态机；实体 STM32 控制仍禁用。';
       nav.append(tip);
     }
 
     async function refresh() {
       if (mode === 'sim') {
         status.textContent = 'SIM · 浏览器本地模拟（不依赖 ROS 2）';
+        return;
+      }
+      if (mode === 'keyboard') {
+        try {
+          const response = await fetch('/api/keyboard/status', {cache:'no-store'});
+          if (!response.ok) throw Error('HTTP ' + response.status);
+          const data = await response.json();
+          const label = data.route_mode === 'local_ros2' ?
+            '本机 ROS2 回环' : '树莓派候选链路';
+          let autostart = '';
+          try {
+            const report = await fetch('/api/keyboard/autostart', {cache:'no-store'});
+            if (report.ok) {
+              const info = await report.json();
+              autostart = info.running ? ' · 本机ROS2节点运行中'
+                : info.message ? ' · 启动失败（见键盘反馈日志）'
+                : ' · 等待本机打开映射集';
+            }
+          } catch (_) {}
+          status.textContent = 'MAPPING · ' + label + ' · ' +
+            (data.ros2_feedback?.online ? '话题已收到' : '等待 ROS2 话题') +
+            autostart + ' · 电机未连接';
+        } catch (_) {
+          status.textContent = 'MAPPING · 本机映射接口不可用 / 电机未连接';
+        }
         return;
       }
       try {
@@ -96,7 +121,7 @@
         const connected = !!feed?.telemetry_online;
         status.textContent = (mode === 'test' ? 'TEST · ' : mode === 'real' ? 'REAL · ' : 'KEYBOARD · ') +
           (connected ? '收到对应通道里程计' : '对应通道离线 / 等待数据') +
-          (mode === 'keyboard' ? ' · 控制禁用' : '');
+          (mode === 'keyboard' ? ' · ROS2 候选模式（实体电机未连接）' : '');
       } catch (_) {
         status.textContent = descriptions[mode][1] + ' · 接口不可用';
       }
