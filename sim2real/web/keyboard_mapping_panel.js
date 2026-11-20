@@ -312,7 +312,7 @@
           action:'route',client_seq:nextSeq(),route_mode:mode});
         routeMode=result.route_mode;
         paintRoute();
-        if(routeMode==='local_ros2')await resetMock(false);
+        // Switching back to PC ROS2 does not reset the recorded preview pose.
         status.textContent='链路已切换 · 键盘候选指令清零 · '+(
           routeMode==='local_ros2'?'无需树莓派':'等待树莓派 / STM32');
         status.dataset.state='stopped';
@@ -591,7 +591,7 @@
       status.textContent='需在运行 HTTP 服务的电脑上通过 localhost 打开映射集';
     }
     draw([]);
-    resetMock(false).then(refresh);
+    refresh();
     setInterval(()=>{
       // This is only a network-loss watchdog heartbeat, NOT a motion FSM:
       // refresh active direct keys while held; release transmits zero.
