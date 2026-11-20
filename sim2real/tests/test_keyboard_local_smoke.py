@@ -26,7 +26,7 @@ class LocalSmokeTests(unittest.TestCase):
                 return {
                     "route_mode": "local_ros2",
                     "hardware_authorized": False, "stm32_tx_enabled": False,
-                    "desired": {"last_client_seq": -1},
+                    "desired": {"last_client_seq": -1, "vx": 0.12},
                     "mock": {"x_m": 2.16},
                     "reason": "MOCK_MOVING",
                     "ros2_feedback": {"online": True},
