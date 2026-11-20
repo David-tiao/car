@@ -20,6 +20,10 @@ MAX_SPEED = 0.25  # m/s, design limit for OFFLINE command candidates
 MAX_TURN = 0.5    # rad/s
 TTL_S = 0.30
 ODOM_MAX_AGE_S = 0.75
+ROUTE_MODES = frozenset(("local_ros2", "pi_stm32"))
+ROS_FEEDBACK_TIMEOUT_S = 0.75
+ROS_TOPICS = {"local_ros2": "/car/teleop/local_test_twist",
+              "pi_stm32": "/car/teleop/stm32_candidate"}
 
 
 def _finite(value, limit):
@@ -47,6 +51,9 @@ class KeyboardMapping:
         self.generation = 0
         self.seq = 0
         self.last_client_seq = -1
+        self.route_mode = "local_ros2"  # Works without Raspberry Pi
+        self.ros_receipts = {}
+        self.ros_history = deque(maxlen=600)
         self.command = {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         self.keys = []
         self.deadman = False
@@ -78,6 +85,7 @@ class KeyboardMapping:
                     if self.last_command_mono else None,
                     "timeout_ms": int(TTL_S * 1000),
                     "frame_id": "base_link",
+                    "route_mode": self.route_mode,
                     "hardware_authorized": False,
                     "transport": "PC_ROS2_CANDIDATE_ONLY"}
 
@@ -91,6 +99,11 @@ class KeyboardMapping:
         if action == "stop":
             if set(payload) != {"action", "client_seq"}:
                 raise ValueError("Unexpected stop fields")
+            keys, speed, turn, deadman = [], 0.0, 0.0, False
+        elif action == "route":
+            if set(payload) != {"action", "client_seq", "route_mode"} or (
+                    payload["route_mode"] not in ROUTE_MODES):
+                raise ValueError("Unknown or malformed keyboard route")
             keys, speed, turn, deadman = [], 0.0, 0.0, False
         elif action == "keys":
             if set(payload) != {"action", "client_seq", "keys", "speed_mps", "turn_rps", "deadman"}:
@@ -114,6 +127,8 @@ class KeyboardMapping:
             if client_seq <= self.last_client_seq:
                 raise ValueError("STALE_KEYBOARD_INTENT: older than stop/reset")
             self.last_client_seq = client_seq
+            if action == "route":
+                self.route_mode = payload["route_mode"]
             new_keys = sorted(keys)
             new_twist = mapped_twist(new_keys, speed, turn)
             changed = (new_keys != self.keys or deadman != self.deadman or
@@ -132,13 +147,81 @@ class KeyboardMapping:
                 # STOP. This is only diagnostics; no motor command is sent.
                 self.stop_settle_until = time.monotonic() + 1.2
                 self.generation += 1
+            elif action == "route":
+                self.stop_settle_until = 0.0
+                self.generation += 1
             elif self.deadman:
                 self.stop_settle_until = 0.0
-            if action == "stop":
+            if action in ("stop", "route"):
                 self.last_ref_time = None
                 self.last_ref_twist = None
                 self.reference_pose = None
             return self.effective()
+
+    def observe_ros2(self, payload):
+        """Log an observed ROS2 topic; never promote ROS echo to real odometry."""
+        if not isinstance(payload, dict) or set(payload) != {
+                "source", "topic", "stamp_s", "frame_id", "vx", "vy", "wz"}:
+            raise ValueError("Invalid ROS2 observed-message schema")
+        source = payload["source"]
+        if type(source) is not str or source not in ROS_TOPICS or (
+                payload["topic"] != ROS_TOPICS[source] or
+                payload["frame_id"] != "base_link"):
+            raise ValueError("Unknown ROS2 feedback topic/frame")
+        if not all(type(payload[k]) in (int, float) and math.isfinite(payload[k])
+                   for k in ("vx", "vy", "wz", "stamp_s")):
+            raise ValueError("Invalid ROS2 feedback values")
+        if (math.hypot(payload["vx"], payload["vy"]) > MAX_SPEED + 1e-5 or
+                abs(payload["wz"]) > MAX_TURN + 1e-5):
+            raise ValueError("ROS2 feedback exceeds candidate limits")
+        wall = time.time()
+        # The transport duration is approximate wall-time latency, not MCU ACK.
+        lag = wall - payload["stamp_s"]
+        if not -0.15 <= lag <= 2.0:
+            raise ValueError("ROS2 feedback stamp stale or clock mismatch")
+        record = {"source": source, "topic": payload["topic"],
+                  "frame_id": "base_link",
+                  "received_wall_s": wall,
+                  "stamp_s": float(payload["stamp_s"]),
+                  "received_mono": time.monotonic(),
+                  "estimated_ros2_latency_ms": round(max(0.0, lag) * 1000, 2),
+                  "twist": {k: round(float(payload[k]), 5)
+                            for k in ("vx", "vy", "wz")}}
+        with self.lock:
+            self.ros_receipts[source] = record
+            self.ros_history.append(record)
+        return {"accepted": True, "source": source,
+                "hardware_authorized": False, "stm32_tx_enabled": False}
+
+    def ros2_status(self, now=None):
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            selected = self.route_mode
+            rec = self.ros_receipts.get(selected)
+            if not rec:
+                return {"status": ("WAIT_LOCAL_ROS2" if selected == "local_ros2"
+                                   else "WAIT_PI_ROS2"), "online": False,
+                        "source": selected, "observed": None, "delta": None}
+            age_s = now - rec["received_mono"]
+            if age_s > ROS_FEEDBACK_TIMEOUT_S:
+                return {"status": "STALE_ROS2_TOPIC", "online": False,
+                        "source": selected, "age_ms": round(age_s * 1000),
+                        "observed": None, "delta": None}
+            observed = rec["twist"]
+            command = self.effective(now)
+            # A mirrored ROS2 TwistStamped is only proof of topic delivery.
+            # Do NOT label it as a motor measurement or speed tracking error.
+            diff = {k: round(command[k] - observed[k], 5)
+                    for k in ("vx", "vy", "wz")}
+            return {"status": ("LOCAL_ROS2_ECHO" if selected == "local_ros2"
+                               else "PI_ROS2_CANDIDATE"),
+                    "online": True, "source": selected,
+                    "topic": rec["topic"],
+                    "age_ms": round(age_s * 1000),
+                    "approx_ros2_latency_ms": rec["estimated_ros2_latency_ms"],
+                    "observed": dict(observed), "delta": diff,
+                    "is_actual_vehicle_velocity": False,
+                    "physical_feedback_available": False}
 
     def compare(self, row, now=None):
         """Compare only when REAL odom is fresh and received AFTER intent.
@@ -241,7 +324,10 @@ class KeyboardMapping:
                 "stm32_tx_enabled": False,
                 "pc_ros_topic": "/car/teleop/desired_twist",
                 "pi_candidate_topic": "/car/teleop/stm32_candidate",
-                "desired": command, "comparison": self.compare(real_row)}
+                "route_mode": self.route_mode,
+                "desired": command,
+                "ros2_feedback": self.ros2_status(),
+                "comparison": self.compare(real_row)}
 
     def reset(self):
         self.__init__()
@@ -270,14 +356,19 @@ def handle_get(handler, real_reader):
         with STATE.lock:
             handler.respond_json(200, {"schema": "car_keyboard_error_history_v1",
                                        "hardware_authorized": False,
-                                       "samples": list(STATE.history)})
+                                       "samples": list(STATE.history),
+                                       "ros2_samples": [
+                                           {k: v for k, v in record.items()
+                                            if k != "received_mono"}
+                                           for record in STATE.ros_history]})
     else:
         handler.respond_json(200, STATE.snapshot(real_reader()))
     return True
 
 
 def handle_post(handler):
-    if urlsplit(handler.path).path != PATH + "/intent":
+    path = urlsplit(handler.path).path
+    if path not in (PATH + "/intent", PATH + "/ros2_feedback"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard requires localhost"})
@@ -290,11 +381,12 @@ def handle_post(handler):
         if handler.headers.get("Content-Type", "").split(";", 1)[0].strip().lower() != "application/json":
             raise ValueError("JSON required")
         size = int(handler.headers.get("Content-Length", "0"))
-        if not 0 < size <= 400:
-            raise ValueError("Invalid command size")
+        if not 0 < size <= 512:
+            raise ValueError("Invalid keyboard request size")
         payload = json.loads(handler.rfile.read(size),
                              parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Nonfinite")))
-        result = STATE.accept(payload)
+        result = (STATE.observe_ros2(payload) if path.endswith("/ros2_feedback")
+                  else STATE.accept(payload))
     except (TypeError, ValueError, UnicodeError) as exc:
         handler.respond_json(400, {"error": str(exc)[:160]})
         return True
