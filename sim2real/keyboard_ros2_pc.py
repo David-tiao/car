@@ -88,8 +88,8 @@ def main():
                              "/api/keyboard/intent", timeout=0.15) as resp:
                     data = json.loads(resp.read(4096))
                 target = parse_snapshot(data)
-                selected = data.get("route_mode")
-                select_topic(data)  # validates before publishing
+                select_topic(data)  # validate before changing the selected publisher
+                selected = data["route_mode"]
                 active = any(abs(v) > 1e-8 for v in target)
                 reason = "CANDIDATE_ONLY" if active else "ZERO_OR_DEADMAN"
                 self.failures = 0
