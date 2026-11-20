@@ -134,3 +134,28 @@
 }
 .keyboard-twin-toolbar button:hover:not(:disabled){filter:brightness(1.14);}
 .keyboard-twin-toolbar button:disabled{opacity:.65;cursor:wait;}
+
+/* The cause of a stationary car must be visible without opening DevTools. */
+.keyboard-link-health {
+  margin:7px 0 14px;padding:10px 12px;border-radius:8px;
+  border:1px solid #537795;background:#122d45;color:#c3e9f9;
+  font-size:12px;line-height:1.65;font-weight:650;
+}
+.keyboard-link-health[data-reason="MOCK_MOVING"] {
+  border-color:#4a9f8f;color:#b6f6e1;
+}
+.keyboard-link-health[data-reason="MOCK_OBSTACLE_STOP"],
+.keyboard-link-health[data-reason="API_ERROR"] {
+  border-color:#ef8984;color:#ffd2c4;background:#3b252c;
+}
+.keyboard-actions .keyboard-hold-test{
+  background:#28566b;border:1px solid #5bc6ce;
+  color:#e5ffff;cursor:pointer;touch-action:none;
+  user-select:none;-webkit-user-select:none;
+}
+.keyboard-actions .keyboard-hold-test:active{
+  background:#27717a;box-shadow:0 0 0 2px #70d9ca55;
+}
+.keyboard-actions .keyboard-hold-test:disabled{
+  opacity:.4;cursor:not-allowed;
+}
