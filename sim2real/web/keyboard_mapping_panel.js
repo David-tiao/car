@@ -24,8 +24,17 @@
     const header=$('div',panel);
     header.className='keyboard-heading';
     $('div',header,'03 / KEYBOARD MAPPING · ROS2 DRY RUN').className='keyboard-eyebrow';
-    $('h2',header,'键盘映射与实车跟踪误差');
-    $('p',header,'电脑 ROS2 → 树莓派 5 ROS2 → STM32 候选接口。当前物理串口发送禁止；误差数据只来自 REAL /odom，不使用模拟车位置。');
+    $('h2',header,'键盘映射 · 双通信链路');
+    $('p',header,'没有树莓派也能先在电脑 ROS 2 中完成真实话题发布与订阅回环；将来切换完整链路后，再连接树莓派和 STM32。两种模式都不向实体电机发送指令。');
+
+    const modes=$('div',panel);modes.className='keyboard-route-switch';
+    modes.setAttribute('role','group');modes.setAttribute('aria-label','ROS2 键盘控制链路');
+    const routeLocal=$('button',modes,'本机 ROS2 回环 · 现在可用');
+    const routePi=$('button',modes,'电脑 → 树莓派 → STM32 · 预留');
+    routeLocal.type='button';routePi.type='button';
+    routeLocal.dataset.route='local_ros2';routePi.dataset.route='pi_stm32';
+    const routeNotice=$('p',panel,'本机模式：按键 → 电脑 ROS 2 发布/订阅 → 网页。显示话题回环，不代表车辆已运动。');
+    routeNotice.className='keyboard-route-notice';
 
     const status=$('div',panel,'默认断开 · 不向实体电机发送控制');
     status.id='keyboardLinkState';status.className='keyboard-state';
@@ -69,8 +78,11 @@
     const stats=$('div',panel);stats.className='keyboard-metrics';
     const metric={};
     for(const [key,label] of [
-      ['desired','期望 vx / vy / ω'],
-      ['actual','实际 vx / vy / ω'],
+      ['desired','键盘期望 vx / vy / ω'],
+      ['ros_observed','ROS2 话题收到 vx / vy / ω'],
+      ['ros_delta','ROS2 命令回环差值 Δvx / Δvy / Δω'],
+      ['ros_latency','ROS2 接收状态 / 延迟估计'],
+      ['actual','真实底盘实际 vx / vy / ω'],
       ['pose','实测里程计 X / Y / 航向'],
       ['error','速度误差 Δvx / Δvy / Δω'],
       ['rms','速度误差 RMS'],
@@ -81,16 +93,16 @@
       metric[key]=$('strong',card,'—');
     }
     const graph=$('div',panel);graph.className='keyboard-graph';
-    $('h3',graph,'速度跟踪误差趋势 · 仅真实 /odom 样本');
+    const graphHeading=$('h3',graph,'本机 ROS2 回环差值趋势（不是实体小车误差）');
     const chart=$('canvas',graph);chart.width=800;chart.height=175;
     chart.setAttribute('aria-label','参考速度与实际速度偏差曲线');
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
-    pipeline.textContent='PC HTTP intent → /car/teleop/desired_twist → Pi /car/teleop/stm32_candidate → [STM32 UART TX 尚未接入]';
-    const detail=$('p',panel,'期望值采用 base_link 坐标；实际值来自 REAL /odom 频道。相对位姿偏差由指令积分估算，不能当作绝对地图定位误差。');
+    pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
+    const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
     detail.className='keyboard-note';
 
     let active=new Set(),shift=false,sequence=millis()*1000,sendBusy=false,
-        pendingStop=false,disposed=false,lastHistory=[];
+        pendingStop=false,disposed=false,lastHistory=[],routeMode='local_ros2',routeChanging=false;
     const nextSeq=()=>++sequence;
     const editing=t=>{
       if(!t)return false;
@@ -117,6 +129,46 @@
       if(!res.ok)throw Error(data.error||('HTTP '+res.status));
       return data;
     }
+    function paintRoute(){
+      for(const button of [routeLocal,routePi]){
+        const selected=button.dataset.route===routeMode;
+        button.classList.toggle('selected',selected);
+        button.setAttribute('aria-pressed',String(selected));
+      }
+      routeNotice.textContent=routeMode==='local_ros2' ?
+        '本机备用链路：键盘 → 电脑 ROS2 /car/teleop/local_test_twist → 独立 ROS2 订阅节点 → 网页。只验证话题传输，不是车辆实际运动。':
+        '完整链路：电脑 ROS2 /car/teleop/desired_twist → 树莓派 ROS2 候选 → STM32（UART 尚未接入）→ REAL /odom 实测回传。未装设备时应显示离线。';
+      pipeline.textContent=routeMode==='local_ros2' ?
+        '网页键盘 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → 本机 ROS2 订阅 → 网页':
+        '网页键盘 → PC ROS2 /car/teleop/desired_twist → Pi ROS2 /car/teleop/stm32_candidate → [STM32 UART 未接入] → 实车 /odom';
+      graphHeading.textContent=routeMode==='local_ros2'?
+        '本机 ROS2 收发差值趋势（非小车运动误差）':
+        'REAL /odom 速度跟踪误差趋势（必须连接实车）';
+    }
+    async function switchRoute(mode){
+      if(routeChanging||mode===routeMode)return;
+      routeChanging=true;
+      enabled.checked=false;active.clear();shift=false;
+      refreshKeys();
+      for(const b of [routeLocal,routePi])b.disabled=true;
+      try{
+        const result=await post({
+          action:'route',client_seq:nextSeq(),route_mode:mode});
+        routeMode=result.route_mode;
+        paintRoute();
+        status.textContent='链路已切换 · 键盘候选指令清零 · '+(
+          routeMode==='local_ros2'?'无需树莓派':'等待树莓派 / STM32');
+        status.dataset.state='stopped';
+      }catch(err){
+        status.textContent='链路切换失败：'+err;
+      }finally{
+        for(const b of [routeLocal,routePi])b.disabled=false;
+        routeChanging=false;
+      }
+    }
+    paintRoute();
+    routeLocal.addEventListener('click',()=>switchRoute('local_ros2'));
+    routePi.addEventListener('click',()=>switchRoute('pi_stm32'));
     async function stopNow(disable=false){
       active.clear();
       shift=false;
@@ -137,7 +189,7 @@
         status.textContent='映射集仅允许从本机 localhost 操作';
         return;
       }
-      if(sendBusy||pendingStop)return;
+      if(sendBusy||pendingStop||routeChanging)return;
       sendBusy=true;
       const packet=desiredBody();
       post(packet).then(()=>{
@@ -222,7 +274,8 @@
       const data=samples.slice(-100);
       if(data.length<2){
         ctx.fillStyle='#a6bccd';ctx.font='14px sans-serif';
-        ctx.fillText('等待新鲜 REAL /odom，与键盘意图完成同步后绘图',48,h/2);
+        ctx.fillText(routeMode==='local_ros2'?
+          '等待本机 ROS2 订阅回环，非实际车速':'等待新鲜 REAL /odom（不能用回环替代）',48,h/2);
         return;
       }
       const series=[
@@ -255,7 +308,21 @@
         const data=await rs.json(),history=await rh.json();
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
-        const d=data.desired,c=data.comparison||{},m=c.measured||{},p=c.pose||{},e=c.error||{};
+        if(data.route_mode!=='local_ros2'&&data.route_mode!=='pi_stm32')
+          throw Error('未知通信链路');
+        if(!routeChanging&&routeMode!==data.route_mode){
+          routeMode=data.route_mode;paintRoute();
+        }
+        const d=data.desired,c=data.comparison||{},r=data.ros2_feedback||{},
+          observed=r.observed||{},delta=r.delta||{},
+          m=c.measured||{},p=c.pose||{},e=c.error||{};
+        metric.ros_observed.textContent=r.online?
+          `${fmt(observed.vx)} / ${fmt(observed.vy)} / ${fmt(observed.wz)}`:'—（话题未到达）';
+        metric.ros_delta.textContent=r.online?
+          `${fmt(delta.vx)} / ${fmt(delta.vy)} / ${fmt(delta.wz)}`:'—';
+        metric.ros_latency.textContent=r.online?
+          `${r.status} · ${fmt(r.approx_ros2_latency_ms,1)} ms（估计）`:
+          r.status||'ROS2 订阅端离线';
         metric.pose.textContent=`${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw)}`;
         metric.desired.textContent=`${fmt(d.vx)} / ${fmt(d.vy)} / ${fmt(d.wz)}`;
         metric.actual.textContent=`${fmt(m.vx)} / ${fmt(m.vy)} / ${fmt(m.wz)}`;
@@ -267,7 +334,12 @@
           fmt(e.relative_position_error_m)+' m / '+fmt(e.relative_yaw_error_rad)+' rad':'—';
         metric.fresh.textContent=c.status+
           (c.odom_age_s!=null?' · '+fmt(c.odom_age_s)+' s':'');
-        lastHistory=Array.isArray(history.samples)?history.samples:[];
+        const realHistory=Array.isArray(history.samples)?history.samples:[];
+        const rosHistory=Array.isArray(history.ros2_samples)?history.ros2_samples:[];
+        lastHistory=routeMode==='local_ros2'?
+          rosHistory.filter(x=>x.source==='local_ros2')
+            .map(x=>({...x,error:x.delta||{}})):
+          realHistory;
         draw(lastHistory);
       }catch(err){
         metric.fresh.textContent='数据接口异常：'+String(err);
@@ -281,18 +353,23 @@
         'relative_position_error_m','relative_yaw_error_rad','source'];
       const rows=[cols.join(',')];
       for(const x of lastHistory){
-        rows.push([x.time_s,x.odom_seq,x.command?.vx,x.command?.vy,
-          x.command?.wz,x.actual?.vx,x.actual?.vy,x.actual?.wz,
+        rows.push([x.time_s??x.received_wall_s,x.odom_seq??'',
+          x.command?.vx??x.desired_at_receive?.vx,
+          x.command?.vy??x.desired_at_receive?.vy,
+          x.command?.wz??x.desired_at_receive?.wz,
+          x.actual?.vx??x.twist?.vx,x.actual?.vy??x.twist?.vy,
+          x.actual?.wz??x.twist?.wz,
           x.actual_pose?.x,x.actual_pose?.y,x.actual_pose?.yaw,
           x.integrated_target_pose?.x,x.integrated_target_pose?.y,
           x.integrated_target_pose?.yaw,
           x.error?.vx,x.error?.vy,x.error?.wz,x.error?.linear_norm_mps,
           x.error?.relative_position_error_m,x.error?.relative_yaw_error_rad,
-          x.sample_source].map(y=>y==null?'':String(y)).join(','));
+          x.sample_source??x.source].map(y=>y==null?'':String(y)).join(','));
       }
       const blob=new Blob([rows.join('\n')+'\n'],{type:'text/csv;charset=utf-8'});
       const url=URL.createObjectURL(blob);
       const a=document.createElement('a');a.href=url;a.download='keyboard_mapping_error.csv';
+      a.download=routeMode==='local_ros2'?'keyboard_local_ros2_echo.csv':'keyboard_real_odom_error.csv';
       a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     });
     if(!localOnly()){
