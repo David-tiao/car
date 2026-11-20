@@ -58,6 +58,7 @@ class KeyboardMapping:
         self.ros_history = deque(maxlen=600)
         self.diag_packets = deque(maxlen=700)
         self.digital_twin = KeyboardChassisTwin()
+        self.last_mock_reset_seq = -1
         self.command = {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         self.keys = []
         self.deadman = False
@@ -302,10 +303,26 @@ class KeyboardMapping:
         with self.lock:
             action = payload.get("action")
             if action == "reset":
-                if set(payload) != {"action", "start_zone", "blocked_cells"}:
+                keys = set(payload)
+                if keys not in ({"action", "start_zone", "blocked_cells"},
+                                {"action", "start_zone", "blocked_cells",
+                                 "reset_seq"}):
                     raise ValueError("Invalid mock reset payload")
+                # The UI includes a monotonic reset token. If two scene
+                # refreshes race over HTTP, the old one must not put the
+                # simulated car back on an obsolete map.
+                seq = payload.get("reset_seq")
+                if seq is not None and (
+                        type(seq) is not int or seq <= self.last_mock_reset_seq
+                        or seq > 9007199254740991):
+                    raise ValueError("STALE_MOCK_RESET")
                 cells = valid_blocked_cells(payload["blocked_cells"])
-                return self.digital_twin.reset(payload["start_zone"], cells)
+                zone = payload["start_zone"]
+                if zone not in ("upper_right", "lower_right"):
+                    raise ValueError("Unknown mock start zone")
+                if seq is not None:
+                    self.last_mock_reset_seq = seq
+                return self.digital_twin.reset(zone, cells)
             if action == "fault":
                 if set(payload) != {"action", "fault_mode"}:
                     raise ValueError("Invalid mock fault payload")
