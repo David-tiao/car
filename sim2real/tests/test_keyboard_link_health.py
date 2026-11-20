@@ -45,15 +45,15 @@ class HealthContractTests(unittest.TestCase):
 
     def test_no_keys_indicates_deadman_not_active(self):
         state = self.state.link_health()
-        self.assertEqual(state["reason"], "DEADMAN_NOT_ACTIVE")
+        self.assertEqual(state["reason"], "NO_KEYS_OR_TIMEOUT")
         self.assertFalse(state["hardware_authorized"])
         self.assertFalse(state["stm32_tx_enabled"])
 
     def test_key_without_hold_is_not_movement(self):
         self.state.accept(intent(1, enabled=False))
-        self.assertEqual(self.state.link_health()["reason"], "DEADMAN_NOT_ACTIVE")
+        self.assertEqual(self.state.link_health()["reason"], "NO_KEYS_OR_TIMEOUT")
         self.state.accept(intent(2, keys=(), enabled=True))
-        self.assertEqual(self.state.link_health()["reason"], "NO_MOVEMENT_KEYS")
+        self.assertEqual(self.state.link_health()["reason"], "NO_KEYS_OR_TIMEOUT")
 
     def test_keyboard_is_active_but_ros2_topic_offline(self):
         self.state.accept(intent(1))
@@ -103,7 +103,7 @@ class HealthContractTests(unittest.TestCase):
             h = Handler()
             self.assertTrue(mapping.handle_get(h, lambda: None))
             self.assertEqual(h.code, 200)
-            self.assertEqual(h.payload["reason"], "DEADMAN_NOT_ACTIVE")
+            self.assertEqual(h.payload["reason"], "NO_KEYS_OR_TIMEOUT")
             h.client_address = ("192.168.1.14", 3312)
             mapping.handle_get(h, lambda: None)
             self.assertEqual(h.code, 403)
@@ -115,7 +115,7 @@ class HealthContractTests(unittest.TestCase):
 
     def test_browser_panel_exposes_hold_to_drive_and_diagnostics(self):
         web = (ROOT / "web/keyboard_mapping_panel.js").read_text(encoding="utf-8")
-        self.assertIn("按住本机前进 · 松开停车", web)
+        self.assertIn("按住 W 前进（鼠标/触屏）", web)
         self.assertIn("deadmanHeld", web)
         self.assertIn("/health", web)
         self.assertIn("pointercapture", web.lower())
