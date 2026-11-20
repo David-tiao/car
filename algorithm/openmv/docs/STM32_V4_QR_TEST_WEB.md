@@ -47,7 +47,7 @@ python3 sim2real/server.py --host 127.0.0.1 --port 8080
 
 **TEST · OpenMV V4 ↔ STM32 二维码协议状态机**
 
-选择 `正常扫码`、`重复帧`、`旧 session`、`坏 XOR`、`错误任务码`、`JOB ACK 丢失`、`二维码超时` 或 `CANCEL`，点击「运行协议实验」，再点击「下一帧」查看每一帧的 V4 BODY、原始 ASCII 帧、状态和接收判定。
+选择 `正常扫码`、`重复帧`、`旧 session`、`坏 XOR`、`错误任务码`、`JOB ACK 丢失`、`二维码超时` 、`QR ACK 丢失` 或 `CANCEL`，点击「运行协议实验」，再点击「下一帧」查看每一帧的 V4 BODY、原始 ASCII 帧、状态和接收判定。
 
 也可通过 shell 直接请求测试 API：
 
@@ -57,7 +57,7 @@ curl -s -H 'Content-Type: application/json' \
   http://127.0.0.1:8080/api/test/v4_qr_lab
 ```
 
-**预期状态：** success 与 duplicate_seq 最终 `DONE`，重复序号不能多接收二维码；旧 session、坏 XOR、错误任务码、无 ACK、无 QR 进入 `FAULT`；主动 CANCEL 是 `CANCELLED`。这里的超时属于**模拟故障注入**，不表示网页在真实时间等待八秒。
+**预期状态：** success 与 duplicate_seq 最终 `DONE`，重复序号及丢失二维码 ACK 后重发均不能多接收二维码；旧 session、坏 XOR、错误任务码、无 ACK、无 QR 进入 `FAULT`；主动 CANCEL 是 `CANCELLED`。这里的超时属于**模拟故障注入**，不表示网页在真实时间等待八秒。
 
 ## 非本轮验收范围
 
