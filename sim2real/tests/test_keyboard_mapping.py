@@ -166,6 +166,114 @@ class MappingTests(unittest.TestCase):
         finally:
             mapping.STATE = original
 
+    def test_two_routes_default_to_pc_local_without_pi(self):
+        self.assertEqual(self.state.effective()["route_mode"], "local_ros2")
+        self.assertEqual(self.state.snapshot(None)["ros2_feedback"]["status"],
+                         "WAIT_LOCAL_ROS2")
+        self.assertEqual(pc.select_topic(self.state.effective()),
+                         "/car/teleop/local_test_twist")
+        self.state.accept(keys(10, pressed=["w"]))
+        route = self.state.accept({
+            "action": "route", "client_seq": 11, "route_mode": "pi_stm32"})
+        self.assertEqual(route["route_mode"], "pi_stm32")
+        self.assertFalse(route["active"])
+        self.assertEqual(route["vx"], 0.0)
+        self.assertEqual(pc.select_topic(route), "/car/teleop/desired_twist")
+        with self.assertRaisesRegex(ValueError, "STALE_KEYBOARD_INTENT"):
+            self.state.accept(keys(10, pressed=["w"]))
+        self.assertEqual(self.state.ros2_status()["status"], "WAIT_PI_ROS2")
+
+    def test_ros2_local_echo_is_not_measured_real_vehicle_velocity(self):
+        self.state.accept(keys(1, pressed=["w"], speed=.12))
+        packet = {"source": "local_ros2",
+                  "topic": "/car/teleop/local_test_twist",
+                  "stamp_s": time.time(), "frame_id": "base_link",
+                  "vx": .12, "vy": 0.0, "wz": 0.0}
+        response = self.state.observe_ros2(packet)
+        self.assertTrue(response["accepted"])
+        status = self.state.snapshot(
+            {"online": False, "age_s": None, "sample": None})
+        self.assertEqual(status["ros2_feedback"]["status"], "LOCAL_ROS2_ECHO")
+        self.assertTrue(status["ros2_feedback"]["online"])
+        self.assertEqual(status["ros2_feedback"]["delta"]["vx"], 0.0)
+        self.assertIs(status["ros2_feedback"]["is_actual_vehicle_velocity"], False)
+        self.assertIsNone(status["comparison"]["measured"])
+        self.assertEqual(status["comparison"]["status"], "NO_REAL_ODOM")
+        self.assertEqual(len(self.state.ros_history), 1)
+        self.assertEqual(self.state.ros_history[0]["delta"]["vx"], 0.0)
+        self.assertEqual(self.state.ros2_status(
+            time.monotonic() + mapping.ROS_FEEDBACK_TIMEOUT_S + .1
+        )["status"], "STALE_ROS2_TOPIC")
+
+    def test_pi_mode_only_sees_pi_candidate_not_local_receipt(self):
+        self.state.accept({"action": "route", "client_seq": 1,
+                           "route_mode": "pi_stm32"})
+        base = {"stamp_s": time.time(), "frame_id": "base_link",
+                "vx": 0.05, "vy": 0., "wz": 0.}
+        self.state.observe_ros2(
+            {**base, "source": "local_ros2",
+             "topic": "/car/teleop/local_test_twist"})
+        self.assertEqual(self.state.ros2_status()["status"], "WAIT_PI_ROS2")
+        self.state.observe_ros2(
+            {**base, "source": "pi_stm32",
+             "topic": "/car/teleop/stm32_candidate"})
+        self.assertEqual(self.state.ros2_status()["status"], "PI_ROS2_CANDIDATE")
+        self.assertFalse(self.state.ros2_status()["physical_feedback_available"])
+        self.assertFalse(self.state.snapshot(None)["stm32_tx_enabled"])
+
+    def test_ros2_feedback_rejects_stale_wrong_topic_fake_data(self):
+        good = {"source": "local_ros2",
+                "topic": "/car/teleop/local_test_twist",
+                "stamp_s": time.time(), "frame_id": "base_link",
+                "vx": 0., "vy": 0., "wz": 0.}
+        invalid = [
+            {**good, "source": "UNKNOWN"},
+            {**good, "topic": "/cmd_vel"},
+            {**good, "stamp_s": time.time()-8},
+            {**good, "frame_id": "odom"},
+            {**good, "vx": 2.0},
+            {**good, "wz": float("nan")},
+            {**good, "uart_tx": True}
+        ]
+        for data in invalid:
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                self.state.observe_ros2(data)
+
+    def test_ros2_feedback_http_is_loopback_only(self):
+        original = mapping.STATE
+        mapping.STATE = mapping.KeyboardMapping()
+        try:
+            packet = {"source": "local_ros2",
+                      "topic": "/car/teleop/local_test_twist",
+                      "stamp_s": time.time(), "frame_id": "base_link",
+                      "vx": 0., "vy": 0., "wz": 0.}
+            success = FakeHandler(mapping.PATH+"/ros2_feedback", packet)
+            self.assertTrue(mapping.handle_post(success))
+            self.assertEqual(success.status, 200)
+            denied = FakeHandler(mapping.PATH+"/ros2_feedback", packet,
+                                 "192.168.10.5")
+            mapping.handle_post(denied)
+            self.assertEqual(denied.status, 403)
+            bad_origin = FakeHandler(mapping.PATH+"/ros2_feedback", packet,
+                                     origin="https://untrusted.example")
+            mapping.handle_post(bad_origin)
+            self.assertEqual(bad_origin.status, 403)
+        finally:
+            mapping.STATE = original
+
+    def test_ros2_bridging_is_topic_only_without_hardware_sender(self):
+        import keyboard_ros2_web_feedback as bridge
+        self.assertEqual(bridge.TOPICS["local_ros2"],
+                         "/car/teleop/local_test_twist")
+        self.assertEqual(bridge.TOPICS["pi_stm32"],
+                         "/car/teleop/stm32_candidate")
+        validated = bridge.validate_message(
+            "local_ros2", "base_link", time.time(), .1, .0, .1)
+        self.assertEqual(validated["vx"], .1)
+        with self.assertRaises(ValueError):
+            bridge.validate_message(
+                "local_ros2", "odom", time.time(), .1, .0, .1)
+
     def test_pc_ros2_publisher_contract_and_pi_guard_limits(self):
         self.assertTrue(pc.is_local_url("http://127.0.0.1:8090"))
         self.assertFalse(pc.is_local_url("http://192.168.0.1:8090"))
