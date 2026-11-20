@@ -72,7 +72,11 @@
     const details=$('div',output,'数据来源：MOCK；硬件控制：禁止');
     const log=$('pre',output,'操作后显示 ACK / COMPLETED / FAILED 事件');
     log.className='cfsm-log';
-    const note=$('p',panel,'串口模式：匿名 PTY + CAR-LINK MockPeer；C 模式：编译运行原生 STM32 RaceTaskPlan / RaceTaskGate（不是 Keil 实机）。切换模式会重新初始化独立实验，不会更改真实通道。');
+    const cRouteWarning=$('div',panel,'C 固件的扫码移动使用固定坐标目标，当前不接收障碍封路结果，也不执行 Dijkstra。地图上的橙色轨迹由 Python 规划器生成，仅用于观察状态机执行与模拟绕行，不能代表 STM32 原生运动路径。');
+    cRouteWarning.className='cfsm-native-route-warning';
+    cRouteWarning.setAttribute('role','note');
+    cRouteWarning.hidden=true;
+    const note=$('p',panel,'串口模式：匿名 PTY + CAR-LINK MockPeer；C 模式：实际编译 RaceFsm 扫码状态机与 RaceTaskPlan / RaceTaskGate，导航动画另由 Python 规划。未连接实体 STM32。');
     note.className='cfsm-notice';
 
     let selected='pty',busy=false,resetting=false,needsInit=true,epoch=0,latestGeneration=null,vehicle=null,trail=null,group=null;
@@ -88,7 +92,8 @@
         b.setAttribute('aria-pressed',String(active));
         b.classList.toggle('selected',active);
       }
-      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'C RaceFsm 扫码路线（8 步）→ 物料任务计划（34 步）')+
+      cRouteWarning.hidden=mode!=='code_fsm';
+      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'C RaceFsm 扫码状态机（8 步）→ 任务表（34 步），运动路径仅为 Python 预览')+
         ' · 切换后请点击初始化任务';
       step.disabled=busy||needsInit;run.disabled=busy||needsInit;
     }
@@ -175,6 +180,9 @@
     }
     function render(data){
       validate(data);
+      if(data.engine==='code_fsm'&&data.native_c_motion_obstacle_aware!==false)
+        throw Error('C 原生目标坐标的避障能力未经证实');
+      cRouteWarning.hidden=(selected!=='code_fsm');
       const s=data.snapshot;
       const field=currentField();
       const compatible=!data.case || (field &&
