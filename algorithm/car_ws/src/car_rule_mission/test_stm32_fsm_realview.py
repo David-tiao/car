@@ -147,22 +147,39 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertEqual(response["transport"], "NATIVE_GCC_C_FSM_NO_UART")
         self.assertEqual(response["model_kind"],
                          "COMPILED_STM32_RACETASKPLAN_AND_GATE_HOST_ONLY")
-        self.assertEqual(response["snapshot"]["total_steps"], 34)
-        self.assertEqual(response["snapshot"]["node"], "B3")
+        self.assertEqual(response["snapshot"]["total_steps"], 42)
+        self.assertEqual(response["snapshot"]["node"], "C3")
+        self.assertEqual(response["snapshot"]["phase"], "QR_ROUTE")
+        self.assertFalse(response["snapshot"]["qr_valid"])
         self.assertFalse(response["hardware_authorized"])
         first = lab.action({"action": "step"})
         self.assertEqual(first["snapshot"]["completed_steps"], 1)
-        self.assertEqual(first["transition"]["kind"], "PICK")
-        self.assertEqual(first["transition"]["points"],
-                         [lab.node_position("B3")])
+        self.assertEqual(first["transition"]["kind"], "QR_MOVE")
+        second = lab.action({"action": "step"})
+        self.assertEqual(second["transition"]["to_node"], "C2")
+        self.assertGreater(len(second["transition"]["points"]), 1)
+        for _ in range(2):
+            lab.action({"action": "step"})
+        self.assertFalse(lab.status()["snapshot"]["qr_valid"])
+        scanned = lab.action({"action": "step"})
+        self.assertEqual(scanned["transition"]["kind"], "SCAN_QR")
+        self.assertEqual(scanned["snapshot"]["event"], "QR_CONFIRMED")
+        self.assertTrue(scanned["snapshot"]["qr_valid"])
+        self.assertGreater(scanned["snapshot"]["qr_session"], 0)
         for _ in range(3):
-            last = lab.action({"action": "step"})
-        self.assertEqual(last["transition"]["kind"], "GO_ROUGH")
-        self.assertEqual(last["transition"]["from_node"], "B3")
-        self.assertEqual(last["transition"]["to_node"], "B1")
-        self.assertGreater(len(last["transition"]["points"]), 1)
+            arrived = lab.action({"action": "step"})
+        self.assertEqual(arrived["snapshot"]["phase"], "TASK")
+        self.assertEqual(arrived["snapshot"]["node"], "B3")
+        self.assertEqual(arrived["snapshot"]["completed_steps"], 8)
+        first_pick = lab.action({"action": "step"})
+        self.assertEqual(first_pick["transition"]["kind"], "PICK")
+        for _ in range(3):
+            next_step = lab.action({"action": "step"})
+        self.assertEqual(next_step["transition"]["kind"], "GO_ROUGH")
+        self.assertEqual(next_step["transition"]["to_node"], "B1")
+        self.assertGreater(len(next_step["transition"]["points"]), 1)
         done = lab.action({"action": "run"})["snapshot"]
-        self.assertEqual((done["state"], done["completed_steps"]), ("DONE", 34))
+        self.assertEqual((done["state"], done["completed_steps"]), ("DONE", 42))
         self.assertEqual((done["pick_count"], done["place_count"],
                           done["stack_count"]), (12, 15, 3))
         self.assertTrue(done["home_confirmed"])
@@ -175,11 +192,56 @@ class MockSTM32RealViewTests(unittest.TestCase):
         stopped = lab.action({"action": "run"})
         self.assertEqual(stopped["snapshot"]["state"], "FAULT")
         self.assertEqual(stopped["snapshot"]["completed_steps"], 1)
-        self.assertEqual(stopped["snapshot"]["error"], "ACK_TIMEOUT")
+        self.assertEqual(stopped["snapshot"]["error"], "INJECTED_LINK_FAILURE")
         self.assertFalse(stopped["transition"]["executed"])
         self.assertEqual(len(stopped["transition"]["points"]), 1)
         again = lab.action({"action": "step"})
         self.assertEqual(again["snapshot"]["completed_steps"], 1)
+
+    def test_c_qr_timeout_never_builds_material_task(self):
+        import shutil
+        if shutil.which("gcc") is None:
+            self.skipTest("Host GCC required")
+        lab.action(start(engine="code_fsm", fault="qr_timeout"))
+        result = lab.action({"action": "run"})
+        self.assertEqual(result["snapshot"]["state"], "FAULT")
+        self.assertEqual(result["snapshot"]["error"], "SCAN_TIMEOUT")
+        self.assertEqual(result["snapshot"]["phase"], "QR_ROUTE")
+        self.assertEqual(result["snapshot"]["pick_count"], 0)
+        self.assertEqual(result["snapshot"]["completed_steps"], 4)
+        self.assertFalse(result["snapshot"]["qr_valid"])
+
+    def test_red_cell_17_blocks_b2_b3_in_both_engines(self):
+        from field_road_mapping import blocked_roads_from_cells
+        derived, mapping = blocked_roads_from_cells([17])
+        self.assertIn("B2-B3", derived)
+        self.assertEqual(mapping[0]["cell"], 17)
+        self.assertNotIn("A2-B2", derived)
+        preview = lab.action({"action": "preview",
+                              "blocked_cells": [17], "blocked_roads": []})
+        self.assertIn("B2-B3", preview["preview"]["blocked_roads"])
+        for engine in ("pty", "code_fsm"):
+            with self.subTest(engine=engine):
+                response = lab.action(start(engine=engine, blocked_cells=[17]))
+                self.assertIn("B2-B3", response["case"]["blocked_roads"])
+                self.assertEqual(response["case"]["blocked_cells"], [17])
+                if engine == "pty":
+                    lab.action({"action": "run"})
+                    self.assertEqual(lab.status()["snapshot"]["state"], "DONE")
+                else:
+                    # The C QR approach route must detour around the blocked
+                    # B2-B3 edge before reaching material B3.
+                    for _ in range(7):
+                        step_result = lab.action({"action": "step"})
+                        path = step_result["transition"]["node_path"]
+                        self.assertFalse(any({a, b} == {"B2", "B3"}
+                                             for a, b in zip(path, path[1:])))
+                    self.assertEqual(lab.status()["snapshot"]["node"], "B3")
+
+    def test_invalid_cell_ids_rejected(self):
+        for cells in ([25], [-1], [True], [17, 17], [0, 1, 2], "17"):
+            with self.subTest(cells=cells), self.assertRaises(ValueError):
+                lab.action(start(blocked_cells=cells))
 
     def test_pty_road_step_has_visualizable_source_and_destination(self):
         lab.action(start())
@@ -204,7 +266,7 @@ class MockSTM32RealViewTests(unittest.TestCase):
         original = lab.SESSION
         lab.action(start(engine="code_fsm"))
         self.assertEqual((original.master, original.slave), (-1, -1))
-        self.assertEqual(lab.status()["snapshot"]["total_steps"], 34)
+        self.assertEqual(lab.status()["snapshot"]["total_steps"], 42)
         lab.action(start(engine="pty"))
         self.assertEqual(lab.status()["snapshot"]["total_steps"],
                          len(lab.SESSION.steps))
