@@ -70,7 +70,7 @@ def main():
     class KeyboardPc(Node):
         def __init__(self):
             super().__init__("car_keyboard_pc_source")
-            self.publishers = {
+            self._keyboard_publishers = {
                 mode: self.create_publisher(TwistStamped, topic, 10)
                 for mode, topic in TOPICS.items()
             }
@@ -115,12 +115,12 @@ def main():
             msg.header.frame_id = "base_link"
             msg.twist.linear.x, msg.twist.linear.y = target[0], target[1]
             msg.twist.angular.z = target[2]
-            if self.previous_mode != selected and self.previous_mode in self.publishers:
+            if self.previous_mode != selected and self.previous_mode in self._keyboard_publishers:
                 stop = TwistStamped()
                 stop.header.stamp = msg.header.stamp
                 stop.header.frame_id = "base_link"
-                self.publishers[self.previous_mode].publish(stop)
-            self.publishers[selected].publish(msg)
+                self._keyboard_publishers[self.previous_mode].publish(stop)
+            self._keyboard_publishers[selected].publish(msg)
             if selected == "local_ros2":
                 diagnostic = String()
                 diagnostic.data = json.dumps({
