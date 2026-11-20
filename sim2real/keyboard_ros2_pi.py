@@ -26,6 +26,7 @@ def main():
     try:
         import rclpy
         from rclpy.node import Node
+        from rclpy.time import Time
         from geometry_msgs.msg import TwistStamped
         from std_msgs.msg import String
     except ImportError as exc:
@@ -53,7 +54,7 @@ def main():
                 msg.twist.angular.z, msg.header.frame_id)
             # ROS stamp freshness is checked against this Pi's ROS clock,
             # not the PC wall clock; a time-sync mismatch fails closed.
-            stamp = rclpy.time.Time.from_msg(msg.header.stamp)
+            stamp = Time.from_msg(msg.header.stamp)
             age = (self.get_clock().now() - stamp).nanoseconds / 1e9
             if candidate is None or not -0.05 <= age <= WATCHDOG_SEC:
                 self.target = (0.0, 0.0, 0.0)
