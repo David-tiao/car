@@ -244,8 +244,88 @@ static void test_task_plan(void)
     assert(pick_count == 6U && RaceTaskPlan_Current(&plan) == 0);
 }
 
+
+/* Test the production Hardware/vision.c parser, not the web contract model. */
+static char v4_tx[192];
+static void capture_v4_tx(const uint8_t *data, size_t size, void *user)
+{
+    (void)user;
+    assert(size < sizeof(v4_tx));
+    memcpy(v4_tx, data, size);
+    v4_tx[size] = '\0';
+}
+static void inject_v4(VisionContext *vision, unsigned seq, const char *body,
+                      unsigned now_ms, int corrupt)
+{
+    char header[160], wire[192];
+    unsigned char xor_value = 0U;
+    int length, size;
+    unsigned i;
+    length = snprintf(header, sizeof(header), "%u,%u,%s",
+                      seq, (unsigned)strlen(body), body);
+    assert(length > 0 && (size_t)length < sizeof(header));
+    for (i = 0U; i < (unsigned)length; ++i)
+        xor_value ^= (unsigned char)header[i];
+    if (corrupt) xor_value ^= 1U;
+    size = snprintf(wire, sizeof(wire), "@%s*%02X\n", header, (unsigned)xor_value);
+    assert(size > 0 && (size_t)size < sizeof(wire));
+    for (i = 0U; i < (unsigned)size; ++i)
+        Vision_RxByte(vision, (uint8_t)wire[i], now_ms);
+}
+static void test_v4_qr_session_contract(void)
+{
+    VisionContext vision;
+    char code[VISION_TASK_CODE_SIZE];
+    static const char *legacy = "#SEQ,1,5,6,1,2,3,5,1,6,2,3,1\n";
+    unsigned i;
+
+    Vision_Init(&vision, capture_v4_tx, NULL, NULL);
+    vision.ready = 1U;
+    assert(!Vision_StartQrJob(&vision, 65536U, 0U));
+    assert(Vision_StartQrJob(&vision, 23U, 0U));
+    assert(strstr(v4_tx, "JOB,1,23*") != NULL);
+    assert(vision.qr_session == 23U);
+    assert(vision.phase == VISION_WAIT_ACK);
+    inject_v4(&vision, 0U, "ACK,JOB,1", 10U, 0);
+    assert(vision.phase == VISION_RUNNING);
+
+    /* A tagged V4 session must never accept the old no-session syntax. */
+    for (i = 0U; legacy[i] != '\0'; ++i)
+        Vision_RxByte(&vision, (uint8_t)legacy[i], 20U);
+    assert(!Vision_TakeQr(&vision, code));
+    inject_v4(&vision, 1U, "QR,156+123+516+231", 20U, 0);
+    assert(!Vision_TakeQr(&vision, code));
+    inject_v4(&vision, 2U, "QR,156+123+516+231,22", 20U, 0);
+    assert(!Vision_TakeQr(&vision, code));
+    inject_v4(&vision, 3U, "QR,156+123+516+231,23", 20U, 1);
+    assert(!Vision_TakeQr(&vision, code));
+    assert(vision.frames_bad >= 1U);
+    inject_v4(&vision, 4U, "QR,156+112+516+231,23", 20U, 0);
+    assert(!Vision_TakeQr(&vision, code));
+    inject_v4(&vision, 5U, "QR,156+123+516+231,23", 20U, 0);
+    assert(Vision_TakeQr(&vision, code));
+    assert(strcmp(code, "156+123+516+231") == 0);
+    inject_v4(&vision, 5U, "QR,156+123+516+231,23", 20U, 0);
+    assert(!Vision_TakeQr(&vision, code));
+    assert(Vision_SendBody(&vision, "ACK,QR,23"));
+    assert(strstr(v4_tx, "ACK,QR,23*") != NULL);
+    inject_v4(&vision, 6U, "DONE,QR", 20U, 0);
+    assert(vision.result == VISION_RESULT_QR_DONE);
+    inject_v4(&vision, 7U, "IDLE", 20U, 0);
+    assert(vision.phase == VISION_IDLE);
+    assert(Vision_StartQrJob(&vision, 24U, 30U));
+    assert(vision.qr_session == 24U);
+    /* Stale QR from scan 23 cannot activate the new scan. */
+    inject_v4(&vision, 8U, "ACK,JOB,1", 31U, 0);
+    inject_v4(&vision, 9U, "QR,156+123+516+231,23", 32U, 0);
+    assert(!Vision_TakeQr(&vision, code));
+    inject_v4(&vision, 10U, "QR,156+123+516+231,24", 32U, 0);
+    assert(Vision_TakeQr(&vision, code));
+}
+
 int main(void)
 {
+    test_v4_qr_session_contract();
     test_routes();
     test_motion_guards();
     test_faults();

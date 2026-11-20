@@ -44,6 +44,11 @@ void OLED_WR_Byte(uint8_t value, uint8_t command) { (void)value; (void)command; 
 uint8_t RaceVision_Init(void) { return s_link_ok; }
 uint8_t RaceVision_Healthy(void) { return s_link_ok; }
 uint8_t RaceVision_BeginScan(void) { s_scans++; return s_link_ok; }
+uint8_t RaceVision_BeginScanSession(uint32_t session)
+{ assert(session != 0U); return RaceVision_BeginScan(); }
+uint8_t RaceVision_AckQr(uint32_t session)
+{ return session != 0U && s_link_ok; }
+uint8_t RaceVision_ScanFailed(void) { return 0U; }
 void RaceVision_EndScan(void) { s_qr = 0U; }
 uint8_t RaceVision_Poll(char code[RACE_TASK_CODE_SIZE])
 {

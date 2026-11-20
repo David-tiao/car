@@ -16,6 +16,7 @@ from http.server import SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
 import test_inspection
 import test_mission_store
+import test_v4_qr_lab
 
 MODES = ('test', 'real')
 LAYER_NAMES = ('map', 'global_costmap', 'local_costmap')
@@ -117,6 +118,8 @@ def mode_get(handler):
         return True
     if test_mission_store.handle_get(handler):
         return True
+    if test_v4_qr_lab.handle_get(handler):
+        return True
     path = urlsplit(handler.path).path
     if path in ('/sim', '/test', '/real', '/keyboard'):
         handler.path = '/index.html'
@@ -174,6 +177,8 @@ def mode_post(handler):
     if test_inspection.handle_post(handler):
         return True
     if test_mission_store.handle_post(handler):
+        return True
+    if test_v4_qr_lab.handle_post(handler):
         return True
     path = urlsplit(handler.path).path
     if path == '/api/test/reference_path':
