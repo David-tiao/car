@@ -161,7 +161,7 @@
          !['pty','code_fsm',null].includes(data.engine)||
          !['ANONYMOUS_PTY_CARLINK_TEST_ONLY','NATIVE_GCC_C_FSM_NO_UART'].includes(data.transport)||
          !['PYTHON_SIMEXECUTOR_NOT_COMPILED_STM32',
-           'COMPILED_STM32_RACETASKPLAN_AND_GATE_HOST_ONLY'].includes(data.model_kind))
+           'COMPILED_STM32_RACEFSM_QR_AND_TASK_GATE_HOST_ONLY'].includes(data.model_kind))
          throw Error('拒绝非法测试状态源');
       const s=data.snapshot;
       if(s && (s.source_type!=='MOCK'||s.hardware_authorized!==false||
