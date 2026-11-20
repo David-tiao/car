@@ -234,6 +234,7 @@
       finally{
         busy=false;
         for(const b of [...buttons,pty,code])b.disabled=false;
+        start.disabled=!currentField()?.start_zone;
         step.disabled=needsInit;
         run.disabled=needsInit;
       }
@@ -267,7 +268,14 @@
       const snapshot=currentField();
       if(!snapshot){mapInfo.textContent='场地编辑器尚未就绪';return;}
       fieldSnapshot=snapshot;
-      zone.value=snapshot.start_zone;
+      if(snapshot.start_zone){
+        zone.value=snapshot.start_zone;
+        start.disabled=false;
+      }else{
+        start.disabled=true;
+        mapInfo.textContent='请先在地图上选右上或右下的合法启停区；不能用任意车道坐标启动比赛任务。';
+        return;
+      }
       const id=++previewSerial;
       try{
         const data=await request({
@@ -305,6 +313,9 @@
       }
       refreshFieldPreview();
     }
+    zone.addEventListener('change',()=>{
+      window.Sim2RealCore?.setTestStartZone?.(zone.value);
+    });
     window.addEventListener('sim2real:field-changed',onFieldChanged);
     roads.addEventListener('change',()=>{
       needsInit=true;step.disabled=true;run.disabled=true;
