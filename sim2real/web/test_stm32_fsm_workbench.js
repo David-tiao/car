@@ -59,10 +59,12 @@
 
     const controls=$('div',panel);controls.className='cfsm-controls';
     const buttons=[];
-    for(const [label,act] of [['初始化任务','start'],['执行一步','step'],['连续运行','run'],['重置','reset']]){
+    for(const [label,act] of [['初始化任务','start'],['执行一步','step'],['连续运行','run'],['停止并重置','reset']]){
       const b=$('button',controls,label);b.type='button';b.dataset.action=act;buttons.push(b);
     }
     const [start,step,run,reset]=buttons;
+    reset.title='连续运行或地图动画播放时也可以立即停止并重置';
+    reset.setAttribute('aria-label','随时停止并重置模拟 STM32 任务');
     const mapInfo=$('div',panel,'等待读取场地障碍格…');mapInfo.className='cfsm-map-status';
     const output=$('div',panel);output.className='cfsm-output';
     const state=$('div',output,'未初始化');state.className='cfsm-status';
@@ -73,7 +75,7 @@
     const note=$('p',panel,'串口模式：匿名 PTY + CAR-LINK MockPeer；C 模式：编译运行原生 STM32 RaceTaskPlan / RaceTaskGate（不是 Keil 实机）。切换模式会重新初始化独立实验，不会更改真实通道。');
     note.className='cfsm-notice';
 
-    let selected='pty',busy=false,needsInit=true,epoch=0,vehicle=null,trail=null,group=null;
+    let selected='pty',busy=false,resetting=false,needsInit=true,epoch=0,latestGeneration=null,vehicle=null,trail=null,group=null;
     let fieldSnapshot=null,previewSerial=0,blockedOverlay=null;
     function choose(mode){
       if(selected!==mode)needsInit=true;
@@ -200,16 +202,53 @@
       validate(result);return result;
     }
     async function singleStep(seq){
-      const result=await request({action:'step'});
+      const result=await request({action:'step',expected_generation:latestGeneration});
+      // Reset may have happened while STEP was in flight; ignore stale results.
+      if(seq!==epoch)return null;
       render(result);
       await animateTransition(result.transition,seq);
-      return result;
+      return seq===epoch?result:null;
+    }
+    async function resetImmediately(){
+      if(resetting)return;
+      // Cancel pending animation / continuous loop BEFORE awaiting the server.
+      resetting=true;
+      epoch++;
+      needsInit=true;
+      latestGeneration=null;
+      reset.disabled=true;
+      for(const b of [start,step,run,pty,code])b.disabled=true;
+      state.textContent='停止中：正在关闭模拟 STM32 会话…';
+      state.dataset.state='READY';
+      progress.textContent='模拟动作已取消';
+      if(group){group.remove();group=null;vehicle=null;trail=null;}
+      segments=[];
+      try{
+        const data=await request({action:'reset'});
+        render(data);
+        state.textContent='模拟 STM32 已停止并重置 · 可直接重新初始化任务';
+        log.textContent='当前模拟已清空，下一次初始化会从头开始';
+      }catch(err){
+        state.textContent='重置失败，请重试：'+String(err);
+        state.dataset.state='FAULT';
+      }finally{
+        // An older RUN's finally/catch cannot reenable the cancelled session.
+        busy=false;
+        resetting=false;
+        reset.disabled=false;
+        for(const b of [pty,code])b.disabled=false;
+        start.disabled=!currentField()?.start_zone;
+        step.disabled=true;run.disabled=true;
+      }
     }
     async function send(action){
-      if(busy)return;
+      if(action==='reset'){await resetImmediately();return;}
+      if(busy||resetting)return;
       if((action==='step'||action==='run')&&needsInit)return;
       busy=true;epoch++;const seq=epoch;
-      for(const b of [...buttons,pty,code])b.disabled=true;
+      // Never disable STOP/RESET while a long mock mission is animating.
+      for(const b of [start,step,run,pty,code])b.disabled=true;
+      reset.disabled=false;
       try{
         if(action==='start'){
           const data=await request({action:'start',engine:selected,
@@ -217,30 +256,36 @@
              blocked_roads:roads.value.split(',').map(x=>x.trim()).filter(Boolean),
              blocked_cells:fieldSnapshot?.blocked_cells||[],
              fault:fault.value});
+          if(seq!==epoch)return;
+          latestGeneration=data.generation;
           render(data);
           resetMap(data.transition?.points?.[0] || [2.05,2.05]);
-        }else if(action==='reset'){
-          const data=await request({action:'reset'});
-          render(data);
-          if(group)group.remove();group=null;vehicle=null;trail=null;
         }else if(action==='step'){
           await singleStep(seq);
         }else{
           for(let n=0;n<80;n++){
             if(seq!==epoch)break;
             const data=await singleStep(seq);
+            if(!data||seq!==epoch)break;
             if(data.snapshot?.state==='DONE'||data.snapshot?.state==='FAULT')break;
             // Non-drive actions are rendered at their node, without fake travel.
             if(data.transition?.points?.length===1)await pause(180);
           }
         }
-      }catch(err){state.textContent='MOCK 实验出错：'+String(err);state.dataset.state='FAULT';}
-      finally{
-        busy=false;
-        for(const b of [...buttons,pty,code])b.disabled=false;
-        start.disabled=!currentField()?.start_zone;
-        step.disabled=needsInit;
-        run.disabled=needsInit;
+      }catch(err){
+        if(seq===epoch){
+          state.textContent='MOCK 实验出错：'+String(err);
+          state.dataset.state='FAULT';
+        }
+      }finally{
+        if(seq===epoch&&!resetting){
+          busy=false;
+          for(const b of [start,step,run,pty,code])b.disabled=false;
+          start.disabled=!currentField()?.start_zone;
+          step.disabled=needsInit;
+          run.disabled=needsInit;
+          reset.disabled=false;
+        }
       }
     }
     // Authoritative shared map source: the 5×5 field editor publishes the
