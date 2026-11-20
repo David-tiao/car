@@ -285,9 +285,16 @@ static void handle_body(VisionContext *vision, char *body, uint32_t now_ms)
         vision->ring.state = VISION_RING_CALCULATE;
         return;
     }
-    if (!strcmp(fields[0], "QR") && count == 2 &&
+    if (!strcmp(fields[0], "QR") && (count == 2 || count == 3) &&
         strlen(fields[1]) == 15U) {
-        if (vision_task_code_valid(fields[1])) {
+        /* Nonzero sessions reject legacy no-session QR and stale QR from
+         * previous runs. The byte sequence has already passed LEN/XOR/SEQ. */
+        if (vision->phase == VISION_RUNNING && vision->job_code == 1U &&
+            ((count == 2 && vision->qr_session == 0U) ||
+             (count == 3 && parse_long(fields[2], &session) &&
+              session >= 0L && session <= 65535L &&
+              session == (long)vision->qr_session)) &&
+            vision_task_code_valid(fields[1])) {
             copy_text(vision->qr_code, sizeof(vision->qr_code), fields[1]);
             vision->qr_ready = 1U;
         }
@@ -346,7 +353,12 @@ static void process_frame(VisionContext *vision, uint32_t now_ms)
 static void process_legacy_line(VisionContext *vision, uint32_t now_ms)
 {
     (void)now_ms;
-    if (parse_legacy_qr(vision->legacy_line, vision->qr_code)) vision->qr_ready = 1U;
+    /* Legacy #SEQ is allowed only when a zero-session QR job explicitly runs.
+     * Otherwise a late unframed QR line could bypass the V4 session gate. */
+    if (vision->phase == VISION_RUNNING && vision->job_code == 1U &&
+        vision->qr_session == 0U &&
+        parse_legacy_qr(vision->legacy_line, vision->qr_code))
+        vision->qr_ready = 1U;
 }
 
 void Vision_Init(VisionContext *vision, VisionTx tx, VisionStop stop, void *user)
@@ -530,6 +542,7 @@ int Vision_StartJobTol(VisionContext *vision, unsigned code,
     if (written <= 0 || written >= (int)sizeof(body)) return 0;
     vision->phase = VISION_WAIT_ACK;
     vision->job_code = (uint8_t)code;
+    vision->qr_session = 0U;
     vision->last_request_ms = now_ms;
     vision->result = VISION_RESULT_NONE;
     vision->pos.valid = 0U;
@@ -541,10 +554,35 @@ int Vision_StartJobTol(VisionContext *vision, unsigned code,
     return 1;
 }
 
+int Vision_StartQrJob(VisionContext *vision, uint32_t session, uint32_t now_ms)
+{
+    char body[40];
+    int written;
+    if (vision == NULL || !vision->ready || vision->phase != VISION_IDLE ||
+        Vision_RingActive(vision) || session > 65535U) return 0;
+    written = session == 0U ? snprintf(body, sizeof(body), "JOB,1") :
+                              snprintf(body, sizeof(body), "JOB,1,%u", (unsigned)session);
+    if (written <= 0 || written >= (int)sizeof(body)) return 0;
+    vision->phase = VISION_WAIT_ACK;
+    vision->job_code = 1U;
+    vision->qr_session = (uint16_t)session;
+    vision->last_request_ms = now_ms;
+    vision->result = VISION_RESULT_NONE;
+    vision->pos.valid = 0U;
+    vision->qr_ready = 0U;
+    if (!Vision_SendBody(vision, body)) {
+        vision->phase = VISION_IDLE;
+        vision->qr_session = 0U;
+        return 0;
+    }
+    return 1;
+}
+
 int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms)
 {
     char body[24];
     int written;
+    if (code == 1U) return Vision_StartQrJob(vision, 0U, now_ms);
     if (vision == NULL || !vision->ready || vision->phase != VISION_IDLE ||
         Vision_RingActive(vision) || !job_code_valid(code)) return 0;
     written = snprintf(body, sizeof(body), "JOB,%u", code);
@@ -793,8 +831,14 @@ uint8_t RaceVision_Healthy(void)
 
 uint8_t RaceVision_BeginScan(void)
 {
+    return RaceVision_BeginScanSession(0U);
+}
+
+uint8_t RaceVision_BeginScanSession(uint32_t session)
+{
     static const uint8_t legacy_reset = 'R';
     uint32_t saved_irq = __get_PRIMASK();
+    if (s_scan_active) return RaceVision_Healthy();
     __disable_irq();
     s_default.rx_tail = s_default.rx_head;
     __set_PRIMASK(saved_irq);
@@ -803,8 +847,26 @@ uint8_t RaceVision_BeginScan(void)
     if (!RaceVision_Healthy()) return 0U;
     if (!Vision_RingActive(&s_default)) s_default.phase = VISION_IDLE;
     if (!Vision_SendRaw(&s_default, &legacy_reset, 1U)) return 0U;
-    s_scan_active = (uint8_t)Vision_StartJob(&s_default, 1U, HAL_GetTick());
+    s_scan_active = (uint8_t)Vision_StartQrJob(&s_default, session, HAL_GetTick());
     return s_scan_active;
+}
+
+uint8_t RaceVision_AckQr(uint32_t session)
+{
+    char body[32];
+    int written;
+    if (!s_scan_active || !RaceVision_Healthy() ||
+        session != s_default.qr_session) return 0U;
+    written = snprintf(body, sizeof(body), "ACK,QR,%u", (unsigned)session);
+    return written > 0 && written < (int)sizeof(body) &&
+           Vision_SendBody(&s_default, body);
+}
+
+uint8_t RaceVision_ScanFailed(void)
+{
+    if (!s_scan_active) return 0U;
+    return s_default.result == VISION_RESULT_TIMEOUT ||
+           s_default.result == VISION_RESULT_ERROR;
 }
 
 void RaceVision_EndScan(void)
