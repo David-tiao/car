@@ -93,8 +93,13 @@
         pendingStop=false,disposed=false,lastHistory=[];
     const nextSeq=()=>++sequence;
     const editing=t=>{
-      return t && (t.isContentEditable ||
-        /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+      if(!t)return false;
+      if(t.isContentEditable||t.tagName==='TEXTAREA'||t.tagName==='SELECT')
+        return true;
+      // The "enable keyboard" checkbox remains focused after click; it is
+      // not a text editor and must not swallow Shift+W/A/S/D/Q/E.
+      return t.tagName==='INPUT' &&
+        !['checkbox','radio','button'].includes(String(t.type).toLowerCase());
     };
     const localOnly=()=>
       ['127.0.0.1','localhost','::1'].includes(window.location.hostname);
