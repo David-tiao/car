@@ -486,7 +486,7 @@
     persist();if(shared.ready&&!shared.inbound)markDirty();
     // TEST FSM follows the same visible red 480mm cells as the map. A
     // scenario edit invalidates any old route; never quietly reuse it.
-    if(window.CarWebMode?.mode==='test'){
+    if(['test','keyboard'].includes(window.CarWebMode?.mode)){
       window.dispatchEvent(new CustomEvent('sim2real:field-changed',{
         detail:{blocked_cells:state.obstacles.map(o=>{
           const g=guideId(o);return numberedCell(g.c,g.r);
