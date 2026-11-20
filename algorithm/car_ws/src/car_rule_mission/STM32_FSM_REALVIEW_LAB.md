@@ -1,89 +1,92 @@
-# 第五阶段 C：保留虚拟 STM32 端口，在「运行集」查看比赛状态机
+# 第五阶段 C：双引擎 STM32 状态机测试台（TEST 集）
 
-## 核心设计决定
+## 更新后的产品设计
 
-**现有模拟 STM32 端口没有被删除。** 原有代码保持：
-- `algorithm/car_ws/src/car_rule_mission/mission_wire_sim.py` — CAR-LINK V1 二进制编解码、CRC16、`MockPeer`、去重与故障注入；
-- `algorithm/car_ws/src/car_rule_mission/mission_test_session.py` — 匿名 PTY `pty.openpty()`、`TEST_HELLO` 握手、逐命令 ACK / COMPLETED、任务模拟状态机；
-- `algorithm/car_ws/src/car_rule_mission/mission_ros_test.py` — 原来的 ROS 2 TEST 回放；
-- `/api/test/mission_replay` 及 TEST 网页面板 — 原接口不变。
+本轮按需求将模拟实验**从 `/real` 运行集撤出并放到 `/test` 测试集**。
 
-这次新增一个 **运行集可见、底层严格 MOCK 的隔离实验面板**：
-`http://127.0.0.1:8090/real` 下的「运行集 · 模拟 STM32 PTY 状态机实验」。
+网页顶部首先显示 2400×2400 mm 的**原有交互场地地图**，其网格、障碍物编辑、规划线、原生机器人与机械仿真全部保留。在地图下方增加测试台，可在两个模式间切换：
 
-为什么放在运行集仍然安全？新面板请求的固定是
-`/api/test/stm32_fsm_lab`，返回 `source_type=MOCK`、`mode=SIM_ONLY`、
-`hardware_authorized=false`、`model_kind=PYTHON_SIMEXECUTOR_NOT_COMPILED_STM32`。
-绝不写入 `/api/real/*`、`/cmd_vel` 或实体 UART 设备，也不会把路网节点坐标标为真实 /odom。
-原运行集实车监控仍独立展示真正收到的数据。
+| 模式 | 实际执行后端 | 状态步骤 | 可执行真实电机？ |
+| --- | --- | --- | --- |
+| **串口模拟 · CAR-LINK PTY** | 原 `mission_test_session.PtyMissionSession`、`mission_wire_sim.MockPeer`、匿名 `pty.openpty()`、CAR-LINK 帧/ACK/COMPLETED | 随路线变化，通常 42 命令 | **不能** |
+| **C 代码状态机 · GCC** | GCC 编译原 `STM32F4/App/race_task_plan.c` + `race_task_gate.c`，用独立测试适配器在主机调用原生 C | 34 个 C 任务动作 | **不能** |
 
-## 操作方式
+模式切换后点「初始化任务」才会启动新测试会话。
+可以「执行一步」「连续运行」「重置」，也支持指定二维码、起点、阻塞道路、ACK 丢失和动作失败故障。
 
-运行环境：**Ubuntu / Linux**（使用匿名 PTY），Python 3。
-不需要 ROS 2、OpenMV 实机、STM32 实物或外接串口。
+**两种模式是真正不同的后端，不是前端切换两个标签。**
+C 模式运行的是原生 C 计划与反馈门控，但尚不包含 `AppRace_Poll`、HAL、
+机械执行器和真实通讯中断。主机没有安装 GCC 时 C 模式会明确报错。
+旧 PTY 模式永远不会被 C 模式覆盖或删除。
+
+## 可视化移动的实际含义
+
+每当后端**完成一条行驶指令**，网页将在上方原有赛道图的独立 SVG 图层
+`testMockVehicleLayer` 上，用橙色车体逐帧插值移动到下一个道路节点，
+在动画中画出虚线轨迹。不会瞬间跳点。
+
+- PTY 模式：后端原本就返回离散道路节点，使用**上一个节点 → 本次完成节点**。
+- C 模式：`RaceTaskPlan` 只有 `GO_ROUGH/GO_STORAGE/GO_MATERIAL/RETURN_START` 等站点动作；使用原有 Dijkstra 道路拓扑计算相邻节点，逐路段绘制。
+- 其他如 `PICK`、`PLACE_ROUGH`、`STACK_STORAGE` 不会虚构底盘位移，只在状态面板更新动作和计数。
+- `FAULT` 时，后端返回原节点，不会在画面上播放没有完成的移动。
+- 该图标全程标有 **MOCK**：**不代表真实机器人位置、/odom、LiDAR 测量或底盘实机运动。**
+
+网页仍不请求 `/api/real/*`。所有模拟控制固定走
+`/api/test/stm32_fsm_lab`、仅限 loopback + 同源 POST，
+服务器只允许预定义的 `start/step/run/reset`，
+不接受任何电机指令、不打开 `/dev/tty*`。
+原 `/test` 的 ROS 模拟遥测、V4 QR 实验、CAR-LINK PTY 回放都保留；
+`/real` 只读真实反馈不变。
+
+## 界面分层
+
+- **蓝色：** 顶部四模式切换、侧栏“设置目录”、当前菜单选择。
+- **珊瑚红：** 任务模块、机械模块、状态机面板、设置内容区域。
+- **青色：** 赛场地图主区、路径规划与状态指示。
+- **橙色：** TEST-only 模拟小车移动轨迹和 MOCK 标识。
+
+样式由新文件 `sim2real/web/field_hierarchy_v2.css` 覆盖，
+不改原有 `app.js` 绘制/算法参数；`field_ui_hierarchy.js` 只是
+**移动已有 DOM 节点到页面上方**，保留原地图 SVG ID 和所有监听器。
+
+## 在 Ubuntu 验收
+
+```bash
+cd ~/Desktop/car
+git fetch origin
+git switch feat/stm32-pty-fsm-realview-20261120
+git pull --ff-only
+bash algorithm/car_ws/bash/test_stm32_fsm_realview.sh
+```
+
+预计测试覆盖已有 Python PTY 仿真、C 原生 34 动作反馈门控、
+切换两种模式的 34/42 命令差异、运行集隔离、可动画化的道路节点数据，
+以及网页资源/脚本语法。
+
+再开一个终端：
 
 ```bash
 cd ~/Desktop/car
 python3 sim2real/server.py --host 127.0.0.1 --port 8090
 ```
 
-浏览器访问 `http://127.0.0.1:8090/real`。
-在新增的独立区域中填写任务码（默认 `156+123+516+231`）、起点和封锁道路；
-点击「初始化虚拟 STM32」后可以「执行一步」或「运行至 DONE/FAULT」。
+访问 **`http://127.0.0.1:8090/test`**：
 
-支持故障注入：`failed_at_3`（第三命令 FAILED）、
-`missing_ack_at_2`（第二命令丢 ACK）。
-出现 FAULT 后继续执行不会推进任务；必须重置/新建会话。
-封锁导致 `NO_ROUTE` 时明确拒绝创建任务。更换二维码任务码后重新初始化。
+1. 第一屏确认赛道地图已提到最上方，地图编辑、障碍开关、原有路线仍能操作。
+2. 地图下方点击「串口模拟 · CAR-LINK PTY」，选择正常、初始化，再单步或连续执行。观察橙色小车沿路网移动、反馈日志变化。
+3. 重置并切换「C 代码状态机 · GCC」。初始化后应显示 34 个计划动作；前三步为原料区取料，第四步 GO_ROUGH 会沿道路到粗加工区。
+4. 注入第 3 步 FAILED 或第 2 步无 ACK，验证最终 FAULT、没有后续虚假位移或计数。
+5. 进入 `/real`，确认没有模拟测试面板，真实遥测仍只读。
 
-**注意：** HTTP POST 仅允许服务器本机 loopback 且同源。
-如果从其他电脑访问 Ubuntu 的网页，实验区仍是只读或提交被拒绝；
-不要为了开启外网按钮而移除这项安全限制。
+如已有旧的 `car` 网页服务占用 8090，请先停止旧进程或更换端口。
+浏览器缓存如果仍显示旧布局，使用强制刷新。
 
-## 第二层：基于真实 STM32 C 任务表的安全反馈门控
+## 已知限制
 
-新增：
-- `STM32F4/App/race_task_gate.h/.c`：依赖原有 `RaceTaskPlan` 的**纯 C 无硬件状态机**。
-- `STM32F4/tests/race/test_task_gate.c`：原生 GCC 执行，检查 34 个真实 C 任务动作的推进条件、六次 PICK、六次粗加工放置、六次取回、六次存放、三次 STACK 和返程，及不同批次的同色映射。
-
-此门控只有 `READY → WAIT_ACK → WAIT_RESULT → READY/DONE`，错误时锁存 `FAULT`。
-错误 cmd_id、提前 COMPLETED、重复 ACK、重复 COMPLETED 不得推进计数；
-还检查 ACK/完成反馈超时、拒绝、执行失败和 CANCEL。
-输出 `RaceTaskTestIntent.hardware_authorized` 固定为 0。
-**它目前未挂载到 `AppRace_Poll()` 或任何真实电机执行链**，是下一阶段连接真实业务反馈的准备模块。
-
-网页目前显示的是 **CAR-LINK 42 步 Python SimExecutor/PTY 模型**，
-不是 MCU 已烧录的 C 固件。C 层有 **34 步** 任务计划，另行用 GCC 测试。
-两者建模颗粒度不同；42 不应被误解为 STM32 C 固件恰好也有 42 步。
-
-## 一键离线验收
-
-```bash
-cd ~/Desktop/car
-bash algorithm/car_ws/bash/test_stm32_fsm_realview.sh
-```
-
-本脚本会：
-1. 跑已有任务模拟、CAR-LINK 二进制 PTY、ROS TEST 会话等 Python 回归。
-2. 真正创建匿名 PTY，验证完整 DONE、指令失败 FAULT、ACK 丢失 FAULT、
-   封路/非法任务拒绝、关闭文件描述符和 REAL 通道隔离。
-3. 使用 `gcc -std=c99 -Wall -Wextra -Werror` 编译并运行真正的
-   `STM32F4/App/race_task_plan.c` + 新 `race_task_gate.c` 的单元测试，
-   检查 34 个 C 任务动作的严格反馈门控。
-4. 检查 Python 源码语法，如安装 Node.js 则检查前端脚本语法。
-
-**验收状态：待在你的 Ubuntu 上实际运行，不能直接声明 PASS。**
-在此之前此阶段保持 Draft PR，不直接合并。
-
-## 尚未实现的真实比赛控制
-
-- 这套 TEST/PTy 模拟 **没有** 真实里程计、雷达定位、实际停车点、机构传感器回执。
-- STM32 C 新门控没有接入 `AppRace_Poll` 的底盘、转盘、夹爪驱动链。
-- ROS 2 到真实 STM32 的 CAR-LINK 仍是只读，**不是驱动实车的授权接口**。
-- OpenMV `GRIP_TARGET_CALIBRATED=False`、环位纠偏矩阵为零仍未校准。
-- C `RaceTaskPlan` 的动作结构与 ROS 的道路级 Python 步骤需在未来建立正式映射；
-  本次不伪造这种映射。
-
-这样安排的意义：保留以往全部模拟能力，运行集可观察/实验状态机，
-且真实监控与模拟始终物理分区并带有明显提示；为下一轮电控动作接口
-对接提供一套可重复的离线验收基线。
+- 这不是 Webots/Gazebo 物理仿真：移动是按离散节点的**连续可见动画**，
+  不提供真实电机响应、碰撞测量、滑移、IMU/PID 校验或夹爪实体运动。
+- C 模式只执行经过编译的 `RaceTaskPlan` / `RaceTaskGate` 业务调度；
+  不是整个 STM32 固件、不是 OpenMV 真实识别，也没有真实视觉/雷达反馈。
+- 本次不改变官方比赛任务动作计划、STM32 的 GPIO/UART/电机 PID 配置，
+  不绕开 `RACE_PICK_DIRECT_KEY_TEST` 或相机未标定保护。
+- **本阶段 PR 的自动验收尚需由 Ubuntu 执行**；不能在测试前宣称 PASS。
