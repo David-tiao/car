@@ -100,6 +100,9 @@ class MappingTests(unittest.TestCase):
         wrong = real_sample(1)
         wrong["sample"]["frame"] = "map"
         self.assertEqual(self.state.compare(wrong)["status"], "WRONG_FRAME")
+        bad_twist = real_sample(1)
+        bad_twist["sample"]["twist_frame"] = "odom"
+        self.assertEqual(self.state.compare(bad_twist)["status"], "WRONG_TWIST_FRAME")
         good = self.state.compare(real_sample(1))
         self.assertEqual(good["status"], "COMPARABLE_ODOM_ONLY")
         self.assertAlmostEqual(good["error"]["vx"], 0.03, places=5)
