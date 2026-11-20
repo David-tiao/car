@@ -80,21 +80,22 @@ class HealthContractTests(unittest.TestCase):
         self.assertLess(after["x_m"], first["x_m"])
         self.assertEqual(self.state.link_health()["reason"], "MOCK_MOVING")
 
-    def test_collision_and_mock_fault_explain_stopped_car(self):
+    def test_direct_mode_has_no_obstacle_or_fault_lockouts(self):
         self.state.accept(intent(1))
         self.state.observe_ros2(observed(.12))
         twin = self.state.digital_twin
+        self.assertEqual(twin.mode, "direct")
         twin.reset("upper_right", [23])
+        self.assertEqual(twin.snapshot()["blocked_cells"], [])
         twin.advance(0., observed_vel(), True)
-        for step in range(1, 30):
-            result = twin.advance(step*.1, observed_vel(), True)
-            if result["state"] == "OBSTACLE_STOP":
-                break
-        self.assertEqual(result["state"], "OBSTACLE_STOP")
-        self.assertEqual(self.state.link_health()["reason"], "MOCK_OBSTACLE_STOP")
-        twin.reset("upper_right", [])
-        twin.set_fault("motor_stall")
-        self.assertEqual(self.state.link_health()["reason"], "MOCK_FAULT_SELECTED")
+        after = twin.advance(.5, observed_vel(), True)
+        self.assertEqual(after["preview_mode"], "direct")
+        self.assertEqual(after["state"], "RUNNING")
+        self.assertEqual(after["collision_reason"], "")
+        self.assertLess(after["x_m"], 2.16)
+        self.assertEqual(self.state.link_health()["reason"], "MOCK_MOVING")
+        with self.assertRaises(ValueError):
+            twin.set_fault("motor_stall")
 
     def test_local_health_endpoint_fails_closed_and_pi_mode_status(self):
         original = mapping.STATE
