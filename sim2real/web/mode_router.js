@@ -88,6 +88,21 @@
         status.textContent = 'SIM · 浏览器本地模拟（不依赖 ROS 2）';
         return;
       }
+      if (mode === 'keyboard') {
+        try {
+          const response = await fetch('/api/keyboard/status', {cache:'no-store'});
+          if (!response.ok) throw Error('HTTP ' + response.status);
+          const data = await response.json();
+          const label = data.route_mode === 'local_ros2' ?
+            '本机 ROS2 回环' : '树莓派候选链路';
+          status.textContent = 'MAPPING · ' + label + ' · ' +
+            (data.ros2_feedback?.online ? '话题已收到' : '等待 ROS2 话题') +
+            ' · 电机未连接';
+        } catch (_) {
+          status.textContent = 'MAPPING · 本机映射接口不可用 / 电机未连接';
+        }
+        return;
+      }
       try {
         const response = await fetch('/api/mode/status', {cache: 'no-store'});
         if (!response.ok) throw Error('HTTP ' + response.status);
