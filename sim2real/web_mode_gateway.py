@@ -18,6 +18,7 @@ import test_inspection
 import test_mission_store
 import test_v4_qr_lab
 import test_stm32_fsm_lab
+import keyboard_mapping_core
 
 MODES = ('test', 'real')
 LAYER_NAMES = ('map', 'global_costmap', 'local_costmap')
@@ -113,8 +114,20 @@ def _telemetry_status(mode, since):
                 'seq': record['seq'], 'samples': rows[-150:]}
 
 
+def _real_odom_for_keyboard():
+    """Read the existing REAL telemetry only; no TEST or simulated fallback."""
+    with LOCK:
+        record = CHANNELS["real"]["telemetry"]
+        age = time.monotonic()-record["last_mono"] if record["seq"] else None
+        return {"online": age is not None and age < 2.0,
+                "age_s": age, "sample": (dict(record["samples"][-1])
+                                     if record["samples"] else None)}
+
+
 def mode_get(handler):
     """Return True when request was handled, else allow the old server to run."""
+    if keyboard_mapping_core.handle_get(handler, _real_odom_for_keyboard):
+        return True
     if test_inspection.handle_get(handler):
         return True
     if test_mission_store.handle_get(handler):
@@ -177,6 +190,8 @@ def mode_get(handler):
 
 
 def mode_post(handler):
+    if keyboard_mapping_core.handle_post(handler):
+        return True
     if test_inspection.handle_post(handler):
         return True
     if test_mission_store.handle_post(handler):
