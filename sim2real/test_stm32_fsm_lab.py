@@ -26,7 +26,8 @@ if str(SIM_CODE) not in sys.path:
 from mission_execution import MissionError, parse_task_code
 from mission_test_session import PtyMissionSession
 from rule_mission_core import PlanError, build_mission
-from road_topology import NODES, EDGES, canonical, shortest
+from road_topology import NODES, shortest
+from field_road_mapping import merge_blocked_roads
 
 LOCK = threading.RLock()
 SESSION = None
@@ -36,52 +37,17 @@ UPDATED_AT = 0.0
 LAST_TRANSITION = None
 FAULTS = {"none": (None, None),
           "failed_at_3": (3, None),
-          "missing_ack_at_2": (None, 2)}
+          "missing_ack_at_2": (None, 2),
+          "qr_timeout": (None, None)}
 ZONES = {"upper_right", "lower_right"}
 ENGINES = {"pty", "code_fsm"}
 MAX_RUN_STEPS = 80
-CELL_WIDTH_M = 0.48
-CELL_MARGIN_M = 0.000001
 TASK_KINDS = ("PICK", "GO_ROUGH", "PLACE_ROUGH", "RETRIEVE_ROUGH",
               "GO_STORAGE", "PLACE_STORAGE", "GO_MATERIAL",
               "STACK_STORAGE", "RETURN_START")
 TASK_GATE_STATES = ("READY", "WAIT_ACK", "WAIT_RESULT", "DONE", "FAULT")
 TASK_GATE_ERRORS = ("NONE", "REJECTED", "FAILED", "ACK_TIMEOUT",
                     "RESULT_TIMEOUT", "CANCELLED", "PLAN")
-
-
-def roads_from_cells(cells):
-    """Conservative projection: 5x5 occupied red cells -> 3x3 road edges.
-
-    A blocked cell closes every straight topology segment intersecting its
-    full 480mm footprint. No invented geometry, no automatic detour through a
-    red cell. Cell 17 intersects B2-B3, not the two unrelated horizontal edges.
-    """
-    if not isinstance(cells, list) or len(cells) > 2 or any(
-            type(n) is not int or not 0 <= n < 25 for n in cells):
-        raise ValueError("Map blocked_cells must contain 0-2 cell IDs (0..24)")
-    if len(set(cells)) != len(cells):
-        raise ValueError("Duplicate blocked cells")
-    roads = set()
-    for index in cells:
-        row = index // 5
-        k = index % 5
-        col = k if row % 2 == 0 else 4-k
-        x0, x1 = col * CELL_WIDTH_M, (col+1) * CELL_WIDTH_M
-        y0, y1 = row * CELL_WIDTH_M, (row+1) * CELL_WIDTH_M
-        for road, (a, b) in EDGES.items():
-            ax, ay = NODES[a]
-            bx, by = NODES[b]
-            # All current topology edges are axis-aligned.
-            if abs(ax-bx) < CELL_MARGIN_M:
-                intersects = (x0-CELL_MARGIN_M <= ax <= x1+CELL_MARGIN_M and
-                              max(min(ay, by), y0) <= min(max(ay, by), y1))
-            else:
-                intersects = (y0-CELL_MARGIN_M <= ay <= y1+CELL_MARGIN_M and
-                              max(min(ax, bx), x0) <= min(max(ax, bx), x1))
-            if intersects:
-                roads.add(road)
-    return sorted(roads)
 
 
 def node_position(name):
@@ -339,6 +305,7 @@ def status():
             "endpoint_scope": "TEST_ONLY",
             "generation": GENERATION,
             "case": dict(CASE) if CASE is not None else None,
+            "blocked_mapping": CASE["cell_mapping"] if CASE else [],
             "snapshot": _safe_snapshot(),
             "transition": LAST_TRANSITION,
             "age_s": round(time.monotonic() - UPDATED_AT, 2) if UPDATED_AT else None,
@@ -366,21 +333,15 @@ def _start(payload):
     if not isinstance(task, str) or len(task) != 15:
         raise ValueError("Invalid task code")
     parse_task_code(task)
-    if not isinstance(roads, list) or len(roads) > 8:
-        raise ValueError("Blocked roads must be an array of at most 8")
-    if not all(isinstance(x, str) and len(x) <= 8 for x in roads):
-        raise ValueError("Invalid blocked road")
     cells = payload.get("blocked_cells", [])
-    mapped_roads = roads_from_cells(cells)
-    try:
-        declared_roads = [canonical(x) for x in roads]
-    except (ValueError, TypeError, AttributeError) as exc:
-        raise ValueError("Unknown blocked road ID") from exc
-    blocked_roads = sorted(set(declared_roads) | set(mapped_roads))
+    blocked_roads, cell_mapping = merge_blocked_roads(cells, roads)
+    mapped_roads = sorted({r for row in cell_mapping for r in row["roads"]})
     plan = build_mission(zone, blocked_roads, provenance="DEMO_ONLY")
     if plan["status"] != "DEMO_ROUTE_ONLY":
         raise ValueError("NO_ROUTE; simulated STM32 will not depart")
     if engine == "pty":
+        if fault == "qr_timeout":
+            raise ValueError("QR timeout injection requires the native C RaceFsm")
         fail_at, drop_ack_at = FAULTS[fault]
         new_session = PtyMissionSession(plan, task, fail_at=fail_at,
                                          drop_ack_at=drop_ack_at)
@@ -391,6 +352,7 @@ def _start(payload):
     CASE = {"start_zone": zone, "task_code": task,
             "blocked_roads": blocked_roads,
             "blocked_cells": list(cells), "mapped_roads": mapped_roads,
+            "cell_mapping": cell_mapping,
             "fault": fault, "engine": engine}
     GENERATION += 1
     UPDATED_AT = time.monotonic()
@@ -441,6 +403,13 @@ def action(payload):
         raise ValueError("JSON object expected")
     with LOCK:
         command = payload.get("action")
+        if command == "preview":
+            _exact_keys(payload, {"action", "blocked_cells", "blocked_roads"})
+            roads, mapping = merge_blocked_roads(
+                payload["blocked_cells"], payload["blocked_roads"])
+            return {**status(), "preview": {
+                "blocked_roads": roads, "cell_mapping": mapping,
+                "source_type": "MAP_EDITOR_TEST_ONLY"}}
         if command == "start":
             _start(payload)
         elif command in ("step", "run", "reset"):
