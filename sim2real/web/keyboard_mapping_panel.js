@@ -247,6 +247,7 @@
       const signature=JSON.stringify(payload);
       if(stopKeys && signature===lastMapSignature && reason==='地图变化')
         return;
+      payload.reset_seq=nextSeq();
       const version=++mockResetVersion;
       mockResetInProgress=true;
       try{
