@@ -43,7 +43,7 @@ class Lab(unittest.TestCase):
                 self.assertTrue(r["passed"], r)
                 self.assertFalse(r["hardware_authorized"])
                 self.assertEqual(r["model_kind"], "CONTRACT_MODEL_NOT_STM32_FIRMWARE")
-                if case in ("success", "duplicate_seq"):
+                if case in ("success", "duplicate_seq", "qr_ack_lost"):
                     self.assertEqual((r["state"], r["accepted_qr"]), ("DONE", 1))
                 elif case == "cancel":
                     self.assertEqual(r["state"], "CANCELLED")
