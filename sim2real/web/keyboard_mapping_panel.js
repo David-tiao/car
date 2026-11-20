@@ -275,13 +275,17 @@
     }
     exportButton.addEventListener('click',()=>{
       const cols=['time_s','odom_seq','desired_vx','desired_vy','desired_wz',
-        'actual_vx','actual_vy','actual_wz','error_vx','error_vy',
-        'error_wz','error_linear_norm','relative_position_error_m',
-        'relative_yaw_error_rad','source'];
+        'actual_vx','actual_vy','actual_wz','actual_x','actual_y','actual_yaw',
+        'integrated_target_x','integrated_target_y','integrated_target_yaw',
+        'error_vx','error_vy','error_wz','error_linear_norm',
+        'relative_position_error_m','relative_yaw_error_rad','source'];
       const rows=[cols.join(',')];
       for(const x of lastHistory){
         rows.push([x.time_s,x.odom_seq,x.command?.vx,x.command?.vy,
           x.command?.wz,x.actual?.vx,x.actual?.vy,x.actual?.wz,
+          x.actual_pose?.x,x.actual_pose?.y,x.actual_pose?.yaw,
+          x.integrated_target_pose?.x,x.integrated_target_pose?.y,
+          x.integrated_target_pose?.yaw,
           x.error?.vx,x.error?.vy,x.error?.wz,x.error?.linear_norm_mps,
           x.error?.relative_position_error_m,x.error?.relative_yaw_error_rad,
           x.sample_source].map(y=>y==null?'':String(y)).join(','));
