@@ -137,6 +137,90 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertIsNone(web_mode_gateway.CHANNELS["real"]["ros"]["snapshot"])
         self.assertFalse(lab.status()["hardware_authorized"])
 
+    def test_native_c_mode_uses_compiled_stm32_code(self):
+        import shutil
+        if shutil.which("gcc") is None:
+            self.skipTest("Host GCC required for native C mode")
+        response = lab.action(start(engine="code_fsm"))
+        self.assertEqual(response["transport"], "NATIVE_GCC_C_FSM_NO_UART")
+        self.assertEqual(response["model_kind"],
+                         "COMPILED_STM32_RACETASKPLAN_AND_GATE_HOST_ONLY")
+        self.assertEqual(response["snapshot"]["total_steps"], 34)
+        self.assertEqual(response["snapshot"]["node"], "B3")
+        self.assertFalse(response["hardware_authorized"])
+        first = lab.action({"action": "step"})
+        self.assertEqual(first["snapshot"]["completed_steps"], 1)
+        self.assertEqual(first["transition"]["kind"], "PICK")
+        self.assertEqual(first["transition"]["points"],
+                         [lab.node_position("B3")])
+        for _ in range(3):
+            last = lab.action({"action": "step"})
+        self.assertEqual(last["transition"]["kind"], "GO_ROUGH")
+        self.assertEqual(last["transition"]["from_node"], "B3")
+        self.assertEqual(last["transition"]["to_node"], "B1")
+        self.assertGreater(len(last["transition"]["points"]), 1)
+        done = lab.action({"action": "run"})["snapshot"]
+        self.assertEqual((done["state"], done["completed_steps"]), ("DONE", 34))
+        self.assertEqual((done["pick_count"], done["place_count"],
+                          done["stack_count"]), (12, 15, 3))
+        self.assertTrue(done["home_confirmed"])
+
+    def test_native_c_fault_latches_without_phantom_map_motion(self):
+        import shutil
+        if shutil.which("gcc") is None:
+            self.skipTest("Host GCC required")
+        lab.action(start(engine="code_fsm", fault="missing_ack_at_2"))
+        stopped = lab.action({"action": "run"})
+        self.assertEqual(stopped["snapshot"]["state"], "FAULT")
+        self.assertEqual(stopped["snapshot"]["completed_steps"], 1)
+        self.assertEqual(stopped["snapshot"]["error"], "ACK_TIMEOUT")
+        self.assertFalse(stopped["transition"]["executed"])
+        self.assertEqual(len(stopped["transition"]["points"]), 1)
+        again = lab.action({"action": "step"})
+        self.assertEqual(again["snapshot"]["completed_steps"], 1)
+
+    def test_pty_road_step_has_visualizable_source_and_destination(self):
+        lab.action(start())
+        first = lab.action({"action": "step"})
+        transition = first["transition"]
+        self.assertEqual(first["engine"], "pty")
+        self.assertEqual(transition["kind"], "MOVE_NODE")
+        self.assertTrue(transition["executed"])
+        self.assertNotEqual(transition["from_node"], transition["to_node"])
+        self.assertEqual(len(transition["points"]), 2)
+        for point in transition["points"]:
+            self.assertEqual(len(point), 2)
+            self.assertTrue(all(0 <= v <= 2.4 for v in point))
+        # Virtual road-node preview is never real odometry.
+        self.assertEqual(first["snapshot"]["pose_source"], "DISCRETE_ROAD_NODE")
+
+    def test_switching_engines_closes_previous_anonymous_pty(self):
+        import shutil
+        if shutil.which("gcc") is None:
+            self.skipTest("Host GCC required")
+        lab.action(start(engine="pty"))
+        original = lab.SESSION
+        lab.action(start(engine="code_fsm"))
+        self.assertEqual((original.master, original.slave), (-1, -1))
+        self.assertEqual(lab.status()["snapshot"]["total_steps"], 34)
+        lab.action(start(engine="pty"))
+        self.assertEqual(lab.status()["snapshot"]["total_steps"],
+                         len(lab.SESSION.steps))
+        self.assertEqual(lab.status()["transport"], "ANONYMOUS_PTY_CARLINK_TEST_ONLY")
+
+    def test_web_assets_are_test_only_and_first_screen_map(self):
+        web = ROOT / "sim2real" / "web"
+        body = (web / "index.html").read_text(encoding="utf-8")
+        bench = (web / "test_stm32_fsm_workbench.js").read_text(encoding="utf-8")
+        layout = (web / "field_ui_hierarchy.js").read_text(encoding="utf-8")
+        style = (web / "field_hierarchy_v2.css").read_text(encoding="utf-8")
+        self.assertIn("test_stm32_fsm_workbench.js", body)
+        self.assertNotIn("real_mock_stm32_fsm.js", body)
+        self.assertIn("mode !== 'test'", bench)
+        self.assertIn("nav.after(map)", layout)
+        self.assertIn(".sidebar .settings-directory", style)
+        self.assertIn("C 代码状态机", bench)
+
     def test_reset_closes_pty_descriptors(self):
         lab.action(start())
         old = lab.SESSION
