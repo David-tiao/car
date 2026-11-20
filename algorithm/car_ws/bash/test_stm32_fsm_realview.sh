@@ -36,6 +36,7 @@ for path in ('sim2real/test_stm32_fsm_lab.py',
     print('SYNTAX OK:', path)
 PY
 if command -v node >/dev/null 2>&1; then
-  node --check "$ROOT/sim2real/web/real_mock_stm32_fsm.js"
+  node --check "$ROOT/sim2real/web/test_stm32_fsm_workbench.js"
+  node --check "$ROOT/sim2real/web/field_ui_hierarchy.js"
 fi
 echo '[PASS] Preserved mock STM32 PTY, browser API isolation and C task-plan feedback gate'
