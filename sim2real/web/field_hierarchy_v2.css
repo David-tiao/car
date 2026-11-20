@@ -159,3 +159,36 @@ body {background:radial-gradient(ellipse 95% 35% at 50% -5%,#1a3955 0,transparen
   .cfsm-fields{grid-template-columns:1fr;}
   .cfsm-toggle{grid-template-columns:1fr;}
 }
+
+/* Always keep the map visible while clicking the TEST STM32 action buttons. */
+.field-stage-layout.has-workbench{
+  display:grid;
+  grid-template-columns:minmax(0,1.7fr) minmax(340px,1fr);
+  gap:16px;align-items:stretch;
+}
+.field-stage-layout.has-workbench .map-stage{margin-top:12px;min-width:0;}
+.field-stage-layout.has-workbench #fieldWorkbenchSlot{min-width:0;}
+.field-stage-layout.has-workbench .cfsm-workbench{
+  height:100%;margin:12px 0 0;padding:17px 16px;
+  box-shadow:inset 0 2px 0 #ee8e72,0 8px 25px #0004;
+}
+.field-stage-layout.has-workbench .cfsm-heading h2{font-size:18px;}
+.field-stage-layout.has-workbench .cfsm-fields{
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+}
+.field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:1fr;gap:7px;}
+.field-stage-layout.has-workbench .cfsm-toggle button{padding:9px;}
+.field-stage-layout.has-workbench .cfsm-controls button{
+  padding:8px 12px;flex:1 1 42%;
+}
+.field-stage-layout.has-workbench .cfsm-log{max-height:180px;}
+@media(max-width:1060px){
+  .field-stage-layout.has-workbench{grid-template-columns:1fr;}
+  .field-stage-layout.has-workbench .cfsm-workbench{margin-top:0;}
+  .field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:repeat(2,minmax(0,1fr));}
+}
+@media(max-width:580px){
+  .field-stage-layout.has-workbench .cfsm-fields{grid-template-columns:1fr;}
+  .field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:1fr;}
+}
