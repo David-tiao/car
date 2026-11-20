@@ -49,6 +49,7 @@ class FourModeHttpTests(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory()
         APP_DIR = cls.temp.name
         (Path(APP_DIR)/'index.html').write_text('<h1>four mode test</h1>', encoding='utf-8')
+        (Path(APP_DIR)/'keyboard.html').write_text('<h1>keyboard feedback test</h1>', encoding='utf-8')
         cls.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
         cls.thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.thread.start()
@@ -73,9 +74,10 @@ class FourModeHttpTests(unittest.TestCase):
             return json.load(res)
 
     def test_four_pages_share_frontend(self):
-        for mode in ('sim','test','real','keyboard'):
+        for mode in ('sim','test','real'):
             with self.subTest(mode=mode):
                 self.assertIn('four mode test', self.get('/'+mode))
+        self.assertIn('keyboard feedback test', self.get('/keyboard'))
 
     def test_test_and_real_data_never_mix(self):
         start_real=self.get('/api/real/telemetry')['seq']

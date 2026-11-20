@@ -7,9 +7,9 @@
 | 纯模拟集 | `http://127.0.0.1:8080/sim` | 本地 JS 仿真算法 | 仅浏览器内部模拟 |
 | 测试集 | `http://127.0.0.1:8080/test` | 模拟 MCU → Linux PTY → ROS 2 → HTTP | 只读 |
 | 运行集 | `http://127.0.0.1:8080/real` | 实际 STM32 → 串口 → ROS 2 → HTTP | 只读 |
-| 映射集 | `http://127.0.0.1:8080/keyboard` | 只读取实车通道 | **禁止下发控制**，待开发 |
+| 映射反馈 | `http://127.0.0.1:8080/keyboard` | 电脑 ROS2 `/cmd_vel` → 网页估算轨迹 | **只读**；不控制 STM32 |
 
-原 `car` 命令仍在 8080 端口启动独立网站；首页 `/` 等价于纯模拟模式，新增四模式切换菜单。**不要把四套前端复制成四份项目**。所有页面共用 `sim2real/web/index.html`、`app.js`、`planner.js` 等已有资产。
+原 `car` 命令仍在 8080 端口启动独立网站；首页 `/` 等价于纯模拟模式，四模式仍从原网页导航切换。`/sim`、`/test`、`/real` 复用既有前端；`/keyboard` 使用独立的极简反馈页，不加载任务规划、地图限位或状态机。
 
 ## 1. 安装后，在 Ubuntu 上验收
 
@@ -22,7 +22,7 @@ python3 -m unittest discover -s tests -p 'test_four_modes.py' -v
 node tests/test_mode_router.js
 ```
 
-预期：doctor 打印各项检查通过；`unittest` 中 6 项测试全部 `ok`，最后 `OK`。这验证页面路由、接口隔离、数据有效性、跨站拒绝及键盘命令禁用，不代表 ROS 2 或实机已接通。
+预期：doctor 打印各项检查通过；原四模式测试通过，另执行 `python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_feedback.py' -v` 验证键盘反馈积分与隔离接口。这些离线测试不代表 ROS2 或实机已经接通。
 
 ## 2. 纯模拟集（原有快捷命令）
 
@@ -67,13 +67,16 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 
 ## 5. 映射集
 
-打开 `http://127.0.0.1:8080/keyboard` 可以观看实车通道的只读反馈。网页不会发送 `/cmd_vel`、不会发送 CAR-LINK `SET_VELOCITY`，`POST /api/keyboard/command` 明确返回 HTTP 403。未来必须先完成 STM32 双向控制权、命令超时、急停以及电机安全校验；比赛运行中不得启用遥控。
+在电脑 ROS2 环境执行 `bash algorithm/car_ws/bash/web.sh keyboard`，访问 `http://127.0.0.1:8080/keyboard`。现有键盘控制节点继续使用原来的按键映射，网页只从 `/cmd_vel` 获取 vx、vy、wz 并积分成**估算**位置；不需要地图、避障、导航或任务状态机。若话题不是 `/cmd_vel`，启动时添加 `--topic /你的话题`；若消息类型为 `TwistStamped`，添加 `--stamped`。连续超过默认 0.5 秒未收到速度指令，估算速度归零；此行为不向电机发送停车指令。`POST /api/keyboard/command` 仍返回 HTTP 403。网页显示不能证明实体运动。比赛运行期间禁止遥控。
 
 ## 6. 架构与边界
 
 - `sim2real/web_mode_gateway.py`：测试和实车 HTTP API、隔离缓存、输入校验；保留旧 `/api/*` 接口。
 - `sim2real/web_mode_runner.py`：测试/实车一键启动与进程组清理，自动复用现有 `car` 网站。
 - `sim2real/web/mode_router.js`：四模式入口和状态提示。
+- `sim2real/keyboard_feedback_gateway.py`：只读键盘反馈通道及数据校验。
+- `sim2real/ros2_keyboard_feedback_bridge.py`：订阅已有 ROS2 速度话题，仅用于估算轨迹。
+- `sim2real/web/keyboard.html` 和 `keyboard.js`：独立自由运动反馈网页。
 - `algorithm/car_ws/bash/web.sh`：`sim|test|real|keyboard|doctor` 入口，保留原 `sim` 行为。
 - `sim2real/ros2_visualization_bridge.py`：`--web-channel test|real` 将 ROS 2 数据送到指定隔离通道。
 - `sim2real/server.py`：只添加独立路由拦截，不替换原有功能。

@@ -39,8 +39,8 @@ case "$CMD" in
     ;;
   keyboard)
     require_site
-    echo '[DISABLED] Keyboard-to-STM32 motor control is not implemented.'
-    echo "[PAGE] Open http://127.0.0.1:${CAR_PORT:-8080}/keyboard after starting car."
+    source_ros
+    exec /usr/bin/python3 "$SIM/web_mode_runner.py" keyboard "$@"
     ;;
   build)
     source_ros
@@ -57,7 +57,7 @@ case "$CMD" in
       echo "[PASS] ROS2 adapter: $pkg"
     done
     [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[PASS] Keyboard mode disabled'
-    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py"
+    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py" "$SIM/keyboard_feedback_gateway.py" "$SIM/ros2_keyboard_feedback_bridge.py"
     /usr/bin/python3 -m py_compile "$SIM/test_inspection.py" "$SIM/test_telemetry_bridge.py"
     echo '[PASS] Python syntax; original car shortcut unaffected'
     echo '[INFO] doctor does not validate physical STM32, laser, OpenMV or ROS2 runtime.'
@@ -65,7 +65,7 @@ case "$CMD" in
   tree)
     echo "Standalone web frontend: $SIM/web"
     printf '%s\n' '  /sim      (browser-only simulation)' '  /test     (Mock ROS2 bridge)' \
-      '  /real     (hardware ROS2 telemetry)' '  /keyboard (control disabled)'
+      '  /real     (hardware ROS2 telemetry)' '  /keyboard (ROS2 /cmd_vel read-only motion feedback)'
     for pkg in car_web_test car_web_real car_web_sim car_web_keyboard; do
       ls -ld "$WS/src/$pkg" 2>/dev/null || true
     done

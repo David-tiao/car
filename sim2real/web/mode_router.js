@@ -10,7 +10,7 @@
     sim: ['纯模拟集', 'SIM', '网页本地运动仿真；不使用 ROS 2 或实体底盘反馈'],
     test: ['测试集', 'TEST', '模拟 MCU → 伪串口 → CAR-LINK → ROS 2 → 网页'],
     real: ['运行集', 'REAL', '真实 STM32 → ROS 2 → 网页；仅监控，不发控制指令'],
-    keyboard: ['映射集', 'DISABLED', '键盘实车控制尚未开放；只允许观察实车反馈'],
+    keyboard: ['映射反馈', 'READ ONLY', '读取电脑 ROS2 速度指令并实时估算运动；不向实车发指令'],
   };
   const config = Object.freeze({
     mode, channel,

@@ -17,6 +17,7 @@ from urllib.parse import urlsplit, parse_qs
 import test_inspection
 import test_mission_store
 import test_v4_qr_lab
+from keyboard_feedback_gateway import keyboard_get, keyboard_post
 
 MODES = ('test', 'real')
 LAYER_NAMES = ('map', 'global_costmap', 'local_costmap')
@@ -114,6 +115,8 @@ def _telemetry_status(mode, since):
 
 def mode_get(handler):
     """Return True when request was handled, else allow the old server to run."""
+    if keyboard_get(handler):
+        return True
     if test_inspection.handle_get(handler):
         return True
     if test_mission_store.handle_get(handler):
@@ -174,6 +177,8 @@ def mode_get(handler):
 
 
 def mode_post(handler):
+    if keyboard_post(handler):
+        return True
     if test_inspection.handle_post(handler):
         return True
     if test_mission_store.handle_post(handler):
