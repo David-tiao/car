@@ -89,3 +89,38 @@
 @media(max-width:580px){
   .keyboard-route-switch{grid-template-columns:1fr;}
 }
+
+/* Explicitly synthetic kinematic chassis experiment. Never REAL odom styling. */
+.keyboard-twin-panel{
+  margin:13px 0 14px;padding:13px;
+  background:linear-gradient(125deg,#231b3a,#161f3c);
+  border:1px solid #885bc1;border-left:4px solid #ba83f2;border-radius:10px;
+}
+.keyboard-twin-panel[hidden]{display:none!important;}
+.keyboard-twin-panel h3{
+  color:#ddbfff;font-size:14px;font-weight:850;margin:0 0 4px;
+}
+.keyboard-twin-panel .keyboard-note{
+  margin:4px 0 12px;color:#bca9d5;
+}
+.keyboard-twin-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+.keyboard-twin-toolbar button{
+  border:1px solid #b88be0;color:#fff;font-weight:800;
+  background:#5e397f;padding:8px 12px;border-radius:8px;cursor:pointer;
+}
+.keyboard-twin-toolbar label{
+  display:flex;align-items:center;gap:6px;
+  color:#cab9db;font-size:12px;font-weight:700;
+}
+.keyboard-twin-toolbar select{
+  min-width:135px;background:#211b37;color:#f5eaff;
+  border:1px solid #865caa;border-radius:7px;padding:8px 10px;
+}
+.keyboard-twin-status{
+  font-weight:850;color:#d8adff;margin:12px 0 4px;
+  background:#201732;border-radius:7px;padding:8px 10px;
+}
+.keyboard-twin-stats{
+  color:#cbbfd8;font:11px/1.8 ui-monospace,monospace;
+  overflow-wrap:anywhere;
+}
