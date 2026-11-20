@@ -35,6 +35,19 @@ def parse_snapshot(data):
     return tuple(float(v) for v in values)
 
 
+TOPICS = {
+    "local_ros2": "/car/teleop/local_test_twist",
+    "pi_stm32": "/car/teleop/desired_twist",
+}
+
+
+def select_topic(data):
+    mode = data.get("route_mode")
+    if mode not in TOPICS:
+        raise ValueError("Invalid keyboard route mode")
+    return TOPICS[mode]
+
+
 def main():
     parser = argparse.ArgumentParser(description="PC keyboard -> ROS2 candidate only (NO motors)")
     parser.add_argument("--server", default="http://127.0.0.1:8090")
@@ -56,21 +69,27 @@ def main():
     class KeyboardPc(Node):
         def __init__(self):
             super().__init__("car_keyboard_pc_source")
-            self.pub = self.create_publisher(
-                TwistStamped, "/car/teleop/desired_twist", 10)
+            self.publishers = {
+                mode: self.create_publisher(TwistStamped, topic, 10)
+                for mode, topic in TOPICS.items()
+            }
+            self.previous_mode = None
             self.health = self.create_publisher(
                 String, "/car/teleop/pc_status", 10)
             self.failures = 0
             self.timer = self.create_timer(1.0/args.hz, self.tick)
             self.get_logger().warning(
-                "OFFLINE INTERFACE ONLY: publishes /car/teleop/desired_twist, NOT /cmd_vel")
+                "DRY RUN only: local ROS2 loopback or Pi candidate; NO /cmd_vel / motor TX")
         def tick(self):
             active, target, reason = False, (0.0, 0.0, 0.0), "HTTP_LOST"
+            selected = self.previous_mode or "local_ros2"
             try:
                 with urlopen(args.server.rstrip("/") +
                              "/api/keyboard/intent", timeout=0.15) as resp:
                     data = json.loads(resp.read(4096))
                 target = parse_snapshot(data)
+                selected = data.get("route_mode")
+                select_topic(data)  # validates before publishing
                 active = any(abs(v) > 1e-8 for v in target)
                 reason = "CANDIDATE_ONLY" if active else "ZERO_OR_DEADMAN"
                 self.failures = 0
@@ -83,12 +102,19 @@ def main():
             msg.header.frame_id = "base_link"
             msg.twist.linear.x, msg.twist.linear.y = target[0], target[1]
             msg.twist.angular.z = target[2]
-            self.pub.publish(msg)
+            if self.previous_mode != selected and self.previous_mode in self.publishers:
+                stop = TwistStamped()
+                stop.header.stamp = msg.header.stamp
+                stop.header.frame_id = "base_link"
+                self.publishers[self.previous_mode].publish(stop)
+            self.publishers[selected].publish(msg)
+            self.previous_mode = selected
             status = String()
             status.data = json.dumps({
                 "source": "PC_KEYBOARD_LOCAL", "state": reason,
                 "motor_authorized": False,
-                "topic": "/car/teleop/desired_twist"}, ensure_ascii=False)
+                "topic": TOPICS[selected], "route_mode": selected,
+                "keyboard_to_real_vehicle": False}, ensure_ascii=False)
             self.health.publish(status)
     node = KeyboardPc()
     try:
