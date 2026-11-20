@@ -66,7 +66,7 @@ class AutoStartTests(unittest.TestCase):
             self.assertFalse(auto.ensure_started(8080))
             self.assertEqual(popen.call_count, 1)
         argv = popen.call_args.args[0]
-        self.assertIn('ros2_keyboard_feedback_bridge.py', str(argv))
+        self.assertIn(str(self.bridge), argv)  # Patched path is the injected test observer
         self.assertIn('--parent-pid', argv)
         self.assertIn('http://127.0.0.1:8080', argv)
         self.assertTrue(auto.status()['running'])
