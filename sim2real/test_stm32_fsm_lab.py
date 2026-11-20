@@ -301,7 +301,7 @@ def status():
                           else "NATIVE_GCC_C_FSM_NO_UART"),
             "model_kind": ("PYTHON_SIMEXECUTOR_NOT_COMPILED_STM32"
                            if engine != "code_fsm" else
-                           "COMPILED_STM32_RACETASKPLAN_AND_GATE_HOST_ONLY"),
+                           "COMPILED_STM32_RACEFSM_QR_AND_TASK_GATE_HOST_ONLY"),
             "endpoint_scope": "TEST_ONLY",
             "generation": GENERATION,
             "case": dict(CASE) if CASE is not None else None,
