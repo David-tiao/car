@@ -164,3 +164,10 @@
 .keyboard-link-health[data-reason="MAP_RESET_REARM_REQUIRED"]{
   border-color:#deae57;background:#382e22;color:#ffe1a6;
 }
+
+/* In direct PC-only mode, keep the page focused on keys -> ROS2 -> pose.
+   Author display rules must never override the hidden attribute. */
+.keyboard-allow[hidden],
+.keyboard-caution[hidden],
+.keyboard-metric[hidden],
+.keyboard-twin-panel[hidden] { display:none !important; }
