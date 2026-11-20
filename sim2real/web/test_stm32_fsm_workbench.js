@@ -78,6 +78,9 @@
     function choose(mode){
       if(selected!==mode)needsInit=true;
       selected=mode;
+      const qrTimeout=[...fault.options].find(option=>option.value==='qr_timeout');
+      if(qrTimeout)qrTimeout.disabled=mode!=='code_fsm';
+      if(mode!=='code_fsm'&&fault.value==='qr_timeout')fault.value='none';
       for(const b of [pty,code]){
         const active=b.dataset.engine===mode;
         b.setAttribute('aria-pressed',String(active));
