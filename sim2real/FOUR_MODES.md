@@ -67,13 +67,16 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 
 ## 5. 映射集
 
-打开 `http://127.0.0.1:8080/keyboard` 可使用 Shift + WASDQE 键盘映射，
-查看期望/实测速度差、相对积分位置误差、RMS 和停车后的残余运动。
-`/api/keyboard/intent` 只接受本机/同源、带防重排序号的键盘意图，
-电脑 ROS2 节点将其发布到 `/car/teleop/desired_twist`；树莓派的安全接收器
-输出 `/car/teleop/stm32_candidate`。**目前这个候选没有连接 STM32 UART，
-`/cmd_vel`、电机与机构均不受键盘控制**。
-现有 `POST /api/keyboard/command` 仍然返回 403，保留旧版安全保护。
+打开 `http://127.0.0.1:8080/keyboard` 后，默认就是**本机键盘直通 ROS2**：
+直接按 W/S 前后、A/D 左右平移、Q/E 转向，**无 Shift 使能、无任务 FSM、
+无加速斜坡、无地图障碍锁停、无自动复位**。电脑 ROS2 的
+`/car/teleop/local_test_twist` 由独立订阅节点回传给网页，
+虚拟紫色车只对订阅到的车体速度做数学积分，不是实车里程计。
+松开按钮立即归零，丢失通信的 300ms 看门狗保留。
+
+可手动切换到未来的 PC→Pi→STM32 候选链路，那个模式的安全约束保持原样。
+**实体 UART 尚未连接，网页不会发送 `/cmd_vel`、电机或机构命令。**
+原有 `POST /api/keyboard/command` 仍返回 HTTP 403。
 
 详细安装、验收、误差公式和安全边界见
 [`KEYBOARD_MAPPING_ROS2.md`](KEYBOARD_MAPPING_ROS2.md)。
