@@ -189,6 +189,7 @@ int HostQr_Step(const char *task_code, HostQrEvent *out)
     return out->accepted;
 }
 
+void HostQr_Fail(void) { Race_Fail(&qr_race, RACE_ERROR_LINK); }
 int HostQr_State(void) { return (int)qr_race.state; }
 int HostQr_Index(void) { return (int)qr_race.action_index; }
 int HostQr_Valid(void) { return (int)qr_race.qr_valid; }
