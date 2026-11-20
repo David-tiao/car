@@ -153,7 +153,7 @@
       ['127.0.0.1','localhost','::1'].includes(window.location.hostname);
 
     let mockLayer=null, lastMapSignature=null, mockResetInProgress=false;
-    let mockResetVersion=0, lastResetReason='';
+    let mockResetVersion=0, lastResetReason='', needsRearmAfterReset=false;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
     function paintMock(data){
@@ -166,7 +166,9 @@
          data.frame!=='field_preview_m_not_odom'){
         throw Error('虚拟底盘数据来源不符合 MOCK 隔离要求');
       }
-      twinStatus.textContent='MOCK · '+data.state+
+      twinStatus.textContent=(needsRearmAfterReset?
+        '地图/模拟底盘刚复位：请松开并重新按住 Shift+W，或重新按住本机前进。 · ':'')+
+        'MOCK · '+data.state+
         (data.collision_reason?' · 已停止：'+data.collision_reason:'')+
         ' · '+data.fault_mode;
       twinStats.textContent=
@@ -259,6 +261,7 @@
         if(version!==mockResetVersion)return;
         lastMapSignature=signature;
         lastResetReason=reason;
+        needsRearmAfterReset=stopKeys;
         twinFault.value='none';
         paintMock(twin);
         if(stopKeys){
@@ -529,8 +532,13 @@
         if(health.source_type!=='LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY'||
           health.hardware_authorized!==false)
           throw Error('链路诊断数据来源不合法');
-        healthStatus.textContent='链路诊断 '+health.reason+'：'+health.hint;
-        healthStatus.dataset.reason=health.reason;
+        if(health.desired?.active)needsRearmAfterReset=false;
+        healthStatus.textContent=needsRearmAfterReset?
+          'MAP_RESET_REARM_REQUIRED：场地或模拟底盘已复位（'+lastResetReason+
+          '）。请先松开，再重新按住 Shift+W 或本机前进按钮。':
+          '链路诊断 '+health.reason+'：'+health.hint;
+        healthStatus.dataset.reason=needsRearmAfterReset?
+          'MAP_RESET_REARM_REQUIRED':health.reason;
         if(routeMode==='local_ros2')paintMock(mock);
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
