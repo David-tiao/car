@@ -318,6 +318,7 @@
           action:'route',client_seq:nextSeq(),route_mode:mode});
         routeMode=result.route_mode;
         paintRoute();
+        if(routeMode==='local_ros2')await resetMock(false);
         status.textContent='链路已切换 · 键盘候选指令清零 · '+(
           routeMode==='local_ros2'?'无需树莓派':'等待树莓派 / STM32');
         status.dataset.state='stopped';
@@ -556,8 +557,7 @@
       status.textContent='需在运行 HTTP 服务的电脑上通过 localhost 打开映射集';
     }
     draw([]);
-    resetMock(false);
-    refresh();
+    resetMock(false).then(refresh);
     setInterval(()=>{
       if(enabled.checked&&shift&&!document.hidden)sendNow();
     },100);
