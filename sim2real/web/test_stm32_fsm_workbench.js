@@ -88,6 +88,7 @@
       step.disabled=busy||needsInit;run.disabled=busy||needsInit;
     }
     choose('pty');
+    start.disabled=true;
     for(const b of [pty,code])b.addEventListener('click',()=>{if(!busy)choose(b.dataset.engine);});
     function layer(){
       const svg=document.getElementById('fieldSvg');
