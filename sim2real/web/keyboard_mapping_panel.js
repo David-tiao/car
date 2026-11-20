@@ -71,6 +71,7 @@
     for(const [key,label] of [
       ['desired','期望 vx / vy / ω'],
       ['actual','实际 vx / vy / ω'],
+      ['pose','实测里程计 X / Y / 航向'],
       ['error','速度误差 Δvx / Δvy / Δω'],
       ['rms','速度误差 RMS'],
       ['position','指令积分参考与里程计位置偏差'],
@@ -243,7 +244,8 @@
         const data=await rs.json(),history=await rh.json();
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
-        const d=data.desired,c=data.comparison||{},m=c.measured||{},e=c.error||{};
+        const d=data.desired,c=data.comparison||{},m=c.measured||{},p=c.pose||{},e=c.error||{};
+        metric.pose.textContent=`${fmt(p.x)} / ${fmt(p.y)} / ${fmt(p.yaw)}`;
         metric.desired.textContent=`${fmt(d.vx)} / ${fmt(d.vy)} / ${fmt(d.wz)}`;
         metric.actual.textContent=`${fmt(m.vx)} / ${fmt(m.vy)} / ${fmt(m.wz)}`;
         metric.error.textContent=c.error?
