@@ -176,3 +176,40 @@ curl -s http://127.0.0.1:8090/api/keyboard/dryrun | python3 -m json.tool
 `README.md` 和 `sim2real/data/shared_scene.json` 是用户本地文件，
 不要运行 `git reset --hard`、`git clean -fd` 或覆盖这些文件。
 
+
+## 修复「先动一下 → 回原位 → 再也不动」
+
+本次结合 Ubuntu 实际反馈修复了三个不同问题：
+
+1. 前端 `setInterval` 只为物理 Shift 续期，鼠标「按住本机前进」漏掉了 `holdTest`，所以第一次 POST 约 300ms 后服务端自动输出零。现在只要 `deadmanHeld()` 且仍有行驶键按住，就持续刷新 TTL。
+2. 地图是原赛场模拟器与本机 ROS2 控制台共用的。以前除了紫色 MOCK，还叠加了一辆**与 ROS2 无关的青色比赛模拟车**；那辆车会在原比赛模拟器重新规划时回到起点。现在只在 /keyboard 隐藏它，地图只留紫色 ROS2-MOCK。
+3. 共享场景异步加载/更新可能触发两次 HTTP 复位或乱序状态回读。现增加 `reset_seq` 严格单调保护，忽略过期 HTTP 结果；场景真实变化后安全停止，界面保留 `MAP_RESET_REARM_REQUIRED` 黄色提示，要求**松开再重新按住**，不会无提示地让原来的长按状态失效。
+
+**如何验证：**
+
+```bash
+# 更新后先停止旧的 server.py；在终端1重启：
+cd ~/Desktop/car
+git pull --ff-only
+python3 sim2real/server.py --host 127.0.0.1 --port 8090
+
+# 终端2：
+export ROS_DOMAIN_ID=42
+bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
+
+# 终端3，停下其他按键操作：
+python3 sim2real/keyboard_local_smoke.py --seconds 3
+```
+
+浏览器 Ctrl+Shift+R 强制刷新后进入 `/keyboard`。测试时要看**紫色 MOCK**
+而不是旧版青色比赛小车。松开 Shift 后
+`desired.active=false` 是**预期的安全停车**；
+`NO_REAL_ODOM` 是**没有实体硬件时预期的空反馈**。
+用浏览器真正持续按住 Shift+W 或鼠标持续按住本机前进按钮时才应看到
+`desired.active=true`。在后台场景确实发生改变后，
+黄色 `MAP_RESET_REARM_REQUIRED` 会明确要求重新按键。
+
+新增纯离线 `sim2real/tests/test_keyboard_recovery.py` 检查：
+300ms 心跳更新、乱序/重复场景复位拒绝、MOCK/REAL 隔离、
+紫色车唯一显示及 HTTP 乱序响应保护。
+
