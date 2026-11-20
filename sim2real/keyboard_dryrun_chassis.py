@@ -124,13 +124,15 @@ class KeyboardChassisTwin:
         self.last_time = now
         if self.state == "OBSTACLE_STOP":
             return self.snapshot()
-        if self.fault_mode == "link_loss" or not accepted_ros2:
-            desired = dict(STOP)
-        elif self.fault_mode == "motor_stall":
+        reference = ({k: float(input_twist[k]) for k in STOP}
+                     if accepted_ros2 else dict(STOP))
+        # Keep the command-vs-response reference even when simulated motors
+        # stall; otherwise an injected fault incorrectly produces zero error.
+        self.target = dict(reference)
+        if self.fault_mode in ("link_loss", "motor_stall") or not accepted_ros2:
             desired = dict(STOP)
         else:
-            desired = {k: float(input_twist[k]) for k in STOP}
-        self.target = dict(desired)
+            desired = dict(reference)
         if dt > 0:
             n = max(1, math.ceil(dt / SUBSTEP_S))
             h = dt / n
@@ -182,6 +184,7 @@ class KeyboardChassisTwin:
             "yaw_rad": round(self.yaw, 5),
             "velocity": {k: round(v, 4) for k, v in self.twist.items()},
             "input_twist": {k: round(v, 4) for k, v in self.target.items()},
+            "error_kind": "MOCK_COMMANDED_VS_MOCK_KINEMATIC",
             "model_error": error,
             "samples": self.samples,
             "sim_time_s": round(self.run_seconds, 3),
