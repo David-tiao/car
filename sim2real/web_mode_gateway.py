@@ -270,6 +270,7 @@ def mode_post(handler):
                     raise ValueError('Invalid '+key)
                 row[key] = v
             row['frame'] = str(payload.get('frame', 'odom'))[:64]
+            row['twist_frame'] = str(payload.get('twist_frame', ''))[:64]
             row['source'] = (mode.upper() + ':' + str(payload.get('source', 'ros2_odom')))[:64]
             row['source_type'] = mode.upper()  # NEVER trust a caller-supplied source_type
             with LOCK:
