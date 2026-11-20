@@ -159,6 +159,9 @@ class KeyboardMapping:
                 return {"status": "NOT_REAL_CHANNEL", "error": None, "measured": None}
             if str(sample.get("frame")) != "odom":
                 return {"status": "WRONG_FRAME", "error": None, "measured": None}
+            if str(sample.get("twist_frame")) != "base_link":
+                return {"status": "WRONG_TWIST_FRAME", "error": None,
+                        "measured": None}
             vals = [sample.get(k) for k in ("x", "y", "yaw", "vx", "vy", "wz")]
             if not all(type(v) in (float, int) and math.isfinite(v) for v in vals):
                 return {"status": "INVALID_ODOM", "error": None, "measured": None}
