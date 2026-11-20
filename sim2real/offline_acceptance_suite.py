@@ -122,6 +122,10 @@ def main(argv=None):
         row = run_case(name, cmd, timeout)
         checks.append(row)
         print(f"[{row['status']}] {name} ({row['seconds']:.2f}s)", flush=True)
+        if row["status"] != "PASS":
+            print("----- failing test output -----", flush=True)
+            print(row["log_tail"][-6500:], flush=True)
+            print("----- end failure -----", flush=True)
     passed = all(check["status"] == "PASS" for check in checks)
     report = {
         "schema": SCHEMA,
