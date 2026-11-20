@@ -10,7 +10,7 @@
     sim: ['纯模拟集', 'SIM', '网页本地运动仿真；不使用 ROS 2 或实体底盘反馈'],
     test: ['测试集', 'TEST', '模拟 MCU → 伪串口 → CAR-LINK → ROS 2 → 网页'],
     real: ['运行集', 'REAL', '真实 STM32 → ROS 2 → 网页；仅监控，不发控制指令'],
-    keyboard: ['映射集', 'DISABLED', '键盘实车控制尚未开放；只允许观察实车反馈'],
+    keyboard: ['映射集', 'DRY RUN', '键盘 → PC ROS2 → 树莓派 ROS2 候选接口；STM32 电机发送未授权'],
   };
   const config = Object.freeze({
     mode, channel,
@@ -79,7 +79,7 @@
     if (mode === 'keyboard') {
       const tip = document.createElement('p');
       tip.style.cssText = 'margin:6px 0;color:#ffc39c;font-weight:700';
-      tip.textContent = '实车键盘控制当前禁用：尚无经过验证的 STM32 双向控制权、急停和命令反馈协议。';
+      tip.textContent = '键盘期望速度可送入 ROS2 候选话题并与真实 /odom 对比；STM32 实际运动指令仍禁用，待协议和安全验收。';
       nav.append(tip);
     }
 
@@ -96,7 +96,7 @@
         const connected = !!feed?.telemetry_online;
         status.textContent = (mode === 'test' ? 'TEST · ' : mode === 'real' ? 'REAL · ' : 'KEYBOARD · ') +
           (connected ? '收到对应通道里程计' : '对应通道离线 / 等待数据') +
-          (mode === 'keyboard' ? ' · 控制禁用' : '');
+          (mode === 'keyboard' ? ' · ROS2 候选模式（实体电机未连接）' : '');
       } catch (_) {
         status.textContent = descriptions[mode][1] + ' · 接口不可用';
       }
