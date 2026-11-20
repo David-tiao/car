@@ -1,5 +1,6 @@
-/* /keyboard Mapping Set: PC keyboard -> ROS2 candidates, REAL-only odom errors.
- * No actual motor command, no /cmd_vel, no /dev/tty; Shift deadman + TTL.
+/* /keyboard: direct PC keyboard -> actual PC ROS2 subscriber -> SVG pose.
+ * W/A/S/D/Q/E move immediately in local mode, no FSM, Shift, obstacle,
+ * acceleration or destination constraints. Never a motor/REAL /odom command.
  */
 (() => {
   'use strict';
@@ -24,12 +25,12 @@
     const header=$('div',panel);
     header.className='keyboard-heading';
     $('div',header,'03 / KEYBOARD MAPPING · ROS2 DRY RUN').className='keyboard-eyebrow';
-    $('h2',header,'键盘映射 · 双通信链路');
-    $('p',header,'没有树莓派也能先在电脑 ROS 2 中完成真实话题发布与订阅回环；将来切换完整链路后，再连接树莓派和 STM32。两种模式都不向实体电机发送指令。');
+    $('h2',header,'键盘直控映射 · ROS2 实时回环');
+    $('p',header,'本机模式：W/S 前后、A/D 横移、Q/E 转向；按下立即输出 ROS2 速度，网页只按实际订阅值积分绘图。无需 Shift、任务状态机、避障或树莓派。未来实车链路仍单独预留。');
 
     const modes=$('div',panel);modes.className='keyboard-route-switch';
     modes.setAttribute('role','group');modes.setAttribute('aria-label','ROS2 键盘控制链路');
-    const routeLocal=$('button',modes,'本机 ROS2 回环 · 现在可用');
+    const routeLocal=$('button',modes,'本机键盘直控 → ROS2 → 网页');
     const routePi=$('button',modes,'电脑 → 树莓派 → STM32 · 预留');
     routeLocal.type='button';routePi.type='button';
     routeLocal.dataset.route='local_ros2';routePi.dataset.route='pi_stm32';
@@ -41,11 +42,11 @@
     const healthStatus=$('div',panel,'诊断：等待服务器、ROS2 与 MOCK 状态');
     healthStatus.className='keyboard-link-health';
     healthStatus.setAttribute('aria-live','polite');
-    const enabledLabel=$('label',panel,'本机启用键盘 ROS2 候选指令');
+    const enabledLabel=$('label',panel,'完整实车链路安全使能（仅预留模式）');
     enabledLabel.className='keyboard-allow';
     const enabled=$('input',enabledLabel);enabled.type='checkbox';
     enabledLabel.prepend(enabled);
-    const help=$('p',panel,'必须持续按住 Shift（使能）才能发送非零速度，松开立即停车。W/S 前后，A/D 左右平移，Q/E 旋转，空格/Esc 停车。键盘输入框聚焦时不触发运动。');
+    const help=$('p',panel,'本机直控：直接按住 W/S 前后、A/D 左右平移、Q/E 转向；可同时按多个键。松开立即归零，空格/Esc 停车。不需要 Shift 或勾选使能。输入框聚焦时不捕获键盘。');
     help.className='keyboard-notice';
     const grid=$('div',panel);grid.className='keyboard-keygrid';
     const keyButtons=new Map();
@@ -74,10 +75,10 @@
     const controls=$('div',panel);controls.className='keyboard-actions';
     const stopButton=$('button',controls,'■ 停车 / 清除按键');
     stopButton.className='keyboard-stop';stopButton.type='button';
-    const holdTestButton=$('button',controls,'按住本机前进 · 松开停车');
+    const holdTestButton=$('button',controls,'按住 W 前进（鼠标/触屏）');
     holdTestButton.type='button';
     holdTestButton.className='keyboard-hold-test';
-    holdTestButton.title='仅本机 ROS2 回环有效；鼠标或触屏按住相当于按住 Shift+W。没有实体电机发送。';
+    holdTestButton.title='本机 ROS2 模式下按住相当于键盘 W；松开立即归零。绝不发送真实电机控制。';
     const exportButton=$('button',controls,'↓ 导出误差 CSV');
     exportButton.type='button';
     const noMechanisms=$('div',panel,'G 夹爪、R 伸缩：仅预留映射，不发送机构指令。必须先对齐 STM32 机械动作协议、限位与完成回执。');
@@ -98,6 +99,7 @@
       const card=$('div',stats);card.className='keyboard-metric';
       $('span',card,label);
       metric[key]=$('strong',card,'—');
+      metric[key].parentElement.dataset.metric=key;
     }
     const graph=$('div',panel);graph.className='keyboard-graph';
     const graphHeading=$('h3',graph,'本机 ROS2 回环差值趋势（不是实体小车误差）');
@@ -106,28 +108,17 @@
 
     const twinPanel=$('section',panel);
     twinPanel.className='keyboard-twin-panel';
-    $('h3',twinPanel,'虚拟麦轮底盘 · 场地运动预览（MOCK）');
+    $('h3',twinPanel,'ROS2 速度直通 · 网页位置预览（MOCK）');
     const twinHint=$('p',twinPanel,
-      '运动输入来自电脑 ROS2 真正订阅到的本机话题；模型包含加速度和场地障碍检查，但没有实际电机、编码器、轮胎滑移或雷达。');
+      'ROS2 订阅到 vx/vy/ω 就立刻积分位置和朝向。没有加减速限制、障碍物停车、任务阶段或自动复位；地图只作背景，虚拟车可以越过边界。紫色车不是真实 /odom。');
     twinHint.className='keyboard-note';
     const twinToolbar=$('div',twinPanel);twinToolbar.className='keyboard-twin-toolbar';
-    const twinReset=$('button',twinToolbar,'复位虚拟底盘');
+    const twinReset=$('button',twinToolbar,'手动回到起点（只影响网页预览）');
     twinReset.type='button';
-    const twinQa=$('button',twinToolbar,'运行 7 项离线验收');
-    twinQa.type='button';
-    const faultLabel=$('label',twinToolbar,'软件故障注入');
-    const twinFault=$('select',faultLabel);
-    for(const [value,title] of [
-      ['none','无故障'],['motor_stall','模拟电机卡滞'],
-      ['slow_response','模拟加速迟缓'],['link_loss','模拟控制链丢失']]){
-      const op=$('option',twinFault,title);op.value=value;
-    }
     const twinStatus=$('div',twinPanel,'MOCK 底盘：等待本机 ROS 2 回环');
     twinStatus.className='keyboard-twin-status';
-    const twinStats=$('div',twinPanel,'运动位置：— · 模拟速度：— · 模型误差：—');
+    const twinStats=$('div',twinPanel,'直通位姿：— · 实际订阅速度：—');
     twinStats.className='keyboard-twin-stats';
-    const twinQaResults=$('pre',twinPanel,'七项验收尚未运行');
-    twinQaResults.className='keyboard-twin-qa';
     // Keep the simulation controls above long REAL-error graphs so the
     // field and movement/FAULT buttons can be viewed together.
     controls.after(twinPanel);
@@ -167,16 +158,14 @@
          data.frame!=='field_preview_m_not_odom'){
         throw Error('虚拟底盘数据来源不符合 MOCK 隔离要求');
       }
-      twinStatus.textContent=(needsRearmAfterReset?
-        '地图/模拟底盘刚复位：请松开并重新按住 Shift+W，或重新按住本机前进。 · ':'')+
-        'MOCK · '+data.state+
-        (data.collision_reason?' · 已停止：'+data.collision_reason:'')+
-        ' · '+data.fault_mode;
+      if(data.preview_mode!=='direct')
+        throw Error('映射集禁止启用碰撞/任务状态机预览');
+      twinStatus.textContent='电脑 ROS2 → 直通积分 · '+
+        (data.state==='RUNNING'?'正在按订阅速度运动':'已停止（松键归零）');
       twinStats.textContent=
         `位置 (${fmt(data.x_m)}, ${fmt(data.y_m)}) m · `+
-        `航向 ${fmt(data.yaw_rad)} rad · `+
-        `速度 ${fmt(data.velocity.vx)}, ${fmt(data.velocity.vy)}, ${fmt(data.velocity.wz)} · `+
-        `模型速度误差 ${fmt(data.model_error.linear_norm_mps)} m/s`;
+        `朝向 ${fmt(data.yaw_rad)} rad · `+
+        `订阅速度 vx/vy/ω = ${fmt(data.velocity.vx)} / ${fmt(data.velocity.vy)} / ${fmt(data.velocity.wz)}`;
       const svg=document.getElementById('fieldSvg');
       if(!svg)return;
       if(!mockLayer||!mockLayer.isConnected){
