@@ -5,7 +5,7 @@ ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 STM="$ROOT/STM32F4"
 export PYTHONDONTWRITEBYTECODE=1
 python3 -m unittest discover -s "$ROOT/algorithm/openmv/tests" -p 'test_v4_electrical_contract.py' -v
-python3 -m unittest discover -s "$ROOT/algorithm/openmv/tests" -p 'test_v4_qr_lab.py' -v
+python3 -m unittest discover -s "$ROOT/algorithm/openmv/tests" -p 'test_v4_qr_contract_http.py' -v
 command -v gcc >/dev/null || { echo '[ERROR] gcc required for actual STM32 C tests' >&2; exit 2; }
 out="$(mktemp -d)"
 trap 'rm -rf -- "$out"' EXIT
