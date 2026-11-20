@@ -166,14 +166,15 @@ class KeyboardMapping:
             if not all(type(v) in (float, int) and math.isfinite(v) for v in vals):
                 return {"status": "INVALID_ODOM", "error": None, "measured": None}
             measured = {k: round(float(sample[k]), 5) for k in ("vx", "vy", "wz")}
+            pose = {k: round(float(sample[k]), 5) for k in ("x", "y", "yaw")}
             if sample.get("received_at", 0) < self.last_command_wall:
                 return {"status": "WAITING_FOR_NEW_ODOM", "error": None,
-                        "measured": measured}
+                        "measured": measured, "pose": pose}
             settling = (not command["active"] and
                         self.stop_settle_until > now)
             if not command["active"] and not settling:
                 return {"status": "DEADMAN_NOT_HELD", "error": None,
-                        "measured": measured}
+                        "measured": measured, "pose": pose}
             seq = sample.get("seq")
             if type(seq) is not int:
                 return {"status": "INVALID_ODOM", "error": None, "measured": None}
@@ -220,7 +221,8 @@ class KeyboardMapping:
             rms = math.sqrt(sum(v*v for v in errors)/len(errors)) if errors else None
             return {"status": ("STOP_SETTLING" if settling else
                                 "COMPARABLE_ODOM_ONLY"),
-                    "measured": measured, "error": self.latest_error,
+                    "measured": measured, "pose": pose,
+                    "error": self.latest_error,
                     "rms_linear_mps": round(rms, 5) if rms is not None else None,
                     "samples": len(errors), "odom_age_s": round(age_s, 3),
                     "warning": "Relative commanded integration is not absolute localization; motor TX remains disabled."}
