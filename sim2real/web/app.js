@@ -490,7 +490,8 @@
       window.dispatchEvent(new CustomEvent('sim2real:field-changed',{
         detail:{blocked_cells:state.obstacles.map(o=>{
           const g=guideId(o);return numberedCell(g.c,g.r);
-        }),start_zone:state.startZone===2?'lower_right':'upper_right'}
+        }),start_zone:state.startZone===2?'lower_right':
+                       state.startZone===1?'upper_right':null}
       }));
     }
   }
@@ -823,8 +824,16 @@
       blocked_cells:state.obstacles.map(o=>{
         const g=guideId(o);return numberedCell(g.c,g.r);
       }),
-      start_zone:state.startZone===2?'lower_right':'upper_right'
+      start_zone:state.startZone===2?'lower_right':
+                 state.startZone===1?'upper_right':null
     }),
+    setTestStartZone:name=>{
+      if(window.CarWebMode?.mode!=='test' ||
+         !['upper_right','lower_right'].includes(name))return false;
+      state.startZone=name==='upper_right'?1:2;
+      state.start={x:2.25,y:state.startZone===1?2.25:0.15};
+      zoneButtons();recalc();return true;
+    },
   };
 
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',start);else start();
