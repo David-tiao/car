@@ -9,6 +9,18 @@
     if (!map || !nav) return;
     map.classList.add('field-hero-panel');
     nav.after(map);
+    const stage=map.querySelector('.map-stage');
+    if(stage && !map.querySelector('.field-stage-layout')){
+      const body=document.createElement('div');
+      body.className='field-stage-layout';
+      stage.before(body);
+      body.append(stage);
+      if(window.CarWebMode?.mode==='test'){
+        const slot=document.createElement('div');
+        slot.id='fieldWorkbenchSlot';
+        body.append(slot);
+      }
+    }
     // Keep existing map event listeners bound by app.js: append moves the node,
     // preserving the active SVG, stage controls, physics and references.
     const existing=map.querySelector('.map-panel-heading-badge');
