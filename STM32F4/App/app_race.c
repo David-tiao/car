@@ -193,12 +193,22 @@ void AppRace_Poll(void)
         Race_Fail(&s_race, RACE_ERROR_LINK);
     }
     if (RaceVision_Poll(code) && Race_SubmitQr(&s_race, s_race.scan_session, code)) {
-        if (!RaceTaskPlan_Build(&s_plan,
-                                (const uint8_t (*)[3])s_race.colors,
-                                (const uint8_t (*)[3])s_race.positions) ||
-            !RaceTaskPlan_Start(&s_plan)) {
+        /* ACK only a validated, session-matched QR. Camera waits for this
+         * before completing QR; the controller still owns all movement. */
+        if (!RaceVision_AckQr(s_race.scan_session)) {
+            Race_Fail(&s_race, RACE_ERROR_LINK);
+        } else if (!RaceTaskPlan_Build(&s_plan,
+                                       (const uint8_t (*)[3])s_race.colors,
+                                       (const uint8_t (*)[3])s_race.positions) ||
+                   !RaceTaskPlan_Start(&s_plan)) {
             Race_Fail(&s_race, RACE_ERROR_CONFIG);
         }
+    }
+    if (s_race.state == RACE_RUNNING &&
+        s_race.actions[s_race.action_index].kind == RACE_ACTION_SCAN &&
+        RaceVision_ScanFailed()) {
+        Race_Fail(&s_race, RaceVision_Healthy() ?
+                  RACE_ERROR_SCAN_TIMEOUT : RACE_ERROR_LINK);
     }
     if (s_ring_control || Vision_RingActive(Vision_GetDefault())) {
         if (s_stalled && Vision_RingActive(Vision_GetDefault()))
@@ -274,7 +284,8 @@ void AppRace_Poll(void)
             Mecanum_SetPositionMode(s_chassis, s_race.target_x, s_race.target_y, s_race.target_yaw);
         }
         __set_PRIMASK(saved_irq);
-        if (action->kind == RACE_ACTION_SCAN && !RaceVision_BeginScan()) {
+        if (action->kind == RACE_ACTION_SCAN &&
+            !RaceVision_BeginScanSession(s_race.scan_session)) {
             Race_Fail(&s_race, RACE_ERROR_LINK);
         }
     }
