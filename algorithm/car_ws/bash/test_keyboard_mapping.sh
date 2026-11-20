@@ -21,6 +21,6 @@ PY
 if command -v node >/dev/null 2>&1; then
   node --check sim2real/web/keyboard_mapping_panel.js
   node --check sim2real/web/mode_router.js
-  node tests/test_mode_router.js 2>/dev/null || node sim2real/tests/test_mode_router.js
+  node sim2real/tests/test_mode_router.js
 fi
 echo '[PASS] KEYBOARD MAP: no motor command, REAL-only error and ROS2 candidate protocol'
