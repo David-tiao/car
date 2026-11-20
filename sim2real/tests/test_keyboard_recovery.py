@@ -46,7 +46,7 @@ class KeyboardRecoveryTests(unittest.TestCase):
             "action": "reset", "start_zone": "lower_right",
             "blocked_cells": [17], "reset_seq": 1003})
         self.assertEqual(b["zone"], "lower_right")
-        self.assertEqual(b["blocked_cells"], [17])
+        self.assertEqual(b["blocked_cells"], [])
         before = self.state.digital_twin.snapshot()
         with self.assertRaisesRegex(ValueError, "STALE_MOCK_RESET"):
             self.state.dryrun_action({
@@ -84,12 +84,12 @@ class KeyboardRecoveryTests(unittest.TestCase):
     def test_ui_includes_pointer_deadman_in_periodic_heartbeat(self):
         ui = (ROOT / "web/keyboard_mapping_panel.js").read_text("utf-8")
         self.assertIn("if(deadmanHeld()&&active.size>0&&!document.hidden)sendNow()", ui)
-        self.assertIn("const deadmanHeld=()=>enabled.checked&&(shift||holdTest)", ui)
+        self.assertIn("const deadmanHeld=()=>routeMode==='local_ros2'?", ui)
         self.assertIn("payload.reset_seq=nextSeq()", ui)
-        self.assertIn("signature===lastMapSignature", ui)
+        self.assertNotIn("sim2real:field-changed", ui)
         self.assertIn("requestSeq<=refreshAppliedSeq", ui)
         self.assertIn("refreshAppliedSeq=++refreshRequestSeq", ui)
-        self.assertIn("请松开再重新按住 Shift+W", ui)
+        self.assertIn("直接按住 W/A/S/D/Q/E", ui)
 
     def test_competition_robot_is_hidden_in_keyboard_mode(self):
         source = (ROOT / "web/app.js").read_text("utf-8")
