@@ -113,11 +113,18 @@ class KeyboardMapping:
             if client_seq <= self.last_client_seq:
                 raise ValueError("STALE_KEYBOARD_INTENT: older than stop/reset")
             self.last_client_seq = client_seq
-            self.keys = sorted(keys)
+            new_keys = sorted(keys)
+            new_twist = mapped_twist(new_keys, speed, turn)
+            changed = (new_keys != self.keys or deadman != self.deadman or
+                       new_twist != self.command)
+            self.keys = new_keys
             self.deadman = deadman
-            self.command = mapped_twist(self.keys, speed, turn)
+            self.command = new_twist
             self.last_command_mono = time.monotonic()
-            self.last_command_wall = time.time()
+            # The 10Hz browser heartbeat renews the watchdog, but must NOT
+            # invalidate the most recent REAL odom sample on every refresh.
+            if changed or not self.last_command_wall:
+                self.last_command_wall = time.time()
             self.seq += 1
             if action == "stop":
                 self.generation += 1
