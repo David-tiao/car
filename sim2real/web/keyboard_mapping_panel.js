@@ -121,6 +121,9 @@
     twinStats.className='keyboard-twin-stats';
     const twinQaResults=$('pre',twinPanel,'七项验收尚未运行');
     twinQaResults.className='keyboard-twin-qa';
+    // Keep the simulation controls above long REAL-error graphs so the
+    // field and movement/FAULT buttons can be viewed together.
+    controls.after(twinPanel);
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
     pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
     const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
