@@ -121,3 +121,33 @@ MOVE、MOVE、SETTLE。SCAN 步调用真正的 C `Race_SubmitQr`
 
 新增回归测试验证 CELL 17 必须禁用 B2-B3、两个引擎读取同一封路条件、
 被封路时的绕行、扫码超时锁存和扫码成功后进入 34 步任务。
+
+## 重要核查：STM32 原生 C 路线**不具备路障绕行**
+
+在 `STM32F4/App/race_fsm.c` 的 `Race_StartQrRoute()` 中，
+开赛前 8 个动作的移动目标直接由 `race_config.h` 固定参数算出，
+交给 `app_race.c` 的 `Mecanum_SetPositionMode(...target_x, target_y, target_yaw)`。
+**没有**接入 3×3 道路拓扑、激光雷达锁路、blocked_roads 或 Dijkstra。
+因此现实车辆面对随机障碍物时可能直接向目标作直线移动，需在部署前
+增加「已验证导航路径 → 相邻航点 → STM32 逐航点运动反馈」接口。
+
+以当前 `RACE_ZONE1_HEADING_RAD=0` 且忽略起始 odom 旋转为例，
+启动区 1 预设扫码动作 1 的局部目标为相对起点
+`(-1.05 m, +0.125 m)`，不是一串合法路网航点；
+扫码后前往原料区也仅有两个预设坐标点。
+这**不能证明**必经赛场正中心 `(1.2m, 1.2m)`，但能证明它不会
+因中间 CELL17 障碍而自动绕行。
+
+网页 C 模式的橙色车轨迹，依然是 **Python Dijkstra 计算的安全拓扑
+*预览***，而 C 代码提供的是 QR 和后续任务动作状态的决策序列：
+两个结果来源不同，不能等同于真实固件已执行避障路径。
+本轮增加醒目的 C 模式警告，同时在 HTTP JSON 标记：
+`native_c_motion_obstacle_aware=false`、
+`native_c_motion_control=DIRECT_POSITION_GOALS_NO_BLOCKED_ROAD_INPUT`、
+`motion_provenance=PYTHON_DIJKSTRA_VISUAL_PREVIEW_NOT_NATIVE_C_MOTION`。
+
+此外 `RACE_PICK_DIRECT_KEY_TEST=1U` 仍保持测试配置，`app_race.c`
+尚未真正执行完整 34 个动作；GCC 的 42 步测试包含合成反馈，
+不应宣称现成 STM32 固件具有完整自主搬运执行器。
+
+此处**没有修改真实 STM32 运动轨迹或启用电机**，只消除网页验收误导。
