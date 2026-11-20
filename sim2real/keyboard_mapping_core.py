@@ -80,6 +80,7 @@ class KeyboardMapping:
         with self.lock:
             active = self._live(now)
             return {"seq": self.seq, "generation": self.generation,
+                    "last_client_seq": self.last_client_seq,
                     "active": active, "deadman": self.deadman if active else False,
                     "keys": self.keys if active else [],
                     "vx": self.command["vx"] if active else 0.0,
