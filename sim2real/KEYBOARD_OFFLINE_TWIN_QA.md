@@ -112,3 +112,67 @@ bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
 这些是**软件模型的自检**，不能对外宣传为实车功能完成。
 下一步拿到真实 Pi/STM32 后，再对齐真实电机转速协议、里程计
 车体坐标、硬件控制权和现场急停，并用真实 odom 取代模型验证。
+
+## 本机 ROS2 节点已启动，但紫色车仍不动：按顺序检查
+
+**注意：** `NO_REAL_ODOM` 属于正常状态，表示目前没有 STM32 实车数据；
+它不能说明本机 ROS2 回环是否正常。真实 ROS2 回环看 `ros2_feedback.online`。
+
+现在 `/keyboard` 最上方有「链路诊断」栏，对每个阻断点明确报告原因：
+
+| reason | 代表什么 | 下一步 |
+| --- | --- | --- |
+| `DEADMAN_NOT_ACTIVE` | 没有有效 Shift 使能，或页面按键输入没有激活 | 勾选键盘使能并按住 Shift+W，或鼠标持续按住「按住本机前进」 |
+| `NO_MOVEMENT_KEYS` | 按住使能但没有 W/A/S/D/Q/E | 再按住一个行驶键 |
+| `ROS2_ECHO_OFFLINE` | HTTP 期望值有了，但本机 ROS2 回传没送到网页 | 检查两个 ROS2 进程、相同 ROS_DOMAIN_ID、话题 echo |
+| `ROS2_ECHO_ZERO` | ROS2 订阅有效，但只有零速度 | 检查按键和指令 TTL、输入焦点、死手使能 |
+| `MOCK_OBSTACLE_STOP` | MOCK 模型被红色障碍/黄色禁行区挡住并锁停 | 点击「复位虚拟底盘」，移开挡路障碍 |
+| `MOCK_FAULT_SELECTED` | 开启了电机卡滞、迟缓或断链模拟 | 选择「无故障」 |
+| `MOCK_MOVING` | 本机 ROS2 回环、mock 积分已产生位移 | 若地图仍没动，排查浏览器 SVG 图层或刷新 |
+| `WAIT_MOCK_POLL` | 已有 ROS2 正向消息，但还没完成模型更新 | 检查 `/api/keyboard/dryrun` 定时刷新 |
+
+**第一个操作：** 两个终端分别保持下面命令运行，网页更新 Git 分支后
+必须先重启 Python HTTP 服务器，再刷新页面（Ctrl+Shift+R）。
+
+```bash
+# 终端1（保持运行）：
+cd ~/Desktop/car
+python3 sim2real/server.py --host 127.0.0.1 --port 8090
+
+# 终端2（保持运行）：
+cd ~/Desktop/car
+export ROS_DOMAIN_ID=42
+bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
+```
+
+网页本机模式右侧新增 **「按住本机前进 · 松开停车」**；
+按住鼠标/触屏按钮即可产生本机 Shift+W 等价的非零候选指令，
+松开立刻发 STOP。只能在本机 ROS2 选项使用，不能切成 Pi 模式后驱动，
+也**不会发送真实电机控制帧**。
+
+**不想排查键盘，可以用独立端到端自检：**
+
+```bash
+# 终端3：关闭或停止网页上的按键操作，避免两个输入源互相打断。
+cd ~/Desktop/car
+python3 sim2real/keyboard_local_smoke.py --seconds 3
+```
+
+该命令只接受 `127.0.0.1` / `localhost` 并要求默认本机 ROS2 模式。
+持续发送 0.12m/s 软件候选指令、查询真正的 ROS2 订阅回环、检测模拟
+车在地图世界系 x 方向前进后是否移动超过 4mm，结束时一定请求 STOP。
+结果中的 `received_any_ros2_echo` 与 `mock_moved_west_over_4mm`
+能区分 ROS2 消息未回传、模型碰撞、浏览器没有正确渲染。
+
+直接读取链路诊断 JSON：
+
+```bash
+curl -s http://127.0.0.1:8090/api/keyboard/health | python3 -m json.tool
+curl -s http://127.0.0.1:8090/api/keyboard/dryrun | python3 -m json.tool
+```
+
+若第一个 API 返回 404，说明服务进程仍加载了旧代码：需要**重启**
+`server.py`，而不只是 git pull / 浏览器刷新。
+`README.md` 和 `sim2real/data/shared_scene.json` 是用户本地文件，
+不要运行 `git reset --hard`、`git clean -fd` 或覆盖这些文件。
+
