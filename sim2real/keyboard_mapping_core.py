@@ -129,6 +129,13 @@ class KeyboardMapping:
             self.last_client_seq = client_seq
             if action == "route":
                 self.route_mode = payload["route_mode"]
+                # A new route is a new experiment. Previous loopback receipts
+                # and odom error samples must not appear as fresh route data.
+                self.ros_receipts.clear()
+                self.ros_history.clear()
+                self.history.clear()
+                self.latest_error = None
+                self.last_odom_seq = 0
             new_keys = sorted(keys)
             new_twist = mapped_twist(new_keys, speed, turn)
             changed = (new_keys != self.keys or deadman != self.deadman or
@@ -139,7 +146,7 @@ class KeyboardMapping:
             self.last_command_mono = time.monotonic()
             # The 10Hz browser heartbeat renews the watchdog, but must NOT
             # invalidate the most recent REAL odom sample on every refresh.
-            if changed or not self.last_command_wall or action == "stop":
+            if changed or not self.last_command_wall or action in ("stop", "route"):
                 self.last_command_wall = time.time()
             self.seq += 1
             if action == "stop":
