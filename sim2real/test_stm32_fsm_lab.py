@@ -416,6 +416,14 @@ def action(payload):
                 } for rid in roads],
                 "source_type": "MAP_EDITOR_TEST_ONLY"}}
         if command == "start":
+            # Optional compare-and-swap token for browser resets performed
+            # while a previous start request is still in flight.
+            if "expected_generation" in payload:
+                generation = payload["expected_generation"]
+                if type(generation) is not int or generation != GENERATION:
+                    raise ValueError("STALE_MOCK_SESSION: previous start was cancelled")
+                payload = {key: value for key, value in payload.items()
+                           if key != "expected_generation"}
             _start(payload)
         elif command in ("step", "run", "reset"):
             # Browser STEP carries a generation guard. If Reset and a new
