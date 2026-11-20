@@ -59,7 +59,13 @@ def wrap_angle(radians):
 
 
 class KeyboardChassisTwin:
-    def __init__(self):
+    def __init__(self, mode="physics"):
+        # "direct": local keyboard -> actual received ROS2 Twist -> geometric
+        # pose integration only. No FSM, acceleration, collision or faults.
+        # "physics": legacy separate fault-lab fixture, not /keyboard.
+        if mode not in ("physics", "direct"):
+            raise ValueError("Unknown keyboard preview mode")
+        self.mode = mode
         self.reset("upper_right", [])
 
     def reset(self, zone, blocked_cells):
@@ -67,7 +73,7 @@ class KeyboardChassisTwin:
             raise ValueError("Start zone must be upper_right or lower_right")
         cells = valid_blocked_cells(blocked_cells)
         self.zone = zone
-        self.blocked_cells = cells
+        self.blocked_cells = [] if self.mode == "direct" else cells
         self.x, self.y = 2.16, 2.16 if zone == "upper_right" else 0.24
         self.yaw = math.pi  # visualization only: start from east, facing west
         self.twist = dict(STOP)
@@ -84,6 +90,8 @@ class KeyboardChassisTwin:
         return self.snapshot()
 
     def set_fault(self, mode):
+        if self.mode == "direct":
+            raise ValueError("Direct keyboard preview has no fault state machine")
         if mode not in KINEMATIC_FAULTS:
             raise ValueError("Unknown mock chassis fault")
         self.fault_mode = mode
@@ -122,6 +130,29 @@ class KeyboardChassisTwin:
             return self.snapshot()
         dt = max(0.0, min(MAX_DT_S, now - self.last_time))
         self.last_time = now
+        if self.mode == "direct":
+            # Direct PC-only mapping: use the EXACT subscribed ROS2 twist.
+            # No acceleration ramp, obstacle cell, destination, task FSM,
+            # artificial stall, return-to-start or collision lockout.
+            command = ({k: float(input_twist[k]) for k in STOP}
+                       if accepted_ros2 else dict(STOP))
+            self.target = dict(command)
+            self.twist = dict(command)
+            if dt > 0:
+                midpoint = self.yaw + command["wz"] * dt / 2
+                c, s = math.cos(midpoint), math.sin(midpoint)
+                self.x += (c*command["vx"]-s*command["vy"]) * dt
+                self.y += (s*command["vx"]+c*command["vy"]) * dt
+                self.yaw = wrap_angle(self.yaw + command["wz"]*dt)
+                self.run_seconds += dt
+                self.samples += 1
+                point = [round(self.x, 4), round(self.y, 4)]
+                if self.trail[-1] != point:
+                    self.trail.append(point)
+            self.state = "RUNNING" if any(abs(v) > 1e-8
+                                          for v in command.values()) else "STOPPED"
+            self.collision_reason = ""
+            return self.snapshot()
         if self.state == "OBSTACLE_STOP":
             return self.snapshot()
         reference = ({k: float(input_twist[k]) for k in STOP}
@@ -176,6 +207,7 @@ class KeyboardChassisTwin:
             "real_odom": False, "ros2_transport_required": True,
             "frame": "field_preview_m_not_odom",
             "zone": self.zone, "state": self.state,
+            "preview_mode": self.mode,
             "fault_mode": self.fault_mode,
             "collision_reason": self.collision_reason,
             "blocked_cells": list(self.blocked_cells),
@@ -184,10 +216,15 @@ class KeyboardChassisTwin:
             "yaw_rad": round(self.yaw, 5),
             "velocity": {k: round(v, 4) for k, v in self.twist.items()},
             "input_twist": {k: round(v, 4) for k, v in self.target.items()},
-            "error_kind": "MOCK_COMMANDED_VS_MOCK_KINEMATIC",
+            "error_kind": ("DIRECT_ROS2_TWIST_TO_POSE" if self.mode == "direct"
+                           else "MOCK_COMMANDED_VS_MOCK_KINEMATIC"),
             "model_error": error,
             "samples": self.samples,
             "sim_time_s": round(self.run_seconds, 3),
             "trace": list(self.trail),
-            "limitations": "Acceleration-capped 2D mock, fixed KEEP_OUT/cells only; not PID, wheel encoder, lidar, SLAM or REAL odom",
+            "limitations": (
+                "No FSM, obstacle/collision restriction, acceleration filter or PID. "
+                "Integrates observed PC ROS2 body twist only; not REAL odom."
+                if self.mode == "direct" else
+                "Acceleration-capped 2D mock, fixed KEEP_OUT/cells only; not PID, wheel encoder, lidar, SLAM or REAL odom"),
         }
