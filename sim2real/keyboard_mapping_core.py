@@ -13,6 +13,7 @@ import math
 import threading
 import time
 from urllib.parse import urlsplit
+from keyboard_dryrun_chassis import KeyboardChassisTwin, valid_blocked_cells
 
 PATH = "/api/keyboard"
 KEYS = frozenset("wasdqe")
@@ -54,6 +55,7 @@ class KeyboardMapping:
         self.route_mode = "local_ros2"  # Works without Raspberry Pi
         self.ros_receipts = {}
         self.ros_history = deque(maxlen=600)
+        self.digital_twin = KeyboardChassisTwin()
         self.command = {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         self.keys = []
         self.deadman = False
@@ -136,6 +138,8 @@ class KeyboardMapping:
                 self.history.clear()
                 self.latest_error = None
                 self.last_odom_seq = 0
+                self.digital_twin.reset(
+                    self.digital_twin.zone, self.digital_twin.blocked_cells)
             new_keys = sorted(keys)
             new_twist = mapped_twist(new_keys, speed, turn)
             changed = (new_keys != self.keys or deadman != self.deadman or
@@ -235,6 +239,43 @@ class KeyboardMapping:
                     "observed": dict(observed), "delta": diff,
                     "is_actual_vehicle_velocity": False,
                     "physical_feedback_available": False}
+
+    def dryrun_snapshot(self):
+        """Advance ONLY the mock chassis with fresh RECEIVED local ROS2 feedback."""
+        with self.lock:
+            now = time.monotonic()
+            source = self.ros2_status(now)
+            # Explicitly require a fresh local ROS2 subscriber receipt;
+            # keyboard HTTP acceptance alone never drives this mock.
+            command = self.effective(now)
+            can_simulate = (self.route_mode == "local_ros2" and
+                            source.get("online") is True and
+                            source.get("source") == "local_ros2" and
+                            command["active"])
+            twist = source["observed"] if can_simulate else None
+            result = self.digital_twin.advance(
+                now, twist, accepted_ros2=can_simulate)
+            result["input_provenance"] = (
+                "OBSERVED_PC_ROS2_LOCAL_TEST_TWIST" if can_simulate else
+                "ZERO_NO_FRESH_LOCAL_ROS2_OR_DEADMAN")
+            result["real_feedback_is_separate"] = True
+            return result
+
+    def dryrun_action(self, payload):
+        if not isinstance(payload, dict):
+            raise ValueError("Invalid mock simulation action")
+        with self.lock:
+            action = payload.get("action")
+            if action == "reset":
+                if set(payload) != {"action", "start_zone", "blocked_cells"}:
+                    raise ValueError("Invalid mock reset payload")
+                cells = valid_blocked_cells(payload["blocked_cells"])
+                return self.digital_twin.reset(payload["start_zone"], cells)
+            if action == "fault":
+                if set(payload) != {"action", "fault_mode"}:
+                    raise ValueError("Invalid mock fault payload")
+                return self.digital_twin.set_fault(payload["fault_mode"])
+            raise ValueError("Only mock reset/fault actions are available")
 
     def compare(self, row, now=None):
         """Compare only when REAL odom is fresh and received AFTER intent.
@@ -358,13 +399,16 @@ def _local(ip):
 
 def handle_get(handler, real_reader):
     path = urlsplit(handler.path).path
-    if path not in (PATH + "/status", PATH + "/intent", PATH + "/history"):
+    if path not in (PATH + "/status", PATH + "/intent", PATH + "/history",
+                    PATH + "/dryrun"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard diagnostics restricted to localhost"})
         return True
     if path.endswith("/intent"):
         handler.respond_json(200, STATE.effective())
+    elif path.endswith("/dryrun"):
+        handler.respond_json(200, STATE.dryrun_snapshot())
     elif path.endswith("/history"):
         with STATE.lock:
             handler.respond_json(200, {"schema": "car_keyboard_error_history_v1",
@@ -381,7 +425,8 @@ def handle_get(handler, real_reader):
 
 def handle_post(handler):
     path = urlsplit(handler.path).path
-    if path not in (PATH + "/intent", PATH + "/ros2_feedback"):
+    if path not in (PATH + "/intent", PATH + "/ros2_feedback",
+                    PATH + "/dryrun"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard requires localhost"})
@@ -398,8 +443,12 @@ def handle_post(handler):
             raise ValueError("Invalid keyboard request size")
         payload = json.loads(handler.rfile.read(size),
                              parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Nonfinite")))
-        result = (STATE.observe_ros2(payload) if path.endswith("/ros2_feedback")
-                  else STATE.accept(payload))
+        if path.endswith("/ros2_feedback"):
+            result = STATE.observe_ros2(payload)
+        elif path.endswith("/dryrun"):
+            result = STATE.dryrun_action(payload)
+        else:
+            result = STATE.accept(payload)
     except (TypeError, ValueError, UnicodeError) as exc:
         handler.respond_json(400, {"error": str(exc)[:160]})
         return True
