@@ -19,10 +19,12 @@
 
   function mount() {
     const map=document.querySelector('.map-panel');
-    const panel=$('section',document.querySelector('.app-shell')||document.body);
+    const slot=document.getElementById('fieldWorkbenchSlot');
+    const panel=$('section',slot||document.querySelector('.app-shell')||document.body);
     panel.id='carTestStm32Workbench';
     panel.className='car-fsm-workbench';
-    if(map)map.after(panel);
+    if(slot)slot.parentElement.classList.add('has-workbench');
+    else if(map)map.after(panel);
     else document.getElementById('carModeSwitch')?.after(panel);
 
     const head=$('div',panel);head.className='cfsm-heading';
