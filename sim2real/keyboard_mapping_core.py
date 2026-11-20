@@ -58,6 +58,7 @@ class KeyboardMapping:
         self.last_ref_time = None
         self.last_ref_twist = None
         self.latest_error = None
+        self.stop_settle_until = 0.0
 
     def _live(self, now):
         return self.deadman and self.last_command_mono > 0 and (
@@ -123,11 +124,17 @@ class KeyboardMapping:
             self.last_command_mono = time.monotonic()
             # The 10Hz browser heartbeat renews the watchdog, but must NOT
             # invalidate the most recent REAL odom sample on every refresh.
-            if changed or not self.last_command_wall:
+            if changed or not self.last_command_wall or action == "stop":
                 self.last_command_wall = time.time()
             self.seq += 1
             if action == "stop":
+                # Measure residual REAL odom velocity for up to 1.2 s after
+                # STOP. This is only diagnostics; no motor command is sent.
+                self.stop_settle_until = time.monotonic() + 1.2
                 self.generation += 1
+            elif self.deadman:
+                self.stop_settle_until = 0.0
+            if action == "stop":
                 self.last_ref_time = None
                 self.last_ref_twist = None
                 self.reference_pose = None
@@ -159,7 +166,9 @@ class KeyboardMapping:
             if sample.get("received_at", 0) < self.last_command_wall:
                 return {"status": "WAITING_FOR_NEW_ODOM", "error": None,
                         "measured": measured}
-            if not command["active"] or not command["deadman"]:
+            settling = (not command["active"] and
+                        self.stop_settle_until > now)
+            if not command["active"] and not settling:
                 return {"status": "DEADMAN_NOT_HELD", "error": None,
                         "measured": measured}
             seq = sample.get("seq")
@@ -206,7 +215,8 @@ class KeyboardMapping:
                     "sample_source": sample["source"], "frame": sample["frame"]})
             errors = [e["error"]["linear_norm_mps"] for e in self.history]
             rms = math.sqrt(sum(v*v for v in errors)/len(errors)) if errors else None
-            return {"status": "COMPARABLE_ODOM_ONLY",
+            return {"status": ("STOP_SETTLING" if settling else
+                                "COMPARABLE_ODOM_ONLY"),
                     "measured": measured, "error": self.latest_error,
                     "rms_linear_mps": round(rms, 5) if rms is not None else None,
                     "samples": len(errors), "odom_age_s": round(age_s, 3),
