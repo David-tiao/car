@@ -33,6 +33,7 @@ root=Path(sys.argv[1])
 for file in ("sim2real/keyboard_mapping_core.py",
              "sim2real/keyboard_dryrun_chassis.py",
              "sim2real/keyboard_offline_analysis.py",
+             "sim2real/keyboard_local_smoke.py",
              "sim2real/keyboard_fault_lab.py",
              "sim2real/keyboard_ros2_pc.py",
              "sim2real/keyboard_ros2_pi.py",
