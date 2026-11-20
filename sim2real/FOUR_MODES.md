@@ -7,7 +7,7 @@
 | 纯模拟集 | `http://127.0.0.1:8080/sim` | 本地 JS 仿真算法 | 仅浏览器内部模拟 |
 | 测试集 | `http://127.0.0.1:8080/test` | 模拟 MCU → Linux PTY → ROS 2 → HTTP | 只读 |
 | 运行集 | `http://127.0.0.1:8080/real` | 实际 STM32 → 串口 → ROS 2 → HTTP | 只读 |
-| 映射集 | `http://127.0.0.1:8080/keyboard` | 只读取实车通道 | **禁止下发控制**，待开发 |
+| 映射集 | `http://127.0.0.1:8080/keyboard` | 键盘候选控制（PC ROS 2 → Pi ROS 2）+ REAL `/odom` 误差 | **实体 STM32 TX 禁止**，ROS2 候选可测试 |
 
 原 `car` 命令仍在 8080 端口启动独立网站；首页 `/` 等价于纯模拟模式，新增四模式切换菜单。**不要把四套前端复制成四份项目**。所有页面共用 `sim2real/web/index.html`、`app.js`、`planner.js` 等已有资产。
 
@@ -67,7 +67,16 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 
 ## 5. 映射集
 
-打开 `http://127.0.0.1:8080/keyboard` 可以观看实车通道的只读反馈。网页不会发送 `/cmd_vel`、不会发送 CAR-LINK `SET_VELOCITY`，`POST /api/keyboard/command` 明确返回 HTTP 403。未来必须先完成 STM32 双向控制权、命令超时、急停以及电机安全校验；比赛运行中不得启用遥控。
+打开 `http://127.0.0.1:8080/keyboard` 可使用 Shift + WASDQE 键盘映射，
+查看期望/实测速度差、相对积分位置误差、RMS 和停车后的残余运动。
+`/api/keyboard/intent` 只接受本机/同源、带防重排序号的键盘意图，
+电脑 ROS2 节点将其发布到 `/car/teleop/desired_twist`；树莓派的安全接收器
+输出 `/car/teleop/stm32_candidate`。**目前这个候选没有连接 STM32 UART，
+`/cmd_vel`、电机与机构均不受键盘控制**。
+现有 `POST /api/keyboard/command` 仍然返回 403，保留旧版安全保护。
+
+详细安装、验收、误差公式和安全边界见
+[`KEYBOARD_MAPPING_ROS2.md`](KEYBOARD_MAPPING_ROS2.md)。
 
 ## 6. 架构与边界
 
