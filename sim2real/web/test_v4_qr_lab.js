@@ -8,6 +8,7 @@
   const scenarios = [
     ['success', '正常扫码 → DONE'],
     ['duplicate_seq', '重复二维码帧 → 只接收一次'],
+    ['qr_ack_lost', 'ACK 丢失 → QR 重发、补 ACK'],
     ['stale_session', '旧 session → 拒绝'],
     ['bad_xor', '坏 XOR 帧 → 拒绝'],
     ['invalid_task', '错误任务码 → 拒绝'],
