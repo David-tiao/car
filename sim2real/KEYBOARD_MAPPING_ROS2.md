@@ -1,3 +1,84 @@
+# 新增：映射集双链路切换（目前没有树莓派，优先使用本机模式）
+
+`/keyboard` 顶部新增两个可切换模式，切换时会清空原键盘速度指令，避免上一模式残留控制请求：
+
+| 模式 | 现阶段用途 | 收到什么反馈 | 能否得出真实底盘误差 |
+| --- | --- | --- | --- |
+| **本机 ROS 2 回环（默认）** | 现在只有一台 Ubuntu 电脑也能验证完整的 ROS 2 发布→订阅→HTTP→网页闭环 | 本机订阅 `/car/teleop/local_test_twist` 的实际 ROS 2 消息，显示收发速度差及估算话题延迟 | **不能**；这只是电脑 ROS 2 收到指令，不是实际小车运动 |
+| **电脑→树莓派→STM32** | 预留接入后端硬件，检查是否收到 Pi 候选话题与真实 `/odom` | Pi `/car/teleop/stm32_candidate`（仅候选）＋独立 REAL `/odom`（必须来自真实 STM32） | 仅真实 /odom 有效且坐标系正确时才能比较；当前无 Pi 应明确显示离线 |
+
+## 现在马上就能做：一台电脑完成本机 ROS 2 回环
+
+终端 1：启动网页：
+
+```bash
+cd ~/Desktop/car
+python3 sim2real/server.py --host 127.0.0.1 --port 8090
+```
+
+终端 2：**一次启动两个互相独立的 ROS 2 节点**。一个从键盘 HTTP 接口发布 ROS 2，另一个真正订阅 ROS 2 再回传网页（不是 Python 直接把键盘值写回网页）：
+
+```bash
+cd ~/Desktop/car
+export ROS_DOMAIN_ID=42
+bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
+```
+
+然后打开 `http://127.0.0.1:8090/keyboard`，选择蓝色的
+**「本机 ROS2 回环 · 现在可用」**，勾选键盘使能，再按住
+**Shift+W**。映射集会分别显示：键盘期望速度、实际在 ROS 2 话题上
+被订阅到的速度、收发差值、估算消息延迟；松开 Shift 应在 300ms
+内显示候选零速度。**不需要树莓派，不需要 STM32，也不会让电机运动。**
+
+本机方式明确隔离两个话题：
+
+```text
+[键盘 /keyboard] --localhost--> [电脑键盘发布节点]
+                               |
+                               +--> 只在本机模式发布：
+                                    /car/teleop/local_test_twist
+                                      |
+                                      v
+                                  [电脑独立 ROS2 订阅节点]
+                                      |
+                                      +--> localhost POST
+                                           /api/keyboard/ros2_feedback
+                                                |
+                                                v
+                                            [网页 ROS2 接收状态/差值]
+```
+
+**误差名词特别注意：**
+“ROS2 命令回环差值 = 期望键盘速度 − 本机订阅到的速度”只检验
+消息内容一致性，不是运动误差；“本机延迟”按 ROS 时间戳估算，
+不包含真正电机执行或 /odom 回传延迟。
+“实际车辆速度/位置、REAL /odom 误差”在只有电脑时为**不可比较**。
+
+要查看真实 ROS 2 消息，另开终端：
+
+```bash
+source /opt/ros/humble/setup.bash
+export ROS_DOMAIN_ID=42
+ros2 topic echo /car/teleop/local_test_twist
+```
+
+## 将来树莓派接入后再选完整链路
+
+切换到 **「电脑→树莓派→STM32 · 预留」** 后，电脑发布节点改为
+只向 `/car/teleop/desired_twist` 发布候选指令（原本机话题停止）；
+Pi 侧接收并以看门狗约束，发布 `/car/teleop/stm32_candidate`。
+电脑上的独立订阅节点可接收这条 Pi 候选话题并显示到达状态。
+
+注意：**Pi 候选回执也不证明 STM32 执行了动作**。
+真正的底盘反馈必须是 STM32 编码器/IMU 经已验证的固件通信，
+由 ROS2 `/odom` 送回 REAL 频道。没有这些数据，页面保持“没有实车反馈”。
+
+仍使用同一电脑端一键脚本；树莓派上额外运行
+`start_keyboard_pi_ros2.sh`，具体部署见下文。禁止直接将候选话题
+映射为 `/cmd_vel` 或未验证的 STM32 速度控制帧。
+
+---
+
 # 映射集：电脑 ROS 2 → 树莓派 5 ROS 2 → STM32F4（安全开发基线）
 
 ## 当前完成程度
