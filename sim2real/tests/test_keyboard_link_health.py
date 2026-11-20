@@ -53,7 +53,7 @@ class HealthContractTests(unittest.TestCase):
         self.state.accept(intent(1, enabled=False))
         self.assertEqual(self.state.link_health()["reason"], "NO_KEYS_OR_TIMEOUT")
         self.state.accept(intent(2, keys=(), enabled=True))
-        self.assertEqual(self.state.link_health()["reason"], "NO_KEYS_OR_TIMEOUT")
+        self.assertEqual(self.state.link_health()["reason"], "NO_MOVEMENT_KEYS")
 
     def test_keyboard_is_active_but_ros2_topic_offline(self):
         self.state.accept(intent(1))
