@@ -418,7 +418,17 @@ def action(payload):
         if command == "start":
             _start(payload)
         elif command in ("step", "run", "reset"):
-            _exact_keys(payload, {"action"})
+            # Browser STEP carries a generation guard. If Reset and a new
+            # Start race with a delayed previous STEP, the old step must
+            # NEVER advance the newly initialized simulated STM32.
+            allowed = {"action"}
+            guarded = {"action", "expected_generation"}
+            if command == "step" and set(payload) == guarded:
+                generation = payload["expected_generation"]
+                if type(generation) is not int or generation != GENERATION:
+                    raise ValueError("STALE_MOCK_SESSION: reset or restart completed")
+            else:
+                _exact_keys(payload, allowed)
             if command == "reset":
                 if SESSION is not None:
                     SESSION.close()
