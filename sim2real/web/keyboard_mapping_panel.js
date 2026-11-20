@@ -38,6 +38,9 @@
 
     const status=$('div',panel,'默认断开 · 不向实体电机发送控制');
     status.id='keyboardLinkState';status.className='keyboard-state';
+    const healthStatus=$('div',panel,'诊断：等待服务器、ROS2 与 MOCK 状态');
+    healthStatus.className='keyboard-link-health';
+    healthStatus.setAttribute('aria-live','polite');
     const enabledLabel=$('label',panel,'本机启用键盘 ROS2 候选指令');
     enabledLabel.className='keyboard-allow';
     const enabled=$('input',enabledLabel);enabled.type='checkbox';
@@ -71,6 +74,10 @@
     const controls=$('div',panel);controls.className='keyboard-actions';
     const stopButton=$('button',controls,'■ 停车 / 清除按键');
     stopButton.className='keyboard-stop';stopButton.type='button';
+    const holdTestButton=$('button',controls,'按住本机前进 · 松开停车');
+    holdTestButton.type='button';
+    holdTestButton.className='keyboard-hold-test';
+    holdTestButton.title='仅本机 ROS2 回环有效；鼠标或触屏按住相当于按住 Shift+W。没有实体电机发送。';
     const exportButton=$('button',controls,'↓ 导出误差 CSV');
     exportButton.type='button';
     const noMechanisms=$('div',panel,'G 夹爪、R 伸缩：仅预留映射，不发送机构指令。必须先对齐 STM32 机械动作协议、限位与完成回执。');
@@ -129,7 +136,8 @@
     const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
     detail.className='keyboard-note';
 
-    let active=new Set(),shift=false,sequence=millis()*1000,sendBusy=false,
+    let active=new Set(),shift=false,holdTest=false,
+        sequence=millis()*1000,sendBusy=false,
         pendingStop=false,disposed=false,lastHistory=[],routeMode='local_ros2',routeChanging=false;
     const nextSeq=()=>++sequence;
     const editing=t=>{
@@ -275,11 +283,12 @@
       const signature=JSON.stringify(currentMap());
       if(signature!==lastMapSignature)resetMock(true);
     });
-    const wantKeys=()=>enabled.checked&&shift?[...active]:[];
+    const deadmanHeld=()=>enabled.checked&&(shift||holdTest);
+    const wantKeys=()=>deadmanHeld()?[...active]:[];
     const desiredBody=()=>({
       action:'keys',client_seq:nextSeq(),keys:wantKeys().sort(),
       speed_mps:Number(speed.value),turn_rps:Number(turn.value),
-      deadman:enabled.checked&&shift
+      deadman:deadmanHeld()
     });
     async function post(body){
       const res=await fetch(ENDPOINT+'/intent',{
@@ -305,12 +314,13 @@
         '本机 ROS2 收发差值趋势（非小车运动误差）':
         'REAL /odom 速度跟踪误差趋势（必须连接实车）';
       twinPanel.hidden=routeMode!=='local_ros2';
+      holdTestButton.disabled=routeMode!=='local_ros2';
       if(twinPanel.hidden&&mockLayer){mockLayer.remove();mockLayer=null;}
     }
     async function switchRoute(mode){
       if(routeChanging||mode===routeMode)return;
       routeChanging=true;
-      enabled.checked=false;active.clear();shift=false;
+      enabled.checked=false;active.clear();shift=false;holdTest=false;
       refreshKeys();
       for(const b of [routeLocal,routePi])b.disabled=true;
       try{
@@ -334,7 +344,7 @@
     routePi.addEventListener('click',()=>switchRoute('pi_stm32'));
     async function stopNow(disable=false){
       active.clear();
-      shift=false;
+      shift=false;holdTest=false;
       if(disable)enabled.checked=false;
       for(const b of keyButtons.values())b.classList.remove('pressed');
       // Send STOP outside the nonzero-command queue so a user can always
@@ -357,7 +367,7 @@
       const packet=desiredBody();
       post(packet).then(()=>{
         if(!pendingStop && packet.client_seq===sequence && enabled.checked)
-          status.textContent=shift?
+          status.textContent=(shift||holdTest)?
             '按键意图已交给本机服务器 · 等待 ROS2 回环确认':
             '映射准备就绪 · 按住 Shift 使能';
       }).catch(e=>{
@@ -368,8 +378,28 @@
     }
     function refreshKeys(){
       for(const [key,b] of keyButtons)b.classList.toggle(
-        'pressed',active.has(key)&&shift&&enabled.checked);
+        'pressed',active.has(key)&&deadmanHeld());
     }
+    // A physical hold button is a deliberate deadman, only for the
+    // PC-only route. It requires no Raspberry Pi or physical keyboard.
+    holdTestButton.addEventListener('pointerdown',ev=>{
+      if(routeMode!=='local_ros2'||routeChanging)return;
+      enabled.checked=true;
+      holdTest=true;
+      active.add('w');
+      refreshKeys();
+      sendNow();
+      try{holdTestButton.setPointerCapture(ev.pointerId);}catch(_){}
+      ev.preventDefault();
+    });
+    function releaseTestHold(){
+      if(!holdTest)return;
+      holdTest=false;
+      stopNow();
+    }
+    holdTestButton.addEventListener('pointerup',releaseTestHold);
+    holdTestButton.addEventListener('pointercancel',releaseTestHold);
+    holdTestButton.addEventListener('lostpointercapture',releaseTestHold);
     enabled.addEventListener('change',()=>{
       if(!enabled.checked)stopNow(true);else sendNow();
     });
@@ -463,13 +493,21 @@
     async function refresh(){
       if(disposed)return;
       try{
-        const [rs,rh,rm]=await Promise.all([
+        const [rs,rh,rm,ra]=await Promise.all([
           fetch(ENDPOINT+'/status',{cache:'no-store'}),
           fetch(ENDPOINT+'/history',{cache:'no-store'}),
-          fetch(ENDPOINT+'/dryrun',{cache:'no-store'})
+          fetch(ENDPOINT+'/dryrun',{cache:'no-store'}),
+          fetch(ENDPOINT+'/health',{cache:'no-store'})
         ]);
-        if(!rs.ok||!rh.ok||!rm.ok)throw Error('HTTP 状态接口离线');
-        const data=await rs.json(),history=await rh.json(),mock=await rm.json();
+        if(!rs.ok||!rh.ok||!rm.ok||!ra.ok)throw Error(
+          '映射集 API 不完整；更新代码后需要重启 server.py');
+        const data=await rs.json(),history=await rh.json(),
+          mock=await rm.json(),health=await ra.json();
+        if(health.source_type!=='LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY'||
+          health.hardware_authorized!==false)
+          throw Error('链路诊断数据来源不合法');
+        healthStatus.textContent='链路诊断 '+health.reason+'：'+health.hint;
+        healthStatus.dataset.reason=health.reason;
         if(routeMode==='local_ros2')paintMock(mock);
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
@@ -511,7 +549,10 @@
           realHistory;
         draw(lastHistory);
       }catch(err){
-        metric.fresh.textContent='数据接口异常：'+String(err);
+        const msg='映射集查询失败：'+String(err);
+        metric.fresh.textContent=msg;
+        healthStatus.textContent=msg;
+        healthStatus.dataset.reason='API_ERROR';
       }
     }
     exportButton.addEventListener('click',()=>{
