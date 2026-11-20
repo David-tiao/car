@@ -10,7 +10,7 @@
     sim: ['纯模拟集', 'SIM', '网页本地运动仿真；不使用 ROS 2 或实体底盘反馈'],
     test: ['测试集', 'TEST', '模拟 MCU → 伪串口 → CAR-LINK → ROS 2 → 网页'],
     real: ['运行集', 'REAL', '真实 STM32 → ROS 2 → 网页；仅监控，不发控制指令'],
-    keyboard: ['映射集', 'DRY RUN', '本机 ROS2 回环（无需树莓派）/ 将来接入 Pi→STM32；实体电机指令仍禁用'],
+    keyboard: ['映射集', 'DIRECT ROS2', 'WASDQE 直接映射 PC ROS2→网页，无遮挡/无任务 FSM；Pi→STM32 链路单独预留'],
   };
   const config = Object.freeze({
     mode, channel,
@@ -79,7 +79,7 @@
     if (mode === 'keyboard') {
       const tip = document.createElement('p');
       tip.style.cssText = 'margin:6px 0;color:#ffc39c;font-weight:700';
-      tip.textContent = '键盘期望速度可送入 ROS2 候选话题并与真实 /odom 对比；STM32 实际运动指令仍禁用，待协议和安全验收。';
+      tip.textContent = '本机映射：直接按 WASDQE，电脑 ROS2 回环驱动紫色网页小车，无 Shift 和场地运动状态机；实体 STM32 控制仍禁用。';
       nav.append(tip);
     }
 
