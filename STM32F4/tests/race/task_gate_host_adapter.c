@@ -4,6 +4,7 @@
  */
 #include "race_fsm.h"
 #include "race_task_gate.h"
+#include "race_fsm.h"
 #include <stdint.h>
 #include <string.h>
 
@@ -128,3 +129,66 @@ int HostTask_State(void) { return (int)gate.state; }
 int HostTask_Completed(void) { return (int)gate.completed; }
 int HostTask_PlanIndex(void) { return (int)plan.index; }
 int HostTask_PlanCount(void) { return (int)plan.count; }
+
+
+/* Actual RaceFsm prelude: eight initial route/turn/settle/QR actions.
+ * Host feedback is synthesized solely to advance native C logic; never
+ * represents physical IMU / camera data or an executed motor command. */
+typedef struct {
+    uint8_t action_index, kind, state, qr_valid;
+    uint32_t session;
+    uint8_t accepted;
+} HostQrEvent;
+static RaceFsm qr_race;
+static RaceFeedback qr_feedback;
+static uint32_t qr_now;
+
+int HostQr_Init(uint8_t zone)
+{
+    memset(&qr_feedback, 0, sizeof(qr_feedback));
+    qr_feedback.imu_valid = 1U;
+    qr_now = 0U;
+    Race_Init(&qr_race);
+    if (!Race_SelectZone(&qr_race, zone) ||
+        !Race_StartQrRoute(&qr_race, &qr_feedback, qr_now)) return 0;
+    return (int)qr_race.action_count;
+}
+
+int HostQr_Step(const char *task_code, HostQrEvent *out)
+{
+    const RaceAction *action;
+    uint8_t kind, index;
+    if (out == 0 || qr_race.state != RACE_RUNNING) return 0;
+    memset(out, 0, sizeof(*out));
+    index = qr_race.action_index;
+    action = &qr_race.actions[index];
+    kind = (uint8_t)action->kind;
+    if (kind == (uint8_t)RACE_ACTION_SCAN) {
+        if (!Race_SubmitQr(&qr_race, qr_race.scan_session, task_code)) {
+            Race_Fail(&qr_race, RACE_ERROR_SCAN_TIMEOUT);
+            return 0;
+        }
+    }
+    qr_feedback.x = qr_race.target_x;
+    qr_feedback.y = qr_race.target_y;
+    qr_feedback.yaw = qr_race.target_yaw;
+    qr_now += 10U;
+    Race_Tick(&qr_race, &qr_feedback, qr_now);
+    if (kind != (uint8_t)RACE_ACTION_SCAN && qr_race.action_index == index) {
+        qr_now += action->hold_ms + 10U;
+        Race_Tick(&qr_race, &qr_feedback, qr_now);
+    }
+    out->action_index = index;
+    out->kind = kind;
+    out->state = (uint8_t)qr_race.state;
+    out->session = qr_race.scan_session;
+    out->qr_valid = qr_race.qr_valid;
+    out->accepted = (uint8_t)((qr_race.state == RACE_RUNNING ||
+                                qr_race.state == RACE_DONE) &&
+                               qr_race.action_index != index);
+    return out->accepted;
+}
+
+int HostQr_State(void) { return (int)qr_race.state; }
+int HostQr_Index(void) { return (int)qr_race.action_index; }
+int HostQr_Valid(void) { return (int)qr_race.qr_valid; }
