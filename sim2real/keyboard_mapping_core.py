@@ -143,8 +143,8 @@ class KeyboardMapping:
                 self.history.clear()
                 self.latest_error = None
                 self.last_odom_seq = 0
-                self.digital_twin.reset(
-                    self.digital_twin.zone, [])
+                # Do not teleport the PC-only preview on a route switch.
+                # Only an explicit /dryrun/reset may reset its position.
             new_keys = sorted(keys)
             new_twist = mapped_twist(new_keys, speed, turn)
             changed = (new_keys != self.keys or deadman != self.deadman or
