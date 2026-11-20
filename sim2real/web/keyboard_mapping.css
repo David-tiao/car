@@ -159,3 +159,8 @@
 .keyboard-actions .keyboard-hold-test:disabled{
   opacity:.4;cursor:not-allowed;
 }
+
+/* A scene reset is NOT a key repeat: require a fresh deadman gesture. */
+.keyboard-link-health[data-reason="MAP_RESET_REARM_REQUIRED"]{
+  border-color:#deae57;background:#382e22;color:#ffe1a6;
+}
