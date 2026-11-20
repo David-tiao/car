@@ -154,6 +154,7 @@
 
     let mockLayer=null, lastMapSignature=null, mockResetInProgress=false;
     let mockResetVersion=0, lastResetReason='', needsRearmAfterReset=false;
+    let refreshRequestSeq=0, refreshAppliedSeq=0;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
     function paintMock(data){
@@ -242,6 +243,9 @@
     }
     async function resetMock(stopKeys=true, reason='手动复位'){
       if(!localOnly())return;
+      // Invalidate any in-flight GET /dryrun response: the previous state
+      // must never redraw an old vehicle position after a scene reset.
+      refreshAppliedSeq=++refreshRequestSeq;
       // A scene-sync/map update may finish while a previous reset is still
       // awaiting HTTP. The latest scene wins; prevent old async responses
       // from repainting the new car at an obsolete start pose.
@@ -518,6 +522,7 @@
     }
     async function refresh(){
       if(disposed)return;
+      const requestSeq=++refreshRequestSeq;
       try{
         const [rs,rh,rm,ra]=await Promise.all([
           fetch(ENDPOINT+'/status',{cache:'no-store'}),
@@ -529,6 +534,10 @@
           '映射集 API 不完整；更新代码后需要重启 server.py');
         const data=await rs.json(),history=await rh.json(),
           mock=await rm.json(),health=await ra.json();
+        // HTTP GETs can return out of order. Never repaint stale vehicle
+        // positions or older control status on top of newer samples.
+        if(requestSeq<=refreshAppliedSeq||mockResetInProgress)return;
+        refreshAppliedSeq=requestSeq;
         if(health.source_type!=='LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY'||
           health.hardware_authorized!==false)
           throw Error('链路诊断数据来源不合法');
