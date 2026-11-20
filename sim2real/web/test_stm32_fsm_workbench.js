@@ -222,7 +222,12 @@
           }
         }
       }catch(err){state.textContent='MOCK 实验出错：'+String(err);state.dataset.state='FAULT';}
-      finally{busy=false;for(const b of [...buttons,pty,code])b.disabled=false;}
+      finally{
+        busy=false;
+        for(const b of [...buttons,pty,code])b.disabled=false;
+        step.disabled=needsInit;
+        run.disabled=needsInit;
+      }
     }
     for(const b of buttons)b.addEventListener('click',()=>send(b.dataset.action));
     fetch(API,{cache:'no-store'}).then(r=>r.json()).then(data=>{
