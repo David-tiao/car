@@ -62,10 +62,21 @@ class ReadOnlyNode:
 
 
 @contextmanager
-def fake_rclpy():
+def fake_rclpy(already_shutdown=False):
     rclpy = types.ModuleType("rclpy")
     node_mod = types.ModuleType("rclpy.node")
     node_mod.Node = ReadOnlyNode
+    executor_mod = types.ModuleType("rclpy.executors")
+    class ExternalShutdownException(Exception):
+        pass
+    executor_mod.ExternalShutdownException = ExternalShutdownException
+    state = {"ok": True, "shutdown_calls": 0}
+    def try_shutdown():
+        if state["ok"]:
+            state["ok"] = False
+            state["shutdown_calls"] += 1
+    rclpy.ok = lambda: state["ok"]
+    rclpy.try_shutdown = try_shutdown
     time_mod = types.ModuleType("rclpy.time")
     time_mod.Time = type("Time", (), {"from_msg": staticmethod(lambda _: None)})
     rclpy.node = node_mod
@@ -74,7 +85,11 @@ def fake_rclpy():
     rclpy.shutdown = lambda: None
 
     def spin(node):
-        # Reaching spin means all Node subclass constructors completed.
+        # Reaching spin means all constructors completed; ROS2 may already
+        # have shut down on Ctrl+C when spin receives this exception.
+        if already_shutdown:
+            state["ok"] = False
+            raise ExternalShutdownException()
         raise KeyboardInterrupt()
     rclpy.spin = spin
 
@@ -89,6 +104,7 @@ def fake_rclpy():
 
     mapping = {
         "rclpy": rclpy, "rclpy.node": node_mod, "rclpy.time": time_mod,
+        "rclpy.executors": executor_mod,
         "geometry_msgs": geometry, "geometry_msgs.msg": geometry_msg,
         "std_msgs": std, "std_msgs.msg": std_msg,
     }
@@ -133,6 +149,26 @@ class ROS2ConstructorSmokeTests(unittest.TestCase):
         self.assertEqual({s.topic for s in node.subscriptions}, {
             "/car/teleop/local_test_twist",
             "/car/teleop/stm32_candidate"})
+
+    def test_external_shutdown_does_not_double_shutdown_any_ros_node(self):
+        # Reproduces the actual Humble Ctrl+C log:
+        # ExternalShutdownException and a context already shut down.
+        for module in ("keyboard_ros2_pc", "keyboard_ros2_web_feedback",
+                       "keyboard_ros2_pi"):
+            with self.subTest(module=module), fake_rclpy(already_shutdown=True):
+                imported = importlib.import_module(module)
+                imported.main()  # must NOT raise RCLError or shutdown twice
+
+    def test_launcher_refuses_absent_web_api_before_spawning_ros_nodes(self):
+        import subprocess
+        path = (Path(__file__).resolve().parents[2] /
+                "algorithm/car_ws/bash/start_keyboard_local_ros2.sh")
+        result = subprocess.run(
+            ["bash", str(path), "http://127.0.0.1:1"],
+            capture_output=True, text=True, timeout=6)
+        self.assertEqual(result.returncode, 2, result.stderr)
+        self.assertIn("Web keyboard endpoint unavailable", result.stderr)
+        self.assertIn("ROS2 nodes were NOT started", result.stderr)
 
     def test_pi_candidate_guard_node_initializes_under_readonly_node(self):
         with fake_rclpy():
