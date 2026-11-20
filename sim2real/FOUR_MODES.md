@@ -7,7 +7,7 @@
 | 纯模拟集 | `http://127.0.0.1:8080/sim` | 本地 JS 仿真算法 | 仅浏览器内部模拟 |
 | 测试集 | `http://127.0.0.1:8080/test` | 模拟 MCU → Linux PTY → ROS 2 → HTTP | 只读 |
 | 运行集 | `http://127.0.0.1:8080/real` | 实际 STM32 → 串口 → ROS 2 → HTTP | 只读 |
-| 映射集 | `http://127.0.0.1:8080/keyboard` | 键盘候选控制（PC ROS 2 → Pi ROS 2）+ REAL `/odom` 误差 | **实体 STM32 TX 禁止**，ROS2 候选可测试 |
+| 映射集 | `http://127.0.0.1:8080/keyboard` | WASDQE → 本机 PC ROS2 → 网页直接积分（无任务 FSM/障碍锁停）；未来 Pi 链路预留 | **实体 STM32 TX 禁止**，PC ROS2 回环可测试 |
 
 原 `car` 命令仍在 8080 端口启动独立网站；首页 `/` 等价于纯模拟模式，新增四模式切换菜单。**不要把四套前端复制成四份项目**。所有页面共用 `sim2real/web/index.html`、`app.js`、`planner.js` 等已有资产。
 
