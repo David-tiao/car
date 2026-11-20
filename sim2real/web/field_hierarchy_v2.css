@@ -192,3 +192,21 @@ body {background:radial-gradient(ellipse 95% 35% at 50% -5%,#1a3955 0,transparen
   .field-stage-layout.has-workbench .cfsm-fields{grid-template-columns:1fr;}
   .field-stage-layout.has-workbench .cfsm-toggle{grid-template-columns:1fr;}
 }
+
+/* Obstacle synchronization is explicit and visible beside the native mock car. */
+.cfsm-map-status{
+  color:#ffd7c3;
+  border:1px solid #ac665e;
+  border-radius:9px;
+  background:#3d2536;
+  padding:11px 13px;
+  margin:10px 0 14px;
+  font:600 12px/1.7 system-ui,sans-serif;
+  overflow-wrap:anywhere;
+}
+#testBlockedRoadOverlay{
+  mix-blend-mode:multiply;
+}
+.cfsm-workbench .cfsm-status[data-state=FAULT]{
+  color:#ff9eaa;
+}
