@@ -46,6 +46,7 @@ class KeyboardMapping:
         self.lock = threading.RLock()
         self.generation = 0
         self.seq = 0
+        self.last_client_seq = -1
         self.command = {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         self.keys = []
         self.deadman = False
@@ -83,12 +84,15 @@ class KeyboardMapping:
         if not isinstance(payload, dict):
             raise ValueError("Keyboard intent must be an object")
         action = payload.get("action")
+        client_seq = payload.get("client_seq")
+        if (type(client_seq) is not int or not 0 <= client_seq < 9007199254740991):
+            raise ValueError("Monotonic client_seq required")
         if action == "stop":
-            if set(payload) != {"action"}:
+            if set(payload) != {"action", "client_seq"}:
                 raise ValueError("Unexpected stop fields")
             keys, speed, turn, deadman = [], 0.0, 0.0, False
         elif action == "keys":
-            if set(payload) != {"action", "keys", "speed_mps", "turn_rps", "deadman"}:
+            if set(payload) != {"action", "client_seq", "keys", "speed_mps", "turn_rps", "deadman"}:
                 raise ValueError("Unexpected keyboard intent fields")
             keys = payload["keys"]
             speed, turn, deadman = (payload["speed_mps"], payload["turn_rps"],
@@ -106,6 +110,9 @@ class KeyboardMapping:
         else:
             raise ValueError("Only keys/stop are supported")
         with self.lock:
+            if client_seq <= self.last_client_seq:
+                raise ValueError("STALE_KEYBOARD_INTENT: older than stop/reset")
+            self.last_client_seq = client_seq
             self.keys = sorted(keys)
             self.deadman = deadman
             self.command = mapped_twist(self.keys, speed, turn)
