@@ -210,3 +210,12 @@ body {background:radial-gradient(ellipse 95% 35% at 50% -5%,#1a3955 0,transparen
 .cfsm-workbench .cfsm-status[data-state=FAULT]{
   color:#ff9eaa;
 }
+
+/* Native-C warning: a healthy mock Dijkstra preview is not the on-board
+ * STM32 motion path until the controller implements waypoint ingestion. */
+.cfsm-native-route-warning{
+  margin:10px 0 14px;padding:11px 14px;border-radius:9px;
+  border:1px solid #be754c;border-left:4px solid #ffab69;
+  color:#ffe2c5;background:#493126;font-size:12px;line-height:1.7;
+}
+.cfsm-native-route-warning[hidden]{display:none!important;}
