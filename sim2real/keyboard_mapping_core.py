@@ -14,6 +14,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 from keyboard_dryrun_chassis import KeyboardChassisTwin, valid_blocked_cells
+from keyboard_offline_analysis import valid_packet, delivery_metrics
 
 PATH = "/api/keyboard"
 KEYS = frozenset("wasdqe")
@@ -55,6 +56,7 @@ class KeyboardMapping:
         self.route_mode = "local_ros2"  # Works without Raspberry Pi
         self.ros_receipts = {}
         self.ros_history = deque(maxlen=600)
+        self.diag_packets = deque(maxlen=700)
         self.digital_twin = KeyboardChassisTwin()
         self.command = {"vx": 0.0, "vy": 0.0, "wz": 0.0}
         self.keys = []
@@ -135,6 +137,7 @@ class KeyboardMapping:
                 # and odom error samples must not appear as fresh route data.
                 self.ros_receipts.clear()
                 self.ros_history.clear()
+                self.diag_packets.clear()
                 self.history.clear()
                 self.latest_error = None
                 self.last_odom_seq = 0
@@ -209,6 +212,37 @@ class KeyboardMapping:
             self.ros_history.append(record)
         return {"accepted": True, "source": source,
                 "hardware_authorized": False, "stm32_tx_enabled": False}
+
+    def observe_diagnostic_packet(self, payload):
+        """Record a publisher-numbered ROS2 heartbeat, not a motor receipt."""
+        packet = dict(valid_packet(payload))
+        # Currently only PC-origin seq diagnostics are instrumented; Pi
+        # candidate speed echoes are checked separately and not counted.
+        if packet["channel"] != "pc_local_ros2":
+            raise ValueError("Pi packet sequence diagnostics not connected")
+        with self.lock:
+            if self.route_mode != "local_ros2":
+                raise ValueError("Local diagnostics only in PC route")
+            self.diag_packets.append(packet)
+        return {"accepted": True, "source_type": "PC_ROS2_DIAG_HEARTBEAT_ONLY",
+                "hardware_authorized": False}
+
+    def network_diagnostics(self, include_history=False):
+        with self.lock:
+            selected = self.route_mode
+            packets = list(self.diag_packets) if selected == "local_ros2" else []
+        series = delivery_metrics(packets) if packets else []
+        return {
+            "schema": "car_keyboard_ros2_packet_diagnostic_v1",
+            "source_type": "PC_ROS2_DIAG_HEARTBEAT_ONLY",
+            "hardware_authorized": False, "stm32_tx_enabled": False,
+            "mode": selected, "connected": bool(series),
+            "groups": series,
+            "packet_history": packets if include_history else None,
+            "limitations": ("Diagnostics are a separate numbered ROS2 String "
+                            "heartbeat, not TwistStamped/motor/MCU ACK. "
+                            "Sequence gaps count only the observed span."),
+        }
 
     def ros2_status(self, now=None):
         now = time.monotonic() if now is None else now
@@ -400,7 +434,8 @@ def _local(ip):
 def handle_get(handler, real_reader):
     path = urlsplit(handler.path).path
     if path not in (PATH + "/status", PATH + "/intent", PATH + "/history",
-                    PATH + "/dryrun", PATH + "/mock_acceptance"):
+                    PATH + "/dryrun", PATH + "/mock_acceptance",
+                    PATH + "/diagnostics", PATH + "/diag_history"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard diagnostics restricted to localhost"})
@@ -412,6 +447,10 @@ def handle_get(handler, real_reader):
     elif path.endswith("/mock_acceptance"):
         from keyboard_fault_lab import acceptance
         handler.respond_json(200, acceptance())
+    elif path.endswith("/diagnostics"):
+        handler.respond_json(200, STATE.network_diagnostics())
+    elif path.endswith("/diag_history"):
+        handler.respond_json(200, STATE.network_diagnostics(include_history=True))
     elif path.endswith("/history"):
         with STATE.lock:
             handler.respond_json(200, {"schema": "car_keyboard_error_history_v1",
@@ -429,7 +468,7 @@ def handle_get(handler, real_reader):
 def handle_post(handler):
     path = urlsplit(handler.path).path
     if path not in (PATH + "/intent", PATH + "/ros2_feedback",
-                    PATH + "/dryrun"):
+                    PATH + "/dryrun", PATH + "/diagnostic_packet"):
         return False
     if not _local(handler.client_address[0]):
         handler.respond_json(403, {"error": "Keyboard requires localhost"})
@@ -448,6 +487,8 @@ def handle_post(handler):
                              parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Nonfinite")))
         if path.endswith("/ros2_feedback"):
             result = STATE.observe_ros2(payload)
+        elif path.endswith("/diagnostic_packet"):
+            result = STATE.observe_diagnostic_packet(payload)
         elif path.endswith("/dryrun"):
             result = STATE.dryrun_action(payload)
         else:
