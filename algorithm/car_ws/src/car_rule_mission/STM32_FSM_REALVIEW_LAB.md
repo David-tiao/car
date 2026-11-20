@@ -9,13 +9,13 @@
 | 模式 | 实际执行后端 | 状态步骤 | 可执行真实电机？ |
 | --- | --- | --- | --- |
 | **串口模拟 · CAR-LINK PTY** | 原 `mission_test_session.PtyMissionSession`、`mission_wire_sim.MockPeer`、匿名 `pty.openpty()`、CAR-LINK 帧/ACK/COMPLETED | 随路线变化，通常 42 命令 | **不能** |
-| **C 代码状态机 · GCC** | GCC 编译原 `STM32F4/App/race_task_plan.c` + `race_task_gate.c`，用独立测试适配器在主机调用原生 C | 34 个 C 任务动作 | **不能** |
+| **C 代码状态机 · GCC** | GCC 编译原 `STM32F4/App/race_fsm.c` + `race_task_plan.c` + `race_task_gate.c`，用独立测试适配器在主机调用原生 C | 8 个扫码/进站动作 + 34 个搬运动作 | **不能** |
 
 模式切换后点「初始化任务」才会启动新测试会话。
 可以「执行一步」「连续运行」「重置」，也支持指定二维码、起点、阻塞道路、ACK 丢失和动作失败故障。
 
 **两种模式是真正不同的后端，不是前端切换两个标签。**
-C 模式运行的是原生 C 计划与反馈门控，但尚不包含 `AppRace_Poll`、HAL、
+C 模式运行的是原生 C `RaceFsm` 扫码状态机与 `RaceTaskPlan` 反馈门控，但尚不包含 `AppRace_Poll`、HAL、
 机械执行器和真实通讯中断。主机没有安装 GCC 时 C 模式会明确报错。
 旧 PTY 模式永远不会被 C 模式覆盖或删除。
 
@@ -26,14 +26,14 @@ C 模式运行的是原生 C 计划与反馈门控，但尚不包含 `AppRace_Po
 在动画中画出虚线轨迹。不会瞬间跳点。
 
 - PTY 模式：后端原本就返回离散道路节点，使用**上一个节点 → 本次完成节点**。
-- C 模式：`RaceTaskPlan` 只有 `GO_ROUGH/GO_STORAGE/GO_MATERIAL/RETURN_START` 等站点动作；使用原有 Dijkstra 道路拓扑计算相邻节点，逐路段绘制。
+- C 模式：先在原生 `RaceFsm` 中完成 8 步二维码进站、停稳、会话校验、扫描和原料区进站，再按 `RaceTaskPlan` 的 `GO_ROUGH/GO_STORAGE/GO_MATERIAL/RETURN_START` 等动作执行。车体的可视化路径由 Dijkstra 依据当前封路单独推导，不冒充 C 固件真正生成的底盘轨迹。
 - 其他如 `PICK`、`PLACE_ROUGH`、`STACK_STORAGE` 不会虚构底盘位移，只在状态面板更新动作和计数。
 - `FAULT` 时，后端返回原节点，不会在画面上播放没有完成的移动。
 - 该图标全程标有 **MOCK**：**不代表真实机器人位置、/odom、LiDAR 测量或底盘实机运动。**
 
 网页仍不请求 `/api/real/*`。所有模拟控制固定走
 `/api/test/stm32_fsm_lab`、仅限 loopback + 同源 POST，
-服务器只允许预定义的 `start/step/run/reset`，
+服务器只允许预定义的 `preview/start/step/run/reset`（preview 只读映射），
 不接受任何电机指令、不打开 `/dev/tty*`。
 原 `/test` 的 ROS 模拟遥测、V4 QR 实验、CAR-LINK PTY 回放都保留；
 `/real` 只读真实反馈不变。
@@ -60,7 +60,7 @@ bash algorithm/car_ws/bash/test_stm32_fsm_realview.sh
 ```
 
 预计测试覆盖已有 Python PTY 仿真、C 原生 34 动作反馈门控、
-切换两种模式的 34/42 命令差异、运行集隔离、可动画化的道路节点数据，
+两种模式不同的命令粒度（C 为 8+34，PTY 随路线变化）、运行集隔离、可动画化的道路节点数据，
 以及网页资源/脚本语法。
 
 再开一个终端：
@@ -74,7 +74,7 @@ python3 sim2real/server.py --host 127.0.0.1 --port 8090
 
 1. 第一屏确认赛道地图已提到最上方，地图编辑、障碍开关、原有路线仍能操作。
 2. 地图右侧点击「串口模拟 · CAR-LINK PTY」，选择正常、初始化，再单步或连续执行。观察橙色小车沿路网移动、反馈日志变化。
-3. 重置并切换「C 代码状态机 · GCC」。初始化后应显示 34 个计划动作；前三步为原料区取料，第四步 GO_ROUGH 会沿道路到粗加工区。
+3. 重置并切换「C 代码状态机 · GCC」。初始化后应显示 42 个状态机步骤；第 5 步是 `SCAN_QR/QR_CONFIRMED`，第 8 步到原料区并初始化 34 个搬运动作，第 9 步才允许开始 `PICK`。
 4. 注入第 3 步 FAILED 或第 2 步无 ACK，验证最终 FAULT、没有后续虚假位移或计数。
 5. 进入 `/real`，确认没有模拟测试面板，真实遥测仍只读。
 
@@ -85,7 +85,7 @@ python3 sim2real/server.py --host 127.0.0.1 --port 8090
 
 - 这不是 Webots/Gazebo 物理仿真：移动是按离散节点的**连续可见动画**，
   不提供真实电机响应、碰撞测量、滑移、IMU/PID 校验或夹爪实体运动。
-- C 模式只执行经过编译的 `RaceTaskPlan` / `RaceTaskGate` 业务调度；
+- C 模式运行经过编译的 `RaceFsm` / `RaceTaskPlan` / `RaceTaskGate` 业务状态机；
   不是整个 STM32 固件、不是 OpenMV 真实识别，也没有真实视觉/雷达反馈。
 - 本次不改变官方比赛任务动作计划、STM32 的 GPIO/UART/电机 PID 配置，
   不绕开 `RACE_PICK_DIRECT_KEY_TEST` 或相机未标定保护。
