@@ -90,6 +90,7 @@ def main():
     try:
         import rclpy
         from rclpy.node import Node
+        from rclpy.executors import ExternalShutdownException
         from rclpy.time import Time
         from geometry_msgs.msg import TwistStamped
         from std_msgs.msg import String
@@ -141,11 +142,14 @@ def main():
     node = PiGate()
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        # Humble can signal Ctrl+C by already shutting down the ROS context.
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        # Never call shutdown() twice: SIGINT may have shut the context down.
+        if rclpy.ok():
+            rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
