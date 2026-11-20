@@ -9,6 +9,7 @@
 #include "bsp_servo.h"
 #include "race_task_plan.h"
 #include "race_ui.h"
+#include <string.h>
 
 #if APP_RUN_MODE == APP_MODE_RACE
 static RaceFsm s_race;
@@ -192,16 +193,23 @@ void AppRace_Poll(void)
     if (!RaceVision_Healthy() && (s_race.state == RACE_READY || s_race.state == RACE_RUNNING)) {
         Race_Fail(&s_race, RACE_ERROR_LINK);
     }
-    if (RaceVision_Poll(code) && Race_SubmitQr(&s_race, s_race.scan_session, code)) {
-        /* ACK only a validated, session-matched QR. Camera waits for this
-         * before completing QR; the controller still owns all movement. */
-        if (!RaceVision_AckQr(s_race.scan_session)) {
-            Race_Fail(&s_race, RACE_ERROR_LINK);
-        } else if (!RaceTaskPlan_Build(&s_plan,
-                                       (const uint8_t (*)[3])s_race.colors,
-                                       (const uint8_t (*)[3])s_race.positions) ||
-                   !RaceTaskPlan_Start(&s_plan)) {
-            Race_Fail(&s_race, RACE_ERROR_CONFIG);
+    if (RaceVision_Poll(code)) {
+        if (Race_SubmitQr(&s_race, s_race.scan_session, code)) {
+            /* Exactly once: validate and build the plan before moving on. */
+            if (!RaceVision_AckQr(s_race.scan_session)) {
+                Race_Fail(&s_race, RACE_ERROR_LINK);
+            } else if (!RaceTaskPlan_Build(&s_plan,
+                                           (const uint8_t (*)[3])s_race.colors,
+                                           (const uint8_t (*)[3])s_race.positions) ||
+                       !RaceTaskPlan_Start(&s_plan)) {
+                Race_Fail(&s_race, RACE_ERROR_CONFIG);
+            }
+        } else if (s_race.state == RACE_RUNNING && s_race.qr_valid &&
+                   strcmp(s_race.task_code, code) == 0) {
+            /* OpenMV retries QR until ACK, which itself may be lost.
+             * Re-ACK identical data without advancing the race plan twice. */
+            if (!RaceVision_AckQr(s_race.scan_session))
+                Race_Fail(&s_race, RACE_ERROR_LINK);
         }
     }
     if (s_race.state == RACE_RUNNING &&
