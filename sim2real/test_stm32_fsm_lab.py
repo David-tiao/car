@@ -274,6 +274,8 @@ def _step(limit):
     global UPDATED_AT, LAST_TRANSITION
     if SESSION is None:
         raise ValueError("Start a mock session first")
+    # A repeated STEP after DONE/FAULT must not replay a stale motion.
+    LAST_TRANSITION = None
     for _ in range(limit):
         if SESSION.state in ("DONE", "FAULT"):
             break
