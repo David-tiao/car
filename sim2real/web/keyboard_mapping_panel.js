@@ -27,6 +27,11 @@
     $('div',header,'03 / KEYBOARD MAPPING · ROS2 DRY RUN').className='keyboard-eyebrow';
     $('h2',header,'键盘直控映射 · ROS2 实时回环');
     $('p',header,'本机模式：W/S 前后、A/D 横移、Q/E 转向；按下立即输出 ROS2 速度，网页只按实际订阅值积分绘图。无需 Shift、任务状态机、避障或树莓派。未来实车链路仍单独预留。');
+    const signalChip=$('span',header,'ROS2 回环：等待话题');
+    signalChip.className='keyboard-signal-chip';
+    signalChip.dataset.online='false';
+    signalChip.setAttribute('role','status');
+    signalChip.setAttribute('aria-live','polite');
 
     const modes=$('div',panel);modes.className='keyboard-route-switch';
     modes.setAttribute('role','group');modes.setAttribute('aria-label','ROS2 键盘控制链路');
@@ -56,6 +61,7 @@
       const button=$('button',grid,label);
       button.type='button';button.className='keyboard-key';
       button.setAttribute('aria-label','模拟按住 '+label);
+      button.setAttribute('aria-keyshortcuts',key.toUpperCase());
       button.dataset.key=key;keyButtons.set(key,button);
     }
     const calibrate=$('div',panel);calibrate.className='keyboard-tuning';
@@ -335,6 +341,9 @@
         '本机 ROS2 收发差值趋势（非小车运动误差）':
         'REAL /odom 速度跟踪误差趋势（必须连接实车）';
       twinPanel.hidden=routeMode!=='local_ros2';
+      signalChip.dataset.online='false';
+      signalChip.textContent=routeMode==='local_ros2'?
+        '本机 ROS2：等待话题':'Pi 候选链路未连接';
       holdTestButton.disabled=routeMode!=='local_ros2';
       enabledLabel.hidden=routeMode==='local_ros2';
       noMechanisms.hidden=routeMode==='local_ros2';
@@ -522,7 +531,17 @@
     }
     function draw(samples){
       const ctx=chart.getContext('2d');if(!ctx)return;
-      const w=chart.width,h=chart.height;
+      // The CSS size stays stable while the drawing buffer follows device
+      // pixel density. This keeps axes/labels crisp on HiDPI laptop displays.
+      const bounds=chart.getBoundingClientRect();
+      const w=Math.max(240,Math.round(bounds.width||chart.clientWidth||800));
+      const h=175;
+      const ratio=Math.min(2,Math.max(1,window.devicePixelRatio||1));
+      const pixelWidth=Math.round(w*ratio),pixelHeight=Math.round(h*ratio);
+      if(chart.width!==pixelWidth||chart.height!==pixelHeight){
+        chart.width=pixelWidth;chart.height=pixelHeight;
+      }
+      ctx.setTransform(ratio,0,0,ratio,0,0);
       ctx.clearRect(0,0,w,h);ctx.fillStyle='#071629';ctx.fillRect(0,0,w,h);
       for(let i=0;i<=4;i++){
         const y=16+i*(h-32)/4;
@@ -587,6 +606,13 @@
         const d=data.desired,c=data.comparison||{},r=data.ros2_feedback||{},
           observed=r.observed||{},delta=r.delta||{},
           m=c.measured||{},p=c.pose||{},e=c.error||{};
+        const receiptOnline=r.online===true && r.source===routeMode;
+        const receiptText=routeMode==='local_ros2' ?
+          (receiptOnline?'本机 ROS2 回环在线':'本机 ROS2：等待话题') :
+          (receiptOnline?'Pi 候选话题已收到（非电机反馈）':'Pi 候选链路未连接');
+        signalChip.dataset.online=String(receiptOnline);
+        if(signalChip.textContent!==receiptText)
+          signalChip.textContent=receiptText;
         metric.ros_observed.textContent=r.online?
           `${fmt(observed.vx)} / ${fmt(observed.vy)} / ${fmt(observed.wz)}`:'—（话题未到达）';
         metric.ros_delta.textContent=r.online?

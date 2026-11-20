@@ -1,0 +1,460 @@
+/*
+ * V15 Operator UI polish. A pure presentation layer: no route geometry,
+ * ROS2 topic, STM32 protocol, server API, or field-coordinate changes.
+ * Loaded last so legacy V13/V14 modules retain their own functionality.
+ */
+:root {
+  --ui-ink:#eef6ff;
+  --ui-soft:#bed2e2;
+  --ui-muted:#91a9be;
+  --ui-stroke:rgba(132,170,204,.24);
+  --ui-panel:#102134;
+  --ui-panel-strong:#162c42;
+  --ui-sky:#88b9ff;
+  --ui-teal:#72ebd3;
+  --ui-purple:#c4a6ff;
+  --ui-amber:#f7c28d;
+  --ui-danger:#ff9a9d;
+  --ui-focus:#9cd1ff;
+  --ui-shadow:0 16px 48px rgba(1,9,20,.29),0 1px 0 rgba(228,248,255,.035) inset;
+  color-scheme:dark;
+  font-variant-numeric:tabular-nums;
+}
+
+body {
+  color:var(--ui-ink);
+  background:
+    radial-gradient(ellipse 70% 420px at 12% -95px,rgba(43,117,165,.21),transparent 76%),
+    radial-gradient(ellipse 60% 420px at 91% 115px,rgba(35,103,119,.13),transparent 80%),
+    linear-gradient(180deg,#081522 0%,#07111c 45%,#08131e 100%);
+  letter-spacing:.005em;
+}
+.app-shell {max-width:1580px;}
+
+/* Consistent, restrained surface elevation. Use a solid opaque base behind
+ * the gradients so map contrast and status colours remain legible. */
+.panel, .metric, .field-hero-panel, .sidebar .settings-view {
+  box-shadow:var(--ui-shadow);
+}
+.panel {
+  border-radius:17px;
+  border-color:var(--ui-stroke);
+}
+.panel-heading h2,.sidebar h2,.settings-view h2 {letter-spacing:-.025em;}
+.panel-heading p,.microcopy,.field-note {line-height:1.75;}
+.eyebrow,.ops-kicker,.keyboard-eyebrow {
+  letter-spacing:.14em;
+  text-transform:uppercase;
+}
+.topbar {
+  height:auto;
+  min-height:94px;
+  border-bottom:1px solid rgba(123,170,209,.25);
+  padding:13px 2px 15px;
+}
+.brand-icon {
+  box-shadow:0 0 0 1px rgba(125,244,222,.12),0 10px 26px rgba(5,32,43,.35);
+}
+.brand-title {letter-spacing:-.025em;}
+.topbar-right {flex-wrap:wrap;justify-content:flex-end;}
+.topbar-right .btn {
+  border-color:rgba(110,201,199,.36);
+  background:rgba(25,73,83,.42);
+}
+.status-dot {box-shadow:0 0 0 4px rgba(69,217,173,.10),0 0 12px rgba(69,217,173,.46);}
+
+/* Navigation: the current mode reads as a selected instrument tab, not a
+ * second unrelated website. Preserve mode_router.js aria-current semantics. */
+#carModeSwitch {
+  border:1px solid rgba(112,174,219,.43)!important;
+  border-radius:18px!important;
+  padding:17px 18px!important;
+  background:
+    linear-gradient(105deg,rgba(23,53,78,.96),rgba(16,38,59,.98))!important;
+  box-shadow:0 12px 32px rgba(0,9,20,.27),inset 0 1px rgba(191,229,255,.07)!important;
+}
+#carModeSwitch .car-mode-title {
+  gap:12px;
+  margin-bottom:13px;
+}
+#carModeSwitch .car-mode-title strong {
+  font-size:14px;
+  letter-spacing:.015em;
+  color:#effaff;
+}
+#carModeSwitch #carModeDataStatus {
+  min-width:0;
+  max-width:100%;
+  overflow-wrap:anywhere;
+  padding:6px 10px;
+  border:1px solid rgba(110,169,200,.27);
+  border-radius:999px;
+  background:rgba(4,19,32,.51);
+  color:#cae5ef;
+  font-size:11px;
+  font-weight:650;
+}
+#carModeSwitch .car-mode-links {gap:10px;}
+#carModeSwitch a {
+  position:relative;
+  overflow:hidden;
+  padding:13px 14px!important;
+  min-height:72px;
+  border-radius:11px!important;
+  background:rgba(14,40,66,.94)!important;
+  border:1px solid rgba(102,145,179,.4)!important;
+  transition:background-color .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+#carModeSwitch a strong {font-size:13px;line-height:1.3;}
+#carModeSwitch a small {color:#a0bcd0;font-size:11px;line-height:1.5;}
+#carModeSwitch a:hover {
+  border-color:rgba(144,205,252,.85)!important;
+  background:#1b3c5b!important;
+  box-shadow:inset 0 1px rgba(217,246,255,.11);
+}
+#carModeSwitch a[aria-current=page] {
+  border-color:#88cef5!important;
+  background:linear-gradient(125deg,#225d82,#205077)!important;
+  box-shadow:inset 0 3px #7dedd7,0 8px 20px rgba(10,42,63,.34)!important;
+}
+#carModeSwitch a[aria-current=page] strong {color:#fff;}
+#carModeSwitch a[aria-current=page] small {color:#d5f2ff;}
+#carModeSwitch .car-mode-caption {
+  margin-top:11px;
+  color:#b6ccda;
+  line-height:1.7;
+}
+
+.release-banner {
+  border-radius:13px;
+  box-shadow:inset 0 1px rgba(214,255,244,.08);
+}
+.metric {
+  min-height:108px;
+  border-radius:13px;
+  border:1px solid rgba(100,154,194,.32);
+  background:linear-gradient(145deg,rgba(25,52,72,.97),rgba(13,30,50,.98));
+  padding:17px 18px;
+  gap:8px;
+}
+.metric-title {color:#a8c2d6;font-weight:600;}
+.metric strong {letter-spacing:-.045em;line-height:1.15;}
+.metric-foot {color:#94b0c2;}
+.result-tag,.tiny-chip {font-variant-numeric:tabular-nums;}
+
+/* Maps remain interactive and their SVG coordinate system is untouched. */
+.field-hero-panel {
+  border:1px solid rgba(93,166,192,.48);
+  border-top:3px solid #72e7cf;
+  border-radius:19px;
+  background:linear-gradient(160deg,#142d42,#0e1f31 75%);
+}
+.field-hero-panel .panel-heading h2 {
+  font-size:clamp(19px,2.2vw,26px);
+  letter-spacing:-.035em;
+}
+.field-hero-panel .map-stage {
+  position:relative;
+  border:1px solid rgba(112,157,191,.34);
+  border-radius:14px;
+  padding:17px;
+  background:linear-gradient(160deg,rgba(12,31,48,.98),rgba(11,24,39,.99));
+}
+.field-hero-panel .map-frame {
+  border-radius:11px;
+  overflow:hidden;
+  box-shadow:0 18px 42px rgba(0,8,18,.3),0 0 0 1px rgba(157,204,227,.22);
+}
+#fieldSvg {
+  background-color:#0e2533;
+  border-radius:10px;
+}
+.map-underbar {
+  color:#a2bccd;
+  line-height:1.55;
+  gap:11px;
+}
+.map-toolbar {
+  border:1px solid rgba(95,143,176,.19);
+  background:rgba(6,22,35,.67);
+  padding:5px;
+  border-radius:11px;
+}
+.tool {min-height:35px;border-radius:8px;}
+.tool.active {
+  background:#73e5d2;
+  box-shadow:0 2px 12px rgba(73,221,194,.15);
+}
+.btn {
+  border-radius:9px;
+  min-height:40px;
+  letter-spacing:.005em;
+  transition:background-color .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.btn:active:not(:disabled),.tool:active:not(:disabled) {filter:brightness(.94);}
+.btn-primary {box-shadow:0 8px 23px rgba(62,218,190,.13);}
+
+/* Left navigation is a directory, controls are separate modules. */
+.sidebar .settings-directory {
+  border-radius:15px;
+  background:linear-gradient(145deg,#122a44,#102236);
+}
+.sidebar .directory-item {border-radius:9px;}
+.sidebar .settings-view {
+  border-radius:14px;
+  border-left:3px solid var(--module-coral);
+}
+.settings-view .field-label {color:#c4d6e5;}
+.input:focus-visible, input:focus-visible,select:focus-visible,textarea:focus-visible {
+  outline:2px solid var(--ui-focus);
+  outline-offset:2px;
+}
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline:2px solid var(--ui-focus)!important;
+  outline-offset:3px;
+}
+
+/* MOCK mapping is deliberately violet while command receipts are teal.
+ * These colours have semantic meaning: visual estimate != physical odom. */
+.field-stage-layout.has-keyboard {
+  grid-template-columns:minmax(0,1.45fr) minmax(345px,1fr);
+  gap:19px;
+}
+.keyboard-mapping-panel {
+  border:1px solid rgba(166,133,203,.5);
+  border-left:4px solid #b68bec;
+  border-radius:17px;
+  background:linear-gradient(165deg,rgba(30,35,58,.98),rgba(16,32,52,.98));
+  box-shadow:0 16px 40px rgba(5,9,27,.29),inset 0 1px rgba(206,195,255,.07);
+  padding:20px 19px;
+}
+.keyboard-heading {
+  border-bottom:1px solid rgba(179,176,224,.2);
+  padding-bottom:15px;
+  margin-bottom:15px;
+}
+.keyboard-heading h2 {
+  color:#f9f5ff;
+  font-size:clamp(18px,1.65vw,23px);
+  line-height:1.3;
+  letter-spacing:-.03em;
+}
+.keyboard-eyebrow {color:#d7b2ff;}
+.keyboard-heading p {color:#bdc9df;line-height:1.8;}
+.keyboard-signal-chip {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  margin-top:6px;
+  padding:6px 11px;
+  border-radius:999px;
+  border:1px solid rgba(143,158,195,.43);
+  background:rgba(18,33,55,.85);
+  color:#b9c8db;
+  font:750 11px/1.5 system-ui,sans-serif;
+  letter-spacing:.02em;
+}
+.keyboard-signal-chip::before {
+  content:'';
+  width:7px;height:7px;
+  flex:none;
+  border-radius:50%;
+  background:#889caf;
+  box-shadow:0 0 0 3px rgba(150,166,186,.08);
+}
+.keyboard-signal-chip[data-online="true"] {
+  color:#d0ffed;
+  background:rgba(17,67,59,.68);
+  border-color:rgba(105,222,183,.59);
+}
+.keyboard-signal-chip[data-online="true"]::before {
+  background:#65e8bd;
+  box-shadow:0 0 0 3px rgba(101,232,189,.12),0 0 13px rgba(101,232,189,.3);
+}
+.keyboard-route-switch {gap:8px;margin:14px 0 9px;}
+.keyboard-route-switch button {
+  border-radius:10px;
+  min-height:56px;
+  line-height:1.4;
+  border-color:rgba(113,146,196,.42);
+  background:linear-gradient(145deg,#152f4b,#12243e);
+  transition:background-color .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.keyboard-route-switch button.selected {
+  background:linear-gradient(145deg,#255e84,#244a7c);
+  border-color:#8bbbea;
+  box-shadow:inset 0 -3px #8cddfc,0 6px 16px rgba(16,58,87,.16);
+}
+.keyboard-route-notice {
+  border-radius:9px;
+  padding:11px 13px;
+  background:rgba(9,42,59,.75);
+  color:#b0daea;
+  border-color:rgba(91,160,193,.33);
+}
+.keyboard-state, .keyboard-link-health {
+  border-radius:10px;
+  padding:11px 13px;
+  line-height:1.7;
+}
+.keyboard-keygrid {gap:9px;margin:15px 0;}
+.keyboard-key {
+  min-height:53px;
+  border:1px solid rgba(113,152,191,.45);
+  border-bottom:3px solid rgba(98,138,177,.35);
+  border-radius:11px;
+  color:#eaf7ff;
+  background:linear-gradient(150deg,#244762,#15334d);
+  box-shadow:0 4px 8px rgba(5,14,25,.18);
+  font-size:13px;
+  touch-action:none;
+  user-select:none;
+  -webkit-user-select:none;
+  transition:background-color .12s ease,border-color .12s ease,box-shadow .12s ease;
+}
+.keyboard-key:hover:not(:disabled) {
+  border-color:#8dcaeb;
+  background:#275879;
+}
+.keyboard-key.pressed,.keyboard-key:active:not(:disabled) {
+  color:#09242b;
+  background:linear-gradient(145deg,#a0fae0,#67dcc4);
+  border-color:#b5ffe8;
+  box-shadow:inset 0 2px 4px rgba(7,77,76,.18),0 0 0 2px rgba(123,241,211,.15);
+}
+.keyboard-tuning {gap:14px;}
+.keyboard-tune {
+  padding:11px 12px 9px;
+  background:rgba(12,30,49,.7);
+  border:1px solid rgba(129,151,185,.23);
+  border-radius:10px;
+  color:#b5cce0;
+}
+.keyboard-tune b {
+  font-variant-numeric:tabular-nums;
+  color:#ecf9ff;
+}
+.keyboard-actions {flex-wrap:wrap;gap:9px;}
+.keyboard-actions button {
+  border-radius:10px;
+  min-height:43px;
+  padding:9px 12px;
+}
+.keyboard-actions .keyboard-stop {
+  color:#ffe0e1;
+  background:#542c3d;
+  border-color:#b8677a;
+}
+.keyboard-metrics {gap:10px;}
+.keyboard-metric {
+  border-radius:11px;
+  min-height:78px;
+  padding:12px 13px;
+  border:1px solid rgba(109,145,180,.3);
+  background:linear-gradient(145deg,rgba(15,38,60,.97),rgba(12,28,48,.99));
+}
+.keyboard-metric[data-metric="ros_observed"],
+.keyboard-metric[data-metric="ros_latency"] {
+  border-color:rgba(79,180,164,.44);
+  background:linear-gradient(145deg,rgba(15,59,62,.76),rgba(12,35,49,.93));
+}
+.keyboard-metric span {
+  color:#b2c9d9;
+  font-size:11px;
+  line-height:1.6;
+  margin-bottom:6px;
+}
+.keyboard-metric strong {
+  font:720 13px/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;
+  color:#f1faff;
+  letter-spacing:-.015em;
+  font-variant-numeric:tabular-nums;
+  overflow-wrap:anywhere;
+}
+.keyboard-graph {
+  border-radius:12px;
+  padding:14px;
+  border-color:rgba(100,139,180,.3);
+  background:#0c1d30;
+}
+.keyboard-graph h3 {font-size:13px;color:#d9e8f5;}
+.keyboard-graph canvas {
+  width:100%;
+  height:175px;
+  max-height:none;
+  border-radius:7px;
+}
+.keyboard-twin-panel {
+  border:1px solid rgba(173,133,230,.6);
+  border-left:4px solid #bb9cff;
+  border-radius:13px;
+  background:linear-gradient(135deg,#241e3b,#17233a 85%);
+  box-shadow:inset 0 1px rgba(218,197,255,.06);
+}
+.keyboard-twin-panel h3 {color:#e3d0ff;}
+.keyboard-twin-status {
+  color:#e6cdff;
+  background:rgba(40,28,61,.7);
+  padding:10px 12px;
+}
+.keyboard-twin-stats {color:#d5c9e7;}
+.keyboard-pipeline {
+  background:#0d2a3e;
+  border-color:rgba(104,176,203,.43);
+  border-radius:10px;
+  padding:11px 13px;
+  line-height:1.8;
+}
+
+/* TEST and REAL feedback retain their warnings; styling cannot imply real
+ * motor authorization. */
+.cfsm-workbench,.ops-hub,.camera-dashboard,.ros-dashboard {
+  border-radius:15px;
+}
+.cfsm-status,.keyboard-metric strong,.live-readouts b {
+  font-variant-numeric:tabular-nums;
+}
+
+/* Explicit system motion preference and responsive guardrails. */
+@media (max-width:1120px) {
+  .field-stage-layout.has-keyboard {grid-template-columns:1fr;}
+  .field-stage-layout.has-keyboard .keyboard-mapping-panel {margin-top:2px;}
+}
+@media (max-width:900px) {
+  .topbar {gap:14px;}
+  #carModeSwitch .car-mode-title {align-items:flex-start;}
+  .field-hero-panel .map-stage {padding:12px;}
+}
+@media (max-width:600px) {
+  #carModeSwitch {padding:12px!important;border-radius:13px!important;}
+  #carModeSwitch .car-mode-links {gap:7px;}
+  #carModeSwitch a {min-height:65px;padding:11px!important;}
+  #carModeSwitch a strong {font-size:12px;}
+  #carModeSwitch a small {font-size:10px;}
+  .field-hero-panel {border-radius:13px;}
+  .field-hero-panel .map-stage {padding:7px;}
+  .field-hero-panel .map-frame {box-shadow:none;}
+  .keyboard-mapping-panel {padding:14px;border-radius:13px;}
+  .keyboard-metrics {grid-template-columns:repeat(2,minmax(0,1fr));}
+  .keyboard-tuning {grid-template-columns:1fr;}
+  .keyboard-key {min-height:49px;}
+  .keyboard-actions {flex-direction:column;}
+  .keyboard-graph {padding:10px;}
+  .brand-title span {letter-spacing:.08em;}
+}
+@media (max-width:400px) {
+  .keyboard-metrics {grid-template-columns:1fr;}
+  #carModeSwitch a {padding:9px!important;}
+  .topbar-right .btn {min-height:34px;}
+}
+@media (prefers-reduced-motion:reduce) {
+  *,*::before,*::after {
+    scroll-behavior:auto!important;
+    animation-duration:.01ms!important;
+    animation-iteration-count:1!important;
+    transition-duration:.01ms!important;
+  }
+}
