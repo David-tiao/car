@@ -72,16 +72,18 @@
     const note=$('p',panel,'串口模式：匿名 PTY + CAR-LINK MockPeer；C 模式：编译运行原生 STM32 RaceTaskPlan / RaceTaskGate（不是 Keil 实机）。切换模式会重新初始化独立实验，不会更改真实通道。');
     note.className='cfsm-notice';
 
-    let selected='pty',busy=false,epoch=0,lastGeneration=null,vehicle=null,trail=null,group=null;
+    let selected='pty',busy=false,needsInit=true,epoch=0,vehicle=null,trail=null,group=null;
     function choose(mode){
+      if(selected!==mode)needsInit=true;
       selected=mode;
       for(const b of [pty,code]){
         const active=b.dataset.engine===mode;
         b.setAttribute('aria-pressed',String(active));
         b.classList.toggle('selected',active);
       }
-      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'本机编译 STM32 C 状态机')+
+      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'原生 STM32 C 任务状态机（从原料区 B3 开始）')+
         ' · 切换后请点击初始化任务';
+      step.disabled=busy||needsInit;run.disabled=busy||needsInit;
     }
     choose('pty');
     for(const b of [pty,code])b.addEventListener('click',()=>{if(!busy)choose(b.dataset.engine);});
@@ -166,6 +168,8 @@
     function render(data){
       validate(data);
       const s=data.snapshot;
+      needsInit=!(s && data.engine===selected);
+      step.disabled=busy||needsInit;run.disabled=busy||needsInit;
       if(!s){
         state.textContent='MOCK · 尚未启动';progress.textContent='—';
         details.textContent='准备就绪：'+(selected==='pty'?'虚拟 CAR-LINK 串口':'原生 C 任务表');
@@ -192,6 +196,7 @@
     }
     async function send(action){
       if(busy)return;
+      if((action==='step'||action==='run')&&needsInit)return;
       busy=true;epoch++;const seq=epoch;
       for(const b of [...buttons,pty,code])b.disabled=true;
       try{
@@ -200,11 +205,11 @@
              start_zone:zone.value,task_code:qr.value.trim(),
              blocked_roads:roads.value.split(',').map(x=>x.trim()).filter(Boolean),
              fault:fault.value});
-          lastGeneration=data.generation;render(data);
+          render(data);
           resetMap(data.transition?.points?.[0] || [2.05,2.05]);
         }else if(action==='reset'){
           const data=await request({action:'reset'});
-          lastGeneration=data.generation;render(data);
+          render(data);
           if(group)group.remove();group=null;vehicle=null;trail=null;
         }else if(action==='step'){
           await singleStep(seq);
