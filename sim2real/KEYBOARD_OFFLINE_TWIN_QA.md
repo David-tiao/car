@@ -1,0 +1,114 @@
+# 映射集离线开发：ROS2 回环 → 运动数字孪生 → 故障验收
+
+## 为什么现在就能做？
+
+目前没有树莓派 5、没有接入 STM32F4 的可写电机协议，但已经可以在电脑上验证：
+
+1. 键盘 Shift+WASDQE 映射、控制超时、原始车体速度方向；
+2. **电脑 ROS2 发布 → 真正 ROS2 订阅 → 本地网页反馈**，确认收发链路，而不是 JS 自我回显；
+3. 用真正订阅到的本机 ROS2 速度消息驱动一个**单独的 MOCK 底盘运动模型**，在已有 2.4m 场地 SVG 上播放连续位移；
+4. 校验加速迟缓、模拟电机卡死、接收中断、红色障碍格碰撞和停车后的减速行为；
+5. 故障验收 JSON/Markdown 及网页一键 PASS/FAIL。
+
+## 网页中三类数据严格隔离
+
+| 数据 | 计算/采集方式 | 适用场景 | 不能证明什么 |
+| --- | --- | --- | --- |
+| **键盘期望速度** | 浏览器 WASDQE + Shift | 检查映射和目标限幅 | ROS2 已收到、实车已执行 |
+| **本机 ROS2 订阅回环** | 独立 ROS2 subscriber 接收 `/car/teleop/local_test_twist`，上送 localhost | 检查 ROS2 传输、消息内容、估计延迟 | 实体车速与真实闭环 PID |
+| **MOCK_KINEMATIC_ONLY 紫色车** | 简单加速度有界麦轮运动模型、地图几何近似 | 预演操作方向、碰撞/失联故障场景 | 真实电机、里程计、雷达 SLAM、碰撞物理 |
+| **REAL /odom** | STM32 编码器/IMU 经 Pi ROS2 传来的实测 odom | 实车装好后做速度/位姿误差 | 当前无实车时不应该出现 |
+
+在**本机模式**下，网页真实底盘误差区域明确显示未连接，
+不会用 MOCK 运动速度冒充真实 `/odom`。
+在**完整链路模式**下，仍必须收到符合来源/时间戳/坐标系校验的
+REAL `/odom` 才会生成实际底盘误差。
+
+## 模拟底盘的实现边界
+
+文件：`sim2real/keyboard_dryrun_chassis.py`。
+
+- 位置单位 m，左下角 (0,0)，场地 2.4 × 2.4m。
+- 初始位置右上启停区 (2.16,2.16)，右下启停区 (2.16,0.24)，
+  **初始朝向 π rad 指向西侧**，只是软件预览假设，不代表真实车体零角度。
+- 输入为 `base_link` 车体速度 vx/vy/ω，积分到世界位置。
+- 线加速度上限约 0.5 m/s²，角加速度上限约 1.2 rad/s²；
+  `slow_response` 故障以 28% 加速度运行。
+- 以半径 0.185m 的保守圆近似 260 × 290 mm 底盘；
+  只检查**两块红色 480×480 mm 占据格**、四块黄色禁止区、
+  原料转盘圆和赛道边界。
+- 碰撞即锁存 `OBSTACLE_STOP`，运动归零，必须点击「复位虚拟底盘」；
+  本模型**不会自动绕行**，不能替代有车体膨胀的规划器或真实避障。
+- 仅在本机模式、Shift 持续按住、收到 750ms 内的新鲜 ROS2 订阅回执时
+  产生模拟运动；没有 ROS2、松开 Shift、浏览器超时都会归零。
+- 映射集调用 `/api/keyboard/dryrun` 只读查询及固定的模型 reset/fault；
+  不接入 /cmd_vel、/api/real、UART 或实体机械机构。
+
+## 现阶段马上验收
+
+先在 Ubuntu 电脑执行纯 Python 离线测试（此步骤**不需要 ROS2**）：
+
+```bash
+cd ~/Desktop/car
+git switch feat/stm32-pty-fsm-realview-20261120
+git pull --ff-only
+
+bash algorithm/car_ws/bash/test_keyboard_mapping.sh
+```
+
+将运行原有键盘/网页兼容测试和新增的数字孪生单元测试，
+然后执行 7 项故障矩阵。生成：
+
+```text
+/tmp/car_keyboard_fault_lab/acceptance.json
+/tmp/car_keyboard_fault_lab/acceptance.md
+```
+
+如需重新指定输出路径：
+
+```bash
+python3 sim2real/keyboard_fault_lab.py --out-dir /tmp/my_teleop_qa
+```
+
+之后启动已有网页及电脑 ROS2 本机回环（**这一步需要 ROS2 Humble**）：
+
+```bash
+# 终端1：网页
+python3 sim2real/server.py --host 127.0.0.1 --port 8090
+
+# 终端2：电脑 ROS2 发布 + 订阅节点
+export ROS_DOMAIN_ID=42
+bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
+```
+
+打开 `http://127.0.0.1:8090/keyboard`，选默认本机 ROS2 回环，
+启用键盘候选指令并按住 Shift+W：
+
+- 映射集蓝色区：ROS2 本机订阅的速度应与键盘目标大致一致（考虑采样异步）；
+- 地图紫色 `MOCK` 小车应连续向左运动（初始 yaw=π），
+  同时展示“模拟速度”和“模型误差”；
+- 不启动第二个 ROS2 订阅进程时，MOCK 小车不应因为 HTTP 按键而运动；
+- 在小车前进方向放一个红色格，再前进应触发 `OBSTACLE_STOP`；
+- 改变障碍布局/启停区会复位模型，旧碰撞状态不能偷偷延续；
+- 切到模拟电机卡滞，期望速度非零时模型实际速度为零、误差非零；
+- 切回无故障、松 Shift，约几个控制周期后模型速度归零；
+- 点击「运行 7 项离线验收」在网页查看实时 PASS/FAIL 结果；
+- 实车速度、实车 RMS、/odom 位姿仍为空，因为还没有接实体车。
+
+## 七项不依赖 ROS2 的确定性回归
+
+`sim2real/keyboard_fault_lab.py`（同样可从网页点击）：
+
+| 检查 | 预期 |
+| --- | --- |
+| NORMAL_DRIVE | 连续西向位移、有限加速度 |
+| MOCK_STALL | 速度为零，模拟期望/响应误差非零 |
+| MOCK_SLOW_ACCELERATION | 同时刻的模拟车速小于正常加速 |
+| MOCK_LINK_LOSS | 信号失效，模拟底盘输入停止 |
+| MAP_CELL23_COLLISION | 红色 CELL23 前锁存障碍停车 |
+| ROUTE_WATCHDOG_STOP | 收不到新鲜 ROS2 输入后归零 |
+| USER_STOP_DECELERATES | 停车后按加速度限制逐渐归零 |
+
+这些是**软件模型的自检**，不能对外宣传为实车功能完成。
+下一步拿到真实 Pi/STM32 后，再对齐真实电机转速协议、里程计
+车体坐标、硬件控制权和现场急停，并用真实 odom 取代模型验证。
