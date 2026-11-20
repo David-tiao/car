@@ -31,7 +31,7 @@ bash algorithm/openmv/bash/test_v4_stm32_web_lab.sh
 
 脚本依次执行：
 - V4 OpenMV Python 协议契约测试；
-- TEST 网页实验的 8 个故障/正常案例、HTTP 安全限制测试；
+- TEST 网页实验的 9 个故障/正常案例、HTTP 安全限制测试；
 - 四组真实 STM32 C 源码的 GCC 主机测试：`test_race`、`test_uart`、`test_ring`、`test_app`。
 
 不需 ROS2、STM32 开发板、OpenMV 或真实串口。若编译/断言失败，会立即以非零码退出，失败前不能将 PR 视为已验收。
