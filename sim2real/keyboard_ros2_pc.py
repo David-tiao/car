@@ -94,6 +94,11 @@ def main():
                 reason = "CANDIDATE_ONLY" if active else "ZERO_OR_DEADMAN"
                 self.failures = 0
             except (URLError, OSError, ValueError, TypeError, KeyError) as exc:
+                # Fail closed if the website vanishes or sends an invalid
+                # route after a valid nonzero velocity field was parsed.
+                target = (0.0, 0.0, 0.0)
+                active = False
+                selected = self.previous_mode or "local_ros2"
                 self.failures += 1
                 if self.failures % 40 == 1:
                     self.get_logger().warning("Keyboard endpoint lost; forcing zero: " + str(exc))
