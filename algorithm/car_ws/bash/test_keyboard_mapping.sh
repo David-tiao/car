@@ -12,6 +12,7 @@ python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_link_health.py'
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_local_smoke.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_recovery.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_direct.py' -v
+python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_local_ros2_autostart.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_four_modes.py' -v
 python3 sim2real/keyboard_fault_lab.py --out-dir /tmp/car_keyboard_fault_lab
 python3 sim2real/keyboard_offline_analysis.py --out-dir /tmp/car_keyboard_offline_analysis
@@ -41,6 +42,7 @@ for file in ("sim2real/keyboard_mapping_core.py",
              "sim2real/keyboard_ros2_pc.py",
              "sim2real/keyboard_ros2_pi.py",
              "sim2real/keyboard_ros2_web_feedback.py",
+             "sim2real/keyboard_local_ros2_autostart.py",
              "sim2real/web_mode_gateway.py"):
     ast.parse((root/file).read_text(encoding="utf-8"), filename=file)
     print("SYNTAX OK:", file)
