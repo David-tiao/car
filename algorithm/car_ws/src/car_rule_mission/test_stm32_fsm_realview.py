@@ -266,6 +266,12 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertIn("nav.after(map)", layout)
         self.assertIn(".sidebar .settings-directory", style)
         self.assertIn("C 代码状态机", bench)
+        editor = (web / "app.js").read_text(encoding="utf-8")
+        self.assertIn("getTestFieldSnapshot", editor)
+        self.assertIn("sim2real:field-changed", editor)
+        self.assertIn("blocked_cells:fieldSnapshot?.blocked_cells||[]", bench)
+        self.assertIn("SCAN_QR", (ROOT / "sim2real" /
+                                  "test_stm32_fsm_lab.py").read_text(encoding="utf-8"))
 
     def test_map_cell17_blocks_middle_vertical_lane_and_detours(self):
         from field_road_mapping import blocked_roads_from_cells
