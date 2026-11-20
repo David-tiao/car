@@ -124,3 +124,13 @@
   color:#cbbfd8;font:11px/1.8 ui-monospace,monospace;
   overflow-wrap:anywhere;
 }
+
+.keyboard-twin-qa{
+  margin:11px 0 0;padding:10px;
+  max-height:210px;overflow:auto;white-space:pre-wrap;
+  word-break:break-word;font:11px/1.7 ui-monospace,monospace;
+  border:1px solid #644891;border-radius:7px;
+  color:#e2c9f5;background:#161226;
+}
+.keyboard-twin-toolbar button:hover:not(:disabled){filter:brightness(1.14);}
+.keyboard-twin-toolbar button:disabled{opacity:.65;cursor:wait;}
