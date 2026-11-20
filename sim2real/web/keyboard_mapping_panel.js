@@ -134,11 +134,17 @@
       }
       if(sendBusy||pendingStop)return;
       sendBusy=true;
-      post(desiredBody()).then(()=>{
-        if(enabled.checked)status.textContent=
-          shift?'已发送 ROS2 候选速度（非实体电机）':'映射准备就绪 · 按住 Shift 使能';
-      }).catch(e=>{status.textContent='键盘命令未送达：'+e;})
-        .finally(()=>{sendBusy=false;});
+      const packet=desiredBody();
+      post(packet).then(()=>{
+        if(!pendingStop && packet.client_seq===sequence && enabled.checked)
+          status.textContent=shift?
+            '已发送 ROS2 候选速度（非实体电机）':
+            '映射准备就绪 · 按住 Shift 使能';
+      }).catch(e=>{
+        // A superseded keydown must not overwrite the STOP indicator.
+        if(!pendingStop && packet.client_seq===sequence)
+          status.textContent='键盘候选指令未送达：'+e;
+      }).finally(()=>{sendBusy=false;});
     }
     function refreshKeys(){
       for(const [key,b] of keyButtons)b.classList.toggle(
