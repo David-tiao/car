@@ -368,6 +368,11 @@
     $('turnSummary').textContent=`物料间隔 120° · 每次转 ${state.rotorAngle}° · ${state.rotorRate}°/s（${(360/state.rotorRate).toFixed(1)}s/圈）· 停顿 ${state.rotorDwell.toFixed(1)}s`;
   }
   function paintRobot(point=state.start,heading=0){const layer=$('robotLayer');empty(layer);
+    // /keyboard has its OWN ROS2-driven purple MOCK robot overlay. The
+    // competition simulator's teal robot was being re-painted back at the
+    // start independently of ROS2, misleading users into thinking keyboard
+    // motion had reset. Suppress only that unrelated sprite on /keyboard.
+    if(window.CarWebMode?.mode==='keyboard')return;
     if(state.runSource==='live'){if(!live.pose)return;point={x:live.pose.x,y:live.pose.y};heading=90-live.pose.yaw*180/Math.PI;}
     const sx=fx(state.start.x),sy=fy(state.start.y);
     node('circle',{cx:sx,cy:sy,r:9.5,fill:'none',stroke:'#00a78f','stroke-width':3},layer);
