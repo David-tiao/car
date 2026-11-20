@@ -8,6 +8,7 @@ import argparse
 import json
 import math
 import time
+import uuid
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -74,6 +75,13 @@ def main():
                 for mode, topic in TOPICS.items()
             }
             self.previous_mode = None
+            # Numbered SOFTWARE diagnostics travel on a separate topic.
+            # The diagnostic heartbeat measures its own DDS delivery;
+            # it is not an ACK for the TwistStamped or a motor response.
+            self.diag_pub = self.create_publisher(
+                String, "/car/teleop/local_test_diag", 10)
+            self.diag_session = uuid.uuid4().hex
+            self.diag_seq = 0
             self.health = self.create_publisher(
                 String, "/car/teleop/pc_status", 10)
             self.failures = 0
@@ -113,6 +121,16 @@ def main():
                 stop.header.frame_id = "base_link"
                 self.publishers[self.previous_mode].publish(stop)
             self.publishers[selected].publish(msg)
+            if selected == "local_ros2":
+                diagnostic = String()
+                diagnostic.data = json.dumps({
+                    "kind": "packet", "channel": "pc_local_ros2",
+                    "session": self.diag_session,
+                    "seq": self.diag_seq,
+                    "sent_s": time.time()
+                }, separators=(",", ":"))
+                self.diag_pub.publish(diagnostic)
+                self.diag_seq += 1
             self.previous_mode = selected
             status = String()
             status.data = json.dumps({
