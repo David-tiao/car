@@ -18,8 +18,9 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "algorithm/car_ws/bash"
-# Absolute start_dir keeps OpenMV tests discoverable on Python 3.10;
-# tests/ intentionally lacks __init__.py, so avoid cwd-relative discovery.
+# Python 3.10 unittest CLI defaults -t to the repository CWD, which rejects
+# a non-package OpenMV tests/ directory. Set BOTH -s and -t to that folder
+# to import the actual test modules without skipping them or adding hardware.
 SCHEMA = "car_hardware_free_acceptance_v1"
 BASICS = [
     ("KEYBOARD_AND_SOFTWARE_LOOPBACK", ["bash", str(SCRIPT/"test_keyboard_mapping.sh")], 140),
@@ -31,9 +32,11 @@ BASICS = [
     ("NAVIGATION_CPP_CORE", ["bash", str(SCRIPT/"test_phase5_core.sh")], 120),
     ("OPENMV_V4_CAMERA_PROTOCOL", [sys.executable, "-m", "unittest",
                                     "discover", "-s", str(ROOT / "algorithm/openmv/tests"),
+                                    "-t", str(ROOT / "algorithm/openmv/tests"),
                                     "-p", "test_v4_electrical_contract.py", "-v"], 90),
     ("OPENMV_V4_QR_SESSION_HTTP", [sys.executable, "-m", "unittest",
                                     "discover", "-s", str(ROOT / "algorithm/openmv/tests"),
+                                    "-t", str(ROOT / "algorithm/openmv/tests"),
                                     "-p", "test_v4_qr_contract_http.py", "-v"], 90),
     ("OPENMV_REFERENCE_FRAME_CODEC", [sys.executable,
                                       "algorithm/car_ws/bash/check_vision_protocol.py",
