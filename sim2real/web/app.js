@@ -394,6 +394,10 @@
     node('path',{d:`M ${x-10-jaw} ${tip-5} L ${x-14-jaw} ${tip-12} M ${x+10+jaw} ${tip-5} L ${x+14+jaw} ${tip-12}`,stroke:'#ffe0aa','stroke-width':3,'stroke-linecap':'round',fill:'none'},armGroup);
     node('rect',{x:x-12,y:y-17,width:24,height:34,rx:7,fill:'#075370',stroke:'#fff','stroke-width':1.6},g);
     node('path',{d:`M ${x-7} ${y-8} L ${x} ${y-14} L ${x+7} ${y-8}`,fill:'none',stroke:'#fff','stroke-width':2.1},g);
+    // Shared CAD silhouette remains an UNMEASURED fixed zero-pose overlay.
+    // Draw below material circles so SIM's existing cargo remains visible.
+    if(window.CarMechanismPreview)
+      window.CarMechanismPreview.decorateChassis(g,{centerX:x,centerY:y,scale:.29});
     const cargo=state.sim?.cargo||[];cargo.forEach((it,i)=>node('circle',{cx:x-7+(i%3)*7,cy:y+4,r:3.2,fill:TONES[it.color],stroke:'#fff','stroke-width':.5},g));
   }
   function segmentSafe(a,b){const d=Math.hypot(a.x-b.x,a.y-b.y),steps=Math.max(1,Math.ceil(d/.015));

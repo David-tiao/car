@@ -237,9 +237,10 @@
       text?.setAttribute('x',String(fx(pose.x_m)+24));
       text?.setAttribute('y',String(fy(pose.y_m)-23));
     }
-    function animateMock() {
-      // Mechanism model is a client-only demo even when ROS2 is offline.
-      mechanism.tick(performance.now());
+    function animateMock(frameNow) {
+      // Frame timestamp is shared by all mechanism projections; it is
+      // independent of the 75ms ROS2 pose sampling and 300ms metrics loop.
+      mechanism.tick(frameNow);
       // Only the rendered pose is predicted; no writes to ROS2 or backend model.
       if(!disposed && routeMode==='local_ros2' && motionSnapshot &&
          !mockResetInProgress && !document.hidden) {
