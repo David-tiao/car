@@ -40,22 +40,22 @@ assert.equal(api.isEditable({tagName:'DIV'}),false);
 assert.equal(win.fire('keydown',{key:'w'}).defaultPrevented,false);
 assert.deepEqual(keys.heldKeys(),[]);
 keys.tick(1000);
-// Fifth axis targets a rear module, not the PC7 tray.
+// Fifth axis turns the upright lift column, not the PC7 tray.
 assert.equal(win.fire('keydown',{key:'【',code:'BracketLeft'}).defaultPrevented,true);
 keys.tick(1050);
-near(model.target.base_yaw_deg,-preview.AXES.base_yaw_deg.previewRate*.05);
+near(model.target.column_yaw_deg,-preview.AXES.column_yaw_deg.previewRate*.05);
 near(model.target.tray_deg,0);
 win.fire('keyup',{key:'【',code:'BracketLeft'});
-const baseHold=model.target.base_yaw_deg;
-keys.tick(1075);near(model.target.base_yaw_deg,baseHold);
+const columnHold=model.target.column_yaw_deg;
+keys.tick(1075);near(model.target.column_yaw_deg,columnHold);
 // Opposite bracket keys cancel even on non-US character layouts.
 win.fire('keydown',{key:']',code:'BracketRight'});
 win.fire('keydown',{key:'【',code:'BracketLeft'});
 keys.tick(1100);
-near(model.target.base_yaw_deg,baseHold);
+near(model.target.column_yaw_deg,columnHold);
 win.fire('keyup',{key:']',code:'BracketRight'});
 win.fire('keyup',{key:'【',code:'BracketLeft'});
-win.fire('keydown',{key:'6'});near(model.target.base_yaw_deg,0);
+win.fire('keydown',{key:'6'});near(model.target.column_yaw_deg,0);
 assert.equal(win.fire('keydown',{key:'L'}).defaultPrevented,true);
 keys.tick(1150);
 near(model.target.tray_deg,preview.AXES.tray_deg.previewRate*.05);
@@ -84,7 +84,7 @@ for(const [k,v] of [['1',0],['2',90],['3',180],['4',270]]){
   win.fire('keydown',{key:k});near(model.target.tray_deg,v);
 }
 for(const [k,v] of [['5',-90],['6',0],['7',90]]){
-  win.fire('keydown',{key:k});near(model.target.base_yaw_deg,v);
+  win.fire('keydown',{key:k});near(model.target.column_yaw_deg,v);
 }
 for(const [k,v] of [['z',0],['x',110],['c',140]]){
   win.fire('keydown',{key:k});near(model.target.grip_deg,v);
@@ -92,22 +92,22 @@ for(const [k,v] of [['z',0],['x',110],['c',140]]){
 win.fire('keydown',{key:'t'});near(model.target.lift_mm,24);
 win.fire('keydown',{key:'r'});
 for(const n of Object.keys(preview.AXES))near(model.target[n],0);
-// A focused slider should no longer swallow platform or gripper keys.
+// A focused slider should not swallow column or gripper keys.
 const sliderKey=win.fire('keydown',{
   key:'l',target:{tagName:'INPUT',type:'range'}});
 assert.equal(sliderKey.defaultPrevented,true);
 keys.tick(1400);
 assert.ok(model.target.tray_deg>0);
 win.fire('keyup',{key:'l'});
-const focusedPlatform=win.fire('keydown',{
+const focusedColumn=win.fire('keydown',{
   key:'[',code:'BracketLeft',target:{tagName:'INPUT',type:'range'}});
-assert.equal(focusedPlatform.defaultPrevented,true);
+assert.equal(focusedColumn.defaultPrevented,true);
 keys.tick(1420);
-assert.ok(model.target.base_yaw_deg<0);
+assert.ok(model.target.column_yaw_deg<0);
 win.fire('keyup',{key:'[',code:'BracketLeft'});
 win.fire('keydown',{key:'r'});
 near(model.target.tray_deg,0);
-near(model.target.base_yaw_deg,0);
+near(model.target.column_yaw_deg,0);
 // Text and number input must still be protected.
 assert.equal(win.fire('keydown',{
   key:'l',target:{tagName:'INPUT',type:'text'}}).defaultPrevented,false);
@@ -132,9 +132,10 @@ try {
   assert.equal(root.children[0].attrs['data-km-top-rig'],'CAD_SHARED');
   assert.equal(root.children[0].attrs['data-km-visual-version'],'2');
   preview.applyTopPose(rig,preview.computeMechanismPose({
-    base_yaw_deg:-45,tray_deg:90,lift_mm:141,holder_deg:180,grip_deg:110}));
+    column_yaw_deg:-45,tray_deg:90,lift_mm:141,holder_deg:180,grip_deg:110}));
   assert.ok(rig.tray.attrs.transform.includes('90'));
-  assert.ok(rig.rearPlatform.attrs.transform.includes('-45'));
+  assert.equal(rig.columnTurn.attrs.transform,'translate(-40 0) rotate(-45.000)');
+  assert.equal(rig.tray.attrs.transform,'rotate(90.000)');
   function count(n){return 1+(n.children||[]).reduce((a,x)=>a+count(x),0);}
   assert.ok(count(root)>80,'detailed rollers, turntable bearings and gripper');
 }finally {global.document=previousDocument;}

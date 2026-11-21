@@ -10,8 +10,8 @@
 })(typeof window==='undefined'?null:window,function(){
   'use strict';
   const HELD=Object.freeze({
-    '[':{axis:'base_yaw_deg',direction:-1},
-    ']':{axis:'base_yaw_deg',direction:1},
+    '[':{axis:'column_yaw_deg',direction:-1},
+    ']':{axis:'column_yaw_deg',direction:1},
     j:{axis:'tray_deg',direction:-1},
     l:{axis:'tray_deg',direction:1},
     i:{axis:'lift_mm',direction:1},
@@ -24,10 +24,10 @@
   const PRESET=Object.freeze({
     '1':{axis:'tray_deg',value:0},'2':{axis:'tray_deg',value:90},
     '3':{axis:'tray_deg',value:180},'4':{axis:'tray_deg',value:270},
-    // Fifth MOCK axis, provisional bounds (NOT hardware-calibrated).
-    '5':{axis:'base_yaw_deg',value:-90},
-    '6':{axis:'base_yaw_deg',value:0},
-    '7':{axis:'base_yaw_deg',value:90},
+    // Fifth MOCK-only upright lift-column yaw, provisional bounds (NOT hardware-calibrated).
+    '5':{axis:'column_yaw_deg',value:-90},
+    '6':{axis:'column_yaw_deg',value:0},
+    '7':{axis:'column_yaw_deg',value:90},
     z:{axis:'grip_deg',value:0},x:{axis:'grip_deg',value:110},
     c:{axis:'grip_deg',value:140},
     t:{axis:'lift_mm',value:24}

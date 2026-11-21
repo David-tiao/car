@@ -9,10 +9,10 @@ const web=path.join(__dirname,'..','web');
 const api=require(path.join(web,'keyboard_mechanism_preview.js'));
 const nearly=(a,b,e=.0001)=>assert.ok(Math.abs(a-b)<e,String(a)+' != '+String(b));
 assert.deepEqual(Object.keys(api.AXES),
-  ['base_yaw_deg','tray_deg','lift_mm','holder_deg','grip_deg']);
-assert.deepEqual(api.PRESETS.base_yaw_deg,[-90,0,90]);
-assert.equal(api.AXES.base_yaw_deg.firmwareRate,null);
-assert.equal(api.AXES.base_yaw_deg.mockOnly,true);
+  ['column_yaw_deg','tray_deg','lift_mm','holder_deg','grip_deg']);
+assert.deepEqual(api.PRESETS.column_yaw_deg,[-90,0,90]);
+assert.equal(api.AXES.column_yaw_deg.firmwareRate,null);
+assert.equal(api.AXES.column_yaw_deg.mockOnly,true);
 assert.deepEqual(api.PRESETS.tray_deg,[0,90,180,270]);
 assert.deepEqual(api.PRESETS.lift_mm,[0,24,80,141,170,175]);
 assert.deepEqual(api.PRESETS.holder_deg,[0,180]);
@@ -28,9 +28,9 @@ for(const n of Object.keys(api.AXES)){
   nearly(model.target[n],0);nearly(model.shown[n],0);nearly(model.velocity[n],0);
 }
 assert.equal(api.setTarget(model,'lift_mm',999),175);
-assert.equal(api.setTarget(model,'base_yaw_deg',-999),-90);
-assert.equal(api.setTarget(model,'base_yaw_deg',999),90);
-assert.throws(()=>api.setTarget(model,'base_yaw_deg',NaN),RangeError);
+assert.equal(api.setTarget(model,'column_yaw_deg',-999),-90);
+assert.equal(api.setTarget(model,'column_yaw_deg',999),90);
+assert.throws(()=>api.setTarget(model,'column_yaw_deg',NaN),RangeError);
 assert.equal(api.setTarget(model,'holder_deg',-30),0);
 assert.throws(()=>api.setTarget(model,'unknown',3),RangeError);
 assert.throws(()=>api.setTarget(model,'tray_deg',NaN),RangeError);
@@ -77,11 +77,11 @@ for(const name of Object.keys(api.AXES))nearly(model.shown[name],0);
 
 // The SAME computed pose feeds detail + map; top geometry builder is shared.
 const p=api.computeMechanismPose({
-  base_yaw_deg:-60,tray_deg:90,lift_mm:175,holder_deg:180,grip_deg:140
+  column_yaw_deg:-60,tray_deg:90,lift_mm:175,holder_deg:180,grip_deg:140
 });
-nearly(p.baseRotate,-60);
+nearly(p.columnRotate,-60);
 nearly(p.trayRotate,90);
-nearly(p.absoluteTrayRotate,30);
+assert.equal(p.trayRotate,90); // column yaw cannot move PC7
 nearly(p.liftOffset,-104);
 nearly(p.holderRotate,-180);
 nearly(p.jawOffset,13);
@@ -108,25 +108,18 @@ for(const angle of [0,45,90,180,270]){
   }
 }
 assert.throws(()=>api.projectTraySide(NaN),RangeError);
-// The fifth DOF and PC7 are independent: the same absolute cup orientation
-// may be reached with different relative gear states.
-const compoundA=api.projectTraySide(0,90);
-const compoundB=api.projectTraySide(90,0);
-for(let i=0;i<3;i++)nearly(compoundA[i].x,compoundB[i].x);
-assert.ok(api.projectTraySide(0,-90)[0].x < -30.9);
-for(let i=0;i<3;i++)
-  nearly(api.projectTraySide(0,999)[i].x,api.projectTraySide(0,90)[i].x);
-// Values outside provisional limits CLAMP; malformed numbers are rejected.
-assert.throws(()=>api.projectTraySide(0,NaN),RangeError);
-// Side-on a yawed platform foreshortens; does not roll or tilt the tray.
-nearly(api.projectRearBaseSide(0).widthRatio,1);
-nearly(api.projectRearBaseSide(90).widthRatio,.33);
-nearly(api.projectRearBaseSide(-90).pointerX,-25);
-nearly(api.projectRearBaseSide(90).pointerX,25);
-nearly(api.projectRearBaseSide(1000).widthRatio,api.projectRearBaseSide(90).widthRatio);
-assert.throws(()=>api.projectRearBaseSide(NaN),RangeError);
-// Detailed TOP rig has a distinct rotating platform with PC7 relative
-// beneath it; changing platform angle cannot mutate the PC7 target itself.
+// Fifth axis rotates the upright mast and gripper, never PC7 or its cups.
+const unchanged=api.projectTraySide(0);
+const tiltedColumn=api.projectColumnSide(90);
+nearly(api.projectColumnSide(0).widthRatio,1);
+nearly(tiltedColumn.widthRatio,.22);
+nearly(api.projectColumnSide(-90).pointerX,-18);
+nearly(tiltedColumn.pointerX,18);
+nearly(api.projectColumnSide(999).widthRatio,.22);
+assert.throws(()=>api.projectColumnSide(NaN),RangeError);
+for(let i=0;i<3;i++)nearly(api.projectTraySide(0)[i].x,unchanged[i].x);
+// Detailed TOP rig must rotate the ENTIRE lift-column+gripper group while
+// the rear PC7 tray stays fixed relative to the chassis.
 const previousDoc=global.document;
 global.document={createElementNS(_ns,tag){
   return {tag,children:[],attrs:{},
@@ -137,14 +130,17 @@ try{
   const node={children:[],appendChild(x){this.children.push(x);return x;}};
   const rig=api.buildTopRig(node);
   api.applyTopPose(rig,api.computeMechanismPose({
-    base_yaw_deg:90,tray_deg:0,lift_mm:0,holder_deg:0,grip_deg:0}));
-  assert.equal(rig.rearPlatform.attrs.transform,'rotate(90.000)');
+    column_yaw_deg:90,tray_deg:0,lift_mm:0,holder_deg:0,grip_deg:0}));
+  assert.equal(rig.columnTurn.attrs.transform,'translate(-40 0) rotate(90.000)');
   assert.equal(rig.tray.attrs.transform,'rotate(0.000)');
   api.applyTopPose(rig,api.computeMechanismPose({
-    base_yaw_deg:0,tray_deg:180,lift_mm:0,holder_deg:0,grip_deg:0}));
-  assert.equal(rig.rearPlatform.attrs.transform,'rotate(0.000)');
+    column_yaw_deg:0,tray_deg:180,lift_mm:0,holder_deg:0,grip_deg:0}));
+  assert.equal(rig.columnTurn.attrs.transform,'translate(-40 0) rotate(0.000)');
   assert.equal(rig.tray.attrs.transform,'rotate(180.000)');
   assert.equal(rig.tray.attrs['data-km-pc7-tray'],'RELATIVE_TO_PLATFORM');
+  assert.equal(rig.trayMount.attrs['data-km-tray-mount'],'STATIC_CHASSIS');
+  assert.ok(rig.columnTurn.children.some(n=>n.attrs.transform==='translate(40 0)'));
+  assert.ok(!rig.trayMount.attrs.transform);
 }finally {global.document=previousDoc;}
 const code=fs.readFileSync(path.join(web,'keyboard_mechanism_preview.js'),'utf8');
 const panel=fs.readFileSync(path.join(web,'keyboard_mapping_panel.js'),'utf8');
@@ -152,7 +148,7 @@ const sim=fs.readFileSync(path.join(web,'app.js'),'utf8');
 const test=fs.readFileSync(path.join(web,'test_stm32_fsm_workbench.js'),'utf8');
 const html=fs.readFileSync(path.join(web,'index.html'),'utf8');
 const css=fs.readFileSync(path.join(web,'keyboard_mechanism.css'),'utf8');
-assert.match(html,/keyboard_mechanism\.css\?v=1\.3\.0/);
+assert.match(html,/keyboard_mechanism\.css\?v=1\.4\.0/);
 assert.ok(html.indexOf('keyboard_mechanism_preview.js')<html.indexOf('app.js'),
   'CAD generator must load before SIM/REAL initial rendering');
 assert.ok(html.indexOf('keyboard_mechanism_preview.js')<
@@ -170,7 +166,7 @@ assert.match(code,/UNMEASURED_SCHEMATIC_ONLY/);
 assert.match(css,/keyboard-mechanism-controls/);
 assert.match(css,/max-width:650px/);
 for(const label of ['MOCK ONLY · STM32 TX OFF','PC7','PC6 / PC8 / PC9',
-  'PB15','PB14','车尾平台独立旋转 · 未接 STM32','-90']){
+  'PB15','PB14','升降立柱总成旋转 · 未接 STM32','-90']){
   assert.ok(code.includes(label),label);
 }
 assert.ok(!/\bfetch\s*\(|XMLHttpRequest|sendBeacon\s*\(|WebSocket\s*\(|create_publisher\s*\(|serial\.Serial\s*\(/.test(code));
