@@ -83,9 +83,25 @@ win.fire('keyup',{key:'i'});win.fire('keyup',{key:'o'});win.fire('keyup',{key:'m
 for(const [k,v] of [['1',0],['2',90],['3',180],['4',270]]){
   win.fire('keydown',{key:k});near(model.target.tray_deg,v);
 }
-for(const [k,v] of [['5',-90],['6',0],['7',90]]){
+for(const [k,v] of [['5',-90],['6',0],['7',90],['8',180],['9',-180]]){
   win.fire('keydown',{key:k});near(model.target.column_yaw_deg,v);
 }
+// Both 180-degree directions should be reachable through presets and
+// forward/reverse continuous bracket keys, without changing PC7.
+const trayBefore=model.target.tray_deg;
+win.fire('keydown',{key:'8'});
+near(model.target.column_yaw_deg,180);
+win.fire('keydown',{key:']',code:'BracketRight'});
+keys.tick(1360); // saturation remains 180
+near(model.target.column_yaw_deg,180);
+win.fire('keyup',{key:']',code:'BracketRight'});
+win.fire('keydown',{key:'9'});
+near(model.target.column_yaw_deg,-180);
+win.fire('keydown',{key:'[',code:'BracketLeft'});
+keys.tick(1370);
+near(model.target.column_yaw_deg,-180);
+win.fire('keyup',{key:'[',code:'BracketLeft'});
+near(model.target.tray_deg,trayBefore);
 for(const [k,v] of [['z',0],['x',110],['c',140]]){
   win.fire('keydown',{key:k});near(model.target.grip_deg,v);
 }

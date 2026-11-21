@@ -15,7 +15,7 @@
   // comfort settings. These never affect the robot or STM32 timing.
   const AXES=Object.freeze({
     // Provisional MOCK-only bounds. NOT validated mechanical travel.
-    column_yaw_deg:{min:-90,max:90,firmwareRate:null,previewRate:55,previewAccel:140,
+    column_yaw_deg:{min:-180,max:180,firmwareRate:null,previewRate:65,previewAccel:150,
       label:'升降立柱总成旋转 · 未接 STM32',unit:'°',mockOnly:true},
     tray_deg:{min:0,max:270,firmwareRate:60,previewRate:45,previewAccel:100,
       label:'PC7 · 车载三工位转盘',unit:'°'},
@@ -27,7 +27,7 @@
       label:'PB14 · 夹爪开合',unit:'°'}
   });
   const PRESETS=Object.freeze({
-    column_yaw_deg:[-90,0,90],
+    column_yaw_deg:[-180,-90,0,90,180],
     tray_deg:[0,90,180,270],
     lift_mm:[0,24,80,141,170,175],
     holder_deg:[0,180],
@@ -116,11 +116,14 @@
   function projectColumnSide(columnYawDeg){
     const angle=clamp('column_yaw_deg',columnYawDeg);
     const rad=angle*Math.PI/180;
-    // Upright column rotates around its VERTICAL axis; side-on perspective
-    // foreshortens its arm/rail width, never tilts the column.
+    // Side camera: vertical column stays upright. The gripper's horizontal
+    // reach changes sign after 90 degrees, so at 180 it faces the rear.
+    const cosine=Math.cos(rad);
     return Object.freeze({
-      widthRatio:.22+.78*Math.abs(Math.cos(rad)),
+      widthRatio:.65+.35*Math.abs(cosine),
+      reachRatio:cosine,
       pointerX:18*Math.sin(rad),
+      facing:Math.abs(angle)>=135?'REAR':Math.abs(angle)<=45?'FRONT':'SIDE',
       angleDeg:angle
     });
   }
@@ -326,6 +329,7 @@
       '<path d="M 416 51 V 179" stroke="#e3eff6" stroke-width="2" stroke-dasharray="5 4"/>',
       '<path d="M 425 50 V 179" stroke="#5c7998" stroke-width="2"/>',
       '<g fill="#d7e6f3"><circle cx="417" cy="53" r="2"/><circle cx="417" cy="176" r="2"/></g>',
+      '<g data-side-column-arm>',
       '<g data-lift><rect x="396" y="159" width="55" height="18" rx="4" fill="#8ba6c0" stroke="#e6f5ff" stroke-width="2"/>',
       '<rect x="401" y="163" width="41" height="10" rx="3" fill="#d3e2ed" stroke="#7892ad"/>',
       '<circle cx="405" cy="168" r="2" fill="#425a78"/><circle cx="437" cy="168" r="2" fill="#425a78"/>',
@@ -335,6 +339,7 @@
       '<circle cx="-18" cy="0" r="7" fill="#40385e" stroke="#ead7ff" stroke-width="1.5"/>',
       '<g data-side-jaw><path d="M -25 -17 V 17" stroke="#eadcf9" stroke-width="6"/>',
       '<path d="M -25 -17 l -7 -4 M -25 17 l -7 4" stroke="#be99fa" stroke-width="3" fill="none"/></g></g></g>',
+      '</g>',
       '</g>',
       '<g data-side-tray-assembly>',
       '<rect x="486" y="179" width="10" height="13" rx="2" fill="#536578" stroke="#cedae6"/>',
@@ -352,6 +357,7 @@
       '</g>',
       '<text x="327" y="223" class="km-view-small">升降立柱旋转 · PC7 托盘独立</text>',
       '<text x="328" y="238" data-side-column-angle class="km-view-small">立柱 0°</text>',
+      '<text x="420" y="30" text-anchor="middle" data-side-column-facing class="km-view-small">夹爪朝车前</text>',
       '<text x="479" y="238" data-side-tray-angle class="km-view-small">PC7 0°</text>',
       '</g><text x="18" y="235" class="km-view-small">MOCK / 非实车位置测量</text>'
     ].join('');
@@ -362,6 +368,8 @@
     const sideTrayStations=svg.querySelector('[data-side-tray-stations]');
     const sideTrayAngle=svg.querySelector('[data-side-tray-angle]');
     const sideColumn=svg.querySelector('[data-side-column-assembly]');
+    const sideColumnArm=svg.querySelector('[data-side-column-arm]');
+    const sideColumnFacing=svg.querySelector('[data-side-column-facing]');
     const sideColumnAngle=svg.querySelector('[data-side-column-angle]');
     const sideCups=[];
     // Each of the three pockets remains attached to the same PC7 yaw angle
@@ -383,7 +391,7 @@
     element('strong',keyboardHelp,'MOCK 机构键盘 · 当前控制：紫色主车');
     const keyboardLegend=element('div',keyboardHelp,undefined,'keyboard-mechanism-shortcut-list');
     for(const text of [
-      '[ / ] · 升降立柱 − / +', '5/6/7 · 立柱 −90/0/+90°',
+      '[ / ] · 升降立柱 − / +', '5–9 · 立柱 −180°～+180°',
       'J / L · PC7 转盘 − / +', 'I / K · 升 / 降',
       'U / O · 翻转 − / +','N / M · 张开 / 夹紧',
       '1–4 · 转盘角度','Z / X / C · 夹爪预设',
@@ -397,7 +405,10 @@
     const controls=element('div',panel,undefined,'keyboard-mechanism-controls');
     const sliders={},outputs={};
     const presetNames={
-      column_yaw_deg:{'-90':'立柱左转 90°',0:'立柱中位 0°',90:'立柱右转 90°'},
+      column_yaw_deg:{
+        '-180':'反向 -180°','-90':'左转 -90°',
+        0:'朝前 0°',90:'右转 +90°',180:'反向 +180°'
+      },
       tray_deg:{0:'0° 原点',90:'90°',180:'180°',270:'270°'},
       lift_mm:{0:'零位',24:'抓取低位',80:'接近',141:'转运',170:'上位',175:'最高预设'},
       holder_deg:{0:'朝前',180:'翻转 180°'},
@@ -436,7 +447,7 @@
     });
     element('span',foot,'MOCK ONLY · STM32 TX OFF','keyboard-mechanism-only');
     element('p',panel,
-      '新增升降立柱总成旋转为第五个 MOCK 自由度（暂按 -90°～+90°），整根立柱、升降滑台与夹爪一起绕竖直轴转向；PC7 托盘不随之旋转。仓库尚无该第五轴的 STM32 引脚、限位或零位回执，不能用于实车控制。',
+      '升降立柱可在 MOCK 中从朝前 0° 转到朝后 ±180°，导轨、滑台与夹爪一起转向；PC7 三工位托盘不随之旋转。±180° 只是演示目标，尚未校验实车限位、线束缠绕与机构碰撞；不向 STM32 发指令。',
       'keyboard-mechanism-note keyboard-mechanism-footnote');
 
     let mapThumb=null;
@@ -464,7 +475,13 @@
       const column=projectColumnSide(s.column_yaw_deg);
       sideColumn.setAttribute('transform','translate(421 0) scale('+
         column.widthRatio.toFixed(3)+' 1) translate(-421 0)');
+      // The upright is always vertical; only the carriage + gripper reach
+      // reverses left/right through 90°, showing a real 180° facing change.
+      sideColumnArm.setAttribute('transform','translate(421 0) scale('+
+        column.reachRatio.toFixed(5)+' 1) translate(-421 0)');
       sideColumnAngle.textContent='立柱 '+s.column_yaw_deg.toFixed(1)+'°';
+      sideColumnFacing.textContent=column.facing==='REAR'?
+        '夹爪朝车后':column.facing==='FRONT'?'夹爪朝车前':'夹爪侧向';
       // Rear PC7 is mounted to the chassis and does not follow column yaw.
       const stations=projectTraySide(s.tray_deg);
       for(const station of stations){

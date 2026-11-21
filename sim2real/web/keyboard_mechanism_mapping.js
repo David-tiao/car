@@ -24,10 +24,12 @@
   const PRESET=Object.freeze({
     '1':{axis:'tray_deg',value:0},'2':{axis:'tray_deg',value:90},
     '3':{axis:'tray_deg',value:180},'4':{axis:'tray_deg',value:270},
-    // Fifth MOCK-only upright lift-column yaw, provisional bounds (NOT hardware-calibrated).
+    // Fifth MOCK-only lift-column yaw, ±180° visual ONLY, not hardware-calibrated.
     '5':{axis:'column_yaw_deg',value:-90},
     '6':{axis:'column_yaw_deg',value:0},
     '7':{axis:'column_yaw_deg',value:90},
+    '8':{axis:'column_yaw_deg',value:180},
+    '9':{axis:'column_yaw_deg',value:-180},
     z:{axis:'grip_deg',value:0},x:{axis:'grip_deg',value:110},
     c:{axis:'grip_deg',value:140},
     t:{axis:'lift_mm',value:24}

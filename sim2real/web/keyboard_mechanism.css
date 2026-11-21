@@ -263,7 +263,7 @@
   border-color:#ffe1b7;
 }
 .keyboard-mechanism-axis[data-axis="column_yaw_deg"]::after {
-  content:"仅浏览器模拟 · -90°～+90° 是待标定示意范围 · 无 STM32 驱动映射";
+  content:"仅浏览器模拟 · ±180° 是未验证的演示范围 · 实车限位、线束和碰撞均待确认";
   display:block;
   margin-top:8px;
   color:#dfc8ac;
