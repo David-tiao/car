@@ -84,3 +84,7 @@ STATION_JITTER_PX = 5
 # 蓝启停区的 LAB 范围、最小面积在返程视角下调；由底盘区分两个启停区。
 HOME_BLUE = (10, 100, 0, 80, -128, -30)
 HOME_MIN_PIXELS = 1200
+
+# 电控 architecture-v2 使用 V4；原 V5 主控可显式选择 V5。
+UART_PROTOCOL = 'V4'
+RING_TARGET_X, RING_TARGET_Y = 160, 120

@@ -1,7 +1,7 @@
 """智能搬运的视觉、任务、跟踪及显示对象。坐标均使用 QVGA 像素。"""
 import math
 import time
-import algorithm.openmv.openmv_all.config as C
+import config as C
 
 
 def val(obj, name, default=0):
@@ -722,13 +722,17 @@ class SourceStation:
         self.track_id = None
         self.since = None
 
-    def observe(self, img, color, now):
+    def disk_sample(self, img):
         self.frame += 1
         blobs = [b for b in self.materials.color_blobs(img) if b[0] in self.colors]
         gray = img.to_grayscale(copy=True)
         disk = self.disk.update(gray, blobs, self.frame)
         self.slot = self.disk.nearest_pick_slot(disk) if disk else None
         self.radius = int(round(disk[2])) if disk else 0
+        return disk, gray, blobs
+
+    def observe(self, img, color, now):
+        disk, gray, blobs = self.disk_sample(img)
         if (self.slot is None or self.last_frame is None or
                 time.ticks_diff(now, self.last_frame) > C.MAX_FRAME_GAP_MS):
             self.track_id = None
@@ -738,7 +742,7 @@ class SourceStation:
             return None
         detections = self.materials.material_candidates(img, gray, disk, blobs)
         self.tracker.update(detections, now)
-        matches = [t for t in self.tracker.items if t.seen and t.label == color
+        matches = [t for t in self.tracker.items if t.seen and (color is None or t.label == color)
                    and t.hits >= 3 and t.state == 'S' and self.disk.in_pick_slot(t, self.slot)
                    and near(t.measured, self.slot, C.PICK_SLOT_TOL_PX)]
         if len(matches) != 1:

@@ -2,7 +2,7 @@
 
 同目录文件为 main.py、config.py、tools.py、serial.py。在 IDE 中运行本文件。
 上电独立自启时，把这四个文件一同放进 OpenMV 的启动盘根目录。
-现有 V5 主控在首批三件后停车。余下工位的到站、动作取用和完成回执见 serial.py。
+默认对接 architecture-v2 电控。旧主控可在 config.py 选择 V5。
 """
 import gc
 import math
@@ -14,7 +14,7 @@ import time
 def _add_project_directory():
     # IDE 直接执行脚本时可能不提供 __file__，板内同级模块仍需可导入。
     filename = globals().get('__file__') or ''
-    folders = ['openmv', '/sd/openmv', '/flash/openmv']
+    folders = ['.', '/flash', '/sd', '/', 'openmv_all', 'openmv', '/sd/openmv', '/flash/openmv']
     if '/' in filename:
         folders.insert(0, filename.rsplit('/', 1)[0] or '/')
     for directory in folders:
@@ -29,9 +29,9 @@ def _add_project_directory():
 
 
 _add_project_directory()
-import algorithm.openmv.openmv_all.config as C
-from serial import SerialLink
-from algorithm.openmv.openmv_all.tools import Camera, MaterialDetector, Mission, Panel, SourceStation, StablePoint, StationVision, near
+import config as C
+from serial import SerialLink, V4Link
+from tools import Camera, MaterialDetector, Mission, Panel, SourceStation, StablePoint, StationVision, near
 
 
 class App:
@@ -249,10 +249,208 @@ class App:
         self.panel.update(self.job, self.state)
 
 
+class ElectricalApp:
+    """按 STM32 的会话工作。同一份相机识别器供两种主控使用。"""
+    def __init__(self, link, panel):
+        self.link = link
+        self.panel = panel
+        self.materials = MaterialDetector()
+        self.stations = StationVision(self.materials)
+        self.reset()
+        self.link.send('READY', 'IDLE')
+
+    def reset(self):
+        self.board = Mission()
+        self.source = None
+        self.idle()
+
+    def idle(self):
+        self.state = 'IDLE'
+        self.request = None
+        self.session = 0
+        self.step = 0
+        self.wait_step = False
+        self.last_report = None
+        self.qr = None
+        self.stable = StablePoint()
+
+    @staticmethod
+    def number(s, low, high):
+        if not s.isdigit() or len(s) > 5 or not low <= int(s) <= high:
+            raise ValueError('FORMAT')
+        return int(s)
+
+    def start(self, command, scan_prefix):
+        if self.request == command and not scan_prefix:
+            self.link.send(*self.accept)
+            return
+        if self.state != 'IDLE' and not scan_prefix:
+            raise ValueError('BUSY')
+        if command[0] == 'ALIGN':
+            if len(command) != 3:
+                raise ValueError('FORMAT')
+            ring = self.number(command[1], 1, 3)
+            session = self.number(command[2], 1, 65535)
+            self.idle()
+            self.target, self.session = ring, session
+            self.state = 'RING'
+            self.accept = ('ACK', 'ALIGN', ring, session)
+        else:
+            if len(command) not in (2, 3, 4):
+                raise ValueError('FORMAT')
+            job = self.number(command[1], 1, 255)
+            if job not in (1, 40, 41):
+                raise ValueError('UNSUPPORTED_JOB')
+            session = 0
+            tx = ty = C.PICK_SLOT_TOL_PX
+            if len(command) == 3:
+                if job != 1:
+                    raise ValueError('FORMAT')
+                session = self.number(command[2], 0, 65535)
+            elif len(command) == 4:
+                tx = self.number(command[2], 1, 100)
+                ty = self.number(command[3], 1, 100)
+            if job == 41 and (self.source is None or not self.source.disk.locked):
+                raise ValueError('AREA_REQUIRED')
+            self.idle()
+            self.session = session
+            self.tol_x, self.tol_y = tx, ty
+            if job == 1:
+                self.state = 'QR'
+                self.board = Mission()
+                self.source = None
+            elif job == 40:
+                self.state = 'AREA'
+                colors = self.board.groups[0] if self.board.groups else range(1, 7)
+                self.source = SourceStation(colors, self.materials)
+            else:
+                self.state = 'MATERIAL'
+                self.source.tracker.clear()
+                self.source.track_id = None
+            self.accept = ('ACK', 'JOB', job)
+        self.request = command
+        self.link.send(*self.accept)
+
+    def command(self, cmd):
+        name = cmd[0]
+        if name in ('JOB', 'SCAN_BEGIN', 'ALIGN'):
+            request = ('JOB',) + cmd[1:] if name == 'SCAN_BEGIN' else cmd
+            self.start(request, name == 'SCAN_BEGIN')
+        elif cmd == ('RESET',):
+            self.reset()
+            self.link.send('IDLE')
+        elif cmd == ('CANCEL',):
+            self.idle()
+            self.source = None
+            self.link.send('IDLE')
+        elif cmd == ('STATUS',):
+            if self.state == 'IDLE':
+                self.link.send('READY', 'IDLE')
+            else:
+                self.link.send('STATUS', self.state)
+        elif name == 'ACK' and len(cmd) == 3 and cmd[1] == 'QR':
+            if (self.state == 'QR' and self.qr is not None and
+                    self.number(cmd[2], 0, 65535) == self.session):
+                self.link.finish('DONE', 'QR')
+                self.idle()
+        elif name == 'STEP_DONE' and len(cmd) == 3:
+            step = self.number(cmd[1], 0, 65535)
+            if self.state == 'RING' and self.wait_step and step == self.step and cmd[2] in ('0', '1'):
+                self.step = (self.step + 1) & 65535
+                self.wait_step = False
+                self.last_report = None
+                self.stable.reset()
+        elif name == 'ARRIVED' and len(cmd) == 7 and cmd[1] == 'RING':
+            if (self.state == 'RING' and self.wait_step and
+                    self.number(cmd[2], 1, 3) == self.target and
+                    self.number(cmd[5], 1, 65535) == self.session and
+                    self.number(cmd[6], 1, 255) > 0 and
+                    (int(cmd[3]), int(cmd[4])) == self.last_error_px):
+                self.idle()
+                self.link.send('IDLE')
+        else:
+            raise ValueError('UNKNOWN_CMD')
+
+    def commands(self, now):
+        for cmd in self.link.poll():
+            try:
+                self.command(cmd)
+            except ValueError as exc:
+                self.link.send('ERR', str(exc))
+
+    def due(self, now):
+        return self.last_report is None or time.ticks_diff(now, self.last_report) >= C.REPORT_MS
+
+    def qr_frame(self, img, now):
+        if self.qr is None and self.board.scan(img):
+            self.qr = '+'.join(self.board.groups)
+        if self.qr and self.due(now):
+            if self.session:
+                self.link.send('QR', self.qr, self.session)
+            else:
+                self.link.send('QR', self.qr)
+            self.last_report = now
+
+    def ring_frame(self, img, now):
+        if self.wait_step:
+            return
+        point = self.stable.update(self.stations.empty_ring(img, self.target), now)
+        if point is None:
+            if self.due(now):
+                self.link.send('LOST', 'RING', self.target)
+                self.last_report = now
+            return
+        cx, cy = point
+        dx, dy = cx-C.RING_TARGET_X, cy-C.RING_TARGET_Y
+        self.last_error_px = (dx, dy)
+        self.link.send('POS', 'RING', self.target, dx, dy, cx, cy, self.session, self.step)
+        self.wait_step = True
+
+    def material_frame(self, img, now):
+        # Return a real tracking measurement, never a projected slot or stale centroid.
+        face = self.source.observe(img, None, now)
+        if face is None:
+            if self.due(now):
+                self.link.send('LOST', 'MATERIAL', 0)
+                self.last_report = now
+            return
+        cx, cy = face[:2]
+        dx, dy = cx-C.PICK_TARGET_X, cy-C.PICK_TARGET_Y
+        if abs(dx) <= self.tol_x and abs(dy) <= self.tol_y:
+            self.link.finish('ARRIVED', 'MATERIAL', 0, dx, dy)
+            self.idle()
+        elif self.due(now):
+            self.link.send('POS', 'MATERIAL', 0, dx, dy, cx, cy)
+            self.last_report = now
+
+    def frame(self, img, now):
+        if self.state == 'QR':
+            self.qr_frame(img, now)
+        elif self.state == 'RING':
+            self.ring_frame(img, now)
+        elif self.state == 'AREA':
+            disk, _, _ = self.source.disk_sample(img)
+            if disk:
+                cx, cy, radius = [int(round(value)) for value in disk]
+                self.link.finish('AREA_OK', cx, cy, radius)
+                self.idle()
+            elif self.due(now):
+                self.link.send('LOST', 'AREA')
+                self.last_report = now
+        elif self.state == 'MATERIAL':
+            self.material_frame(img, now)
+        self.panel.update(self.board, self.state)
+
+
 def run():
-    link = SerialLink()
+    if C.UART_PROTOCOL == 'V4':
+        link, app_type = V4Link(), ElectricalApp
+    elif C.UART_PROTOCOL == 'V5':
+        link, app_type = SerialLink(), App
+    else:
+        raise ValueError('UART_PROTOCOL must be V4 or V5')
     camera = Camera()
-    app = App(link, Panel())
+    app = app_type(link, Panel())
     frames = 0
     while True:
         app.commands(time.ticks_ms())
