@@ -9,4 +9,4 @@ if [[ ! -f "$ROS_SETUP" ]]; then
 fi
 # Preserve the user's existing ROS_DOMAIN_ID/RMW_IMPLEMENTATION for Pi5 connectivity.
 source "$ROS_SETUP"
-exec /usr/bin/python3 "$ROOT/ros2_visualization_bridge.py" "$@"
+exec /usr/bin/python3 "$ROOT/bridges/ros2_visualization_bridge.py" "$@"

@@ -8,4 +8,4 @@ if [[ -f "$ROOT/algorithm/car_ws/install/setup.bash" ]]; then
   source "$ROOT/algorithm/car_ws/install/setup.bash"
 fi
 set -u
-exec /usr/bin/python3 "$ROOT/sim2real/keyboard_ros2_web_feedback.py" "$@"
+exec /usr/bin/python3 "$ROOT/sim2real/keyboard/keyboard_ros2_web_feedback.py" "$@"

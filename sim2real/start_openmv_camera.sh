@@ -5,4 +5,4 @@ if ! /usr/bin/python3 -c 'import serial' 2>/dev/null; then
   echo "Missing pyserial. Install: sudo apt update && sudo apt install python3-serial"
   exit 1
 fi
-exec /usr/bin/python3 "$ROOT/openmv_usb_sender.py" "$@"
+exec /usr/bin/python3 "$ROOT/cameras/openmv_usb_sender.py" "$@"

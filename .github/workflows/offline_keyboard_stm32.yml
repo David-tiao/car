@@ -31,9 +31,9 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           candidates = [
-              Path('sim2real/keyboard_dryrun_chassis.py'),
-              Path('sim2real/keyboard_fault_lab.py'),
-              Path('sim2real/keyboard_mapping_core.py'),
+              Path('sim2real/keyboard/keyboard_dryrun_chassis.py'),
+              Path('sim2real/keyboard/keyboard_fault_lab.py'),
+              Path('sim2real/keyboard/keyboard_mapping_core.py'),
           ]
           for file in candidates:
               source = file.read_text(encoding='utf-8')
