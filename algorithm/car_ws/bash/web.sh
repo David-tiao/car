@@ -51,7 +51,7 @@ case "$CMD" in
   doctor)
     require_site
     echo "[PASS] Standalone Sim2Real: $SIM"
-    [[ -f "$SIM/keyboard_local_ros2_autostart.py" && -f "$SIM/keyboard_mapping_core.py" && -f "$SIM/web/keyboard_preview_motion.js" ]] || {
+    [[ -f "$SIM/keyboard/keyboard_local_ros2_autostart.py" && -f "$SIM/keyboard/keyboard_mapping_core.py" && -f "$SIM/web/keyboard_preview_motion.js" ]] || {
       echo '[FAIL] Keyboard mapping/autostart/animation files missing' >&2; exit 3;
     }
     for pkg in car_web_test car_web_real car_web_sim; do
@@ -61,8 +61,8 @@ case "$CMD" in
       echo "[PASS] ROS2 adapter: $pkg"
     done
     [[ -f "$WS/src/car_web_keyboard/COLCON_IGNORE" ]] && echo '[INFO] Keyboard ROS2 PC loopback is standalone; STM32 motor TX disabled'
-    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/ros2_visualization_bridge.py" "$SIM/keyboard_local_ros2_autostart.py" "$SIM/keyboard_mapping_core.py" "$SIM/keyboard_ros2_pc.py" "$SIM/keyboard_ros2_web_feedback.py"
-    /usr/bin/python3 -m py_compile "$SIM/test_inspection.py" "$SIM/test_telemetry_bridge.py"
+    /usr/bin/python3 -m py_compile "$SIM/server.py" "$SIM/web_mode_gateway.py" "$SIM/web_mode_runner.py" "$SIM/bridges/ros2_visualization_bridge.py" "$SIM/keyboard/keyboard_local_ros2_autostart.py" "$SIM/keyboard/keyboard_mapping_core.py" "$SIM/keyboard/keyboard_ros2_pc.py" "$SIM/keyboard/keyboard_ros2_web_feedback.py"
+    /usr/bin/python3 -m py_compile "$SIM/labs/test_inspection.py" "$SIM/bridges/test_telemetry_bridge.py"
     echo '[PASS] Python syntax; original car shortcut unaffected'
     echo '[INFO] doctor does not validate physical STM32, laser, OpenMV or ROS2 runtime.'
     ;;

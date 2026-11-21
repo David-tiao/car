@@ -4,6 +4,8 @@ set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 export PYTHONDONTWRITEBYTECODE=1
 cd "$ROOT"
+# All relocated modules remain importable in standalone unittest discovery.
+export PYTHONPATH="$ROOT/sim2real/keyboard:$ROOT/sim2real/bridges:$ROOT/sim2real/labs:$ROOT/sim2real${PYTHONPATH:+:$PYTHONPATH}"
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_mapping.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_dryrun.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_offline_analysis.py' -v
@@ -16,9 +18,9 @@ python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_local_ros2_auto
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_autostart.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_keyboard_feedback.py' -v
 python3 -m unittest discover -s sim2real/tests -p 'test_four_modes.py' -v
-python3 sim2real/keyboard_fault_lab.py --out-dir /tmp/car_keyboard_fault_lab
-python3 sim2real/keyboard_offline_analysis.py --out-dir /tmp/car_keyboard_offline_analysis
-python3 sim2real/keyboard_offline_analysis.py \
+python3 sim2real/keyboard/keyboard_fault_lab.py --out-dir /tmp/car_keyboard_fault_lab
+python3 sim2real/keyboard/keyboard_offline_analysis.py --out-dir /tmp/car_keyboard_offline_analysis
+python3 sim2real/keyboard/keyboard_offline_analysis.py \
   --input /tmp/car_keyboard_offline_analysis/synthetic_events.jsonl \
   --out-dir /tmp/car_keyboard_offline_replay
 python3 - <<'PY'
@@ -36,15 +38,15 @@ import ast
 from pathlib import Path
 import sys
 root=Path(sys.argv[1])
-for file in ("sim2real/keyboard_mapping_core.py",
-             "sim2real/keyboard_dryrun_chassis.py",
-             "sim2real/keyboard_offline_analysis.py",
-             "sim2real/keyboard_local_smoke.py",
-             "sim2real/keyboard_fault_lab.py",
-             "sim2real/keyboard_ros2_pc.py",
-             "sim2real/keyboard_ros2_pi.py",
-             "sim2real/keyboard_ros2_web_feedback.py",
-             "sim2real/keyboard_local_ros2_autostart.py",
+for file in ("sim2real/keyboard/keyboard_mapping_core.py",
+             "sim2real/keyboard/keyboard_dryrun_chassis.py",
+             "sim2real/keyboard/keyboard_offline_analysis.py",
+             "sim2real/keyboard/keyboard_local_smoke.py",
+             "sim2real/keyboard/keyboard_fault_lab.py",
+             "sim2real/keyboard/keyboard_ros2_pc.py",
+             "sim2real/keyboard/keyboard_ros2_pi.py",
+             "sim2real/keyboard/keyboard_ros2_web_feedback.py",
+             "sim2real/keyboard/keyboard_local_ros2_autostart.py",
              "sim2real/web_mode_gateway.py"):
     ast.parse((root/file).read_text(encoding="utf-8"), filename=file)
     print("SYNTAX OK:", file)
