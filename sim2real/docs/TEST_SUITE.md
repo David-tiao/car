@@ -17,7 +17,7 @@ Mock MCU [CAR-LINK V1 binary + CRC16]
          -> POST /api/test/inspection -> 专用诊断台
 ```
 
-新增：`sim2real/test_inspection.py` （只读检查 API 和输入校验）、`sim2real/test_telemetry_bridge.py` （8 个 ROS2 话题订阅）、`sim2real/web/test_console.js`（只在 /test 加载）、`sim2real/tests/test_test_suite.py`（离线测试）。既有 `sim2real/server.py` 通过 `web_mode_gateway.py` 承载这两个 API；其它模式不会读取模拟测试诊断快照。
+新增：`sim2real/labs/test_inspection.py` （只读检查 API 和输入校验）、`sim2real/bridges/test_telemetry_bridge.py` （8 个 ROS2 话题订阅）、`sim2real/web/test_console.js`（只在 /test 加载）、`sim2real/tests/test_test_suite.py`（离线测试）。既有 `sim2real/server.py` 通过 `web_mode_gateway.py` 承载这两个 API；其它模式不会读取模拟测试诊断快照。
 
 ## 二、Ubuntu ROS 2 Humble 启动
 
@@ -40,7 +40,7 @@ bash algorithm/car_ws/bash/web.sh test
 
 ```bash
 cd ~/Desktop/car/sim2real
-python3 test_acceptance.py --timeout 15
+python3 labs/test_acceptance.py --timeout 15
 ```
 
 预期：`[PASS]` 显示串口有效帧、/odom 序号增长和 8 个 ROS 2 话题在线，最后输出 `[SUCCESS]`。如果 ROS2 未运行，此命令会以非零退出并列出未满足项，不会伪造成功。

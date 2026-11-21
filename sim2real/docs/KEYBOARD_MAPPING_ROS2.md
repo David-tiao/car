@@ -129,7 +129,7 @@ bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
 访问 `http://127.0.0.1:8090/keyboard`，Ctrl+Shift+R 刷新后直接按 W，
 或按住界面 W 按钮。无实车、不接 STM32，确认紫色 MOCK 车响应和速度。
 若需要测试旧的运动约束/故障注入代码，用
-`python3 sim2real/keyboard_fault_lab.py` 单独运行，不再让其干预映射集。
+`python3 sim2real/keyboard/keyboard_fault_lab.py` 单独运行，不再让其干预映射集。
 
 ---
 
@@ -385,7 +385,7 @@ ros2 topic echo /car/teleop/pi_guard_status
 source /opt/ros/humble/setup.bash
 export ROS_DOMAIN_ID=42
 cd ~/Desktop/car
-/usr/bin/python3 sim2real/ros2_visualization_bridge.py \
+/usr/bin/python3 sim2real/bridges/ros2_visualization_bridge.py \
   --server http://127.0.0.1:8090 --web-channel real --odom /odom
 ```
 

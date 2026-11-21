@@ -228,7 +228,7 @@ def run(args):
     }
 
     folder = (
-        Path(__file__).resolve().parent
+        Path(__file__).resolve().parents[1]
         / 'data/web_modes'
     )
 

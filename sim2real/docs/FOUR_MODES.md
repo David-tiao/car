@@ -97,7 +97,7 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 - `sim2real/web_mode_runner.py`：测试/实车一键启动与进程组清理，自动复用现有 `car` 网站。
 - `sim2real/web/mode_router.js`：四模式入口和状态提示。
 - `algorithm/car_ws/bash/web.sh`：`sim|test|real|keyboard|doctor` 入口，保留原 `sim` 行为。
-- `sim2real/ros2_visualization_bridge.py`：`--web-channel test|real` 将 ROS 2 数据送到指定隔离通道。
+- `sim2real/bridges/ros2_visualization_bridge.py`：`--web-channel test|real` 将 ROS 2 数据送到指定隔离通道。
 - `sim2real/server.py`：只添加独立路由拦截，不替换原有功能。
 
 为了安全，接口要求发布方来自 HTTP loopback，并在测试页显示源标签。**这不构成硬件身份的密码学认证**：如果本机有权限运行恶意进程，仍可能伪造 REAL API。因此实车调试应在可信主机上运行，ROS 网络与串口来源需人为核对。

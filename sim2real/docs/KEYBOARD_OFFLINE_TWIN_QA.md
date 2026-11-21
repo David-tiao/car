@@ -29,7 +29,7 @@ REAL `/odom` 才会生成实际底盘误差。
 
 ## 模拟底盘的实现边界
 
-文件：`sim2real/keyboard_dryrun_chassis.py`。
+文件：`sim2real/keyboard/keyboard_dryrun_chassis.py`。
 
 - 位置单位 m，左下角 (0,0)，场地 2.4 × 2.4m。
 - 初始位置右上启停区 (2.16,2.16)，右下启停区 (2.16,0.24)，
@@ -70,7 +70,7 @@ bash algorithm/car_ws/bash/test_keyboard_mapping.sh
 如需重新指定输出路径：
 
 ```bash
-python3 sim2real/keyboard_fault_lab.py --out-dir /tmp/my_teleop_qa
+python3 sim2real/keyboard/keyboard_fault_lab.py --out-dir /tmp/my_teleop_qa
 ```
 
 之后启动已有网页及电脑 ROS2 本机回环（**这一步需要 ROS2 Humble**）：
@@ -100,7 +100,7 @@ bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
 
 ## 七项不依赖 ROS2 的确定性回归
 
-`sim2real/keyboard_fault_lab.py`（同样可从网页点击）：
+`sim2real/keyboard/keyboard_fault_lab.py`（同样可从网页点击）：
 
 | 检查 | 预期 |
 | --- | --- |
@@ -158,7 +158,7 @@ bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
 ```bash
 # 终端3：关闭或停止网页上的按键操作，避免两个输入源互相打断。
 cd ~/Desktop/car
-python3 sim2real/keyboard_local_smoke.py --seconds 3
+python3 sim2real/keyboard/keyboard_local_smoke.py --seconds 3
 ```
 
 该命令只接受 `127.0.0.1` / `localhost` 并要求默认本机 ROS2 模式。
@@ -201,7 +201,7 @@ export ROS_DOMAIN_ID=42
 bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh http://127.0.0.1:8090
 
 # 终端3，停下其他按键操作：
-python3 sim2real/keyboard_local_smoke.py --seconds 3
+python3 sim2real/keyboard/keyboard_local_smoke.py --seconds 3
 ```
 
 浏览器 Ctrl+Shift+R 强制刷新后进入 `/keyboard`。测试时要看**紫色 MOCK**
