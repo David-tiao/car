@@ -30,8 +30,12 @@
   function isEditable(element){
     if(!element)return false;
     if(element.isContentEditable)return true;
-    return ['INPUT','TEXTAREA','SELECT'].includes(
-      String(element.tagName||'').toUpperCase());
+    const tag=String(element.tagName||'').toUpperCase();
+    if(tag!=='INPUT')return tag==='TEXTAREA'||tag==='SELECT';
+    // Sliders/checkboxes remain keyboard-friendly control surfaces, just
+    // like the existing WASDQE handler. Do not intercept text/number input.
+    return !['range','checkbox','radio','button','color'].includes(
+      String(element.type||'text').toLowerCase());
   }
   function direction(held,axis){
     let value=0;

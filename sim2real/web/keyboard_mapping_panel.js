@@ -32,6 +32,13 @@
     signalChip.dataset.online='false';
     signalChip.setAttribute('role','status');
     signalChip.setAttribute('aria-live','polite');
+    const focusKeyboard=$('button',header,'⌨ 启用键盘操作');
+    focusKeyboard.type='button';
+    focusKeyboard.className='keyboard-focus-button';
+    focusKeyboard.title='点击后按住 WASDQE 控制紫色 MOCK 底盘，机构使用 IJKL/UONM';
+    focusKeyboard.addEventListener('click',()=>{
+      focusKeyboard.focus({preventScroll:true});
+    });
 
     const modes=$('div',panel);modes.className='keyboard-route-switch';
     modes.setAttribute('role','group');modes.setAttribute('aria-label','ROS2 键盘控制链路');
@@ -47,6 +54,12 @@
     const healthStatus=$('div',panel,'诊断：等待服务器、ROS2 与 MOCK 状态');
     healthStatus.className='keyboard-link-health';
     healthStatus.setAttribute('aria-live','polite');
+    const keyboardCapture=$('div',panel,
+      '底盘按键：未按下 · 点击「启用键盘操作」后按住 W');
+    keyboardCapture.className='keyboard-input-capture';
+    keyboardCapture.dataset.active='false';
+    keyboardCapture.setAttribute('role','status');
+    keyboardCapture.setAttribute('aria-live','polite');
     const enabledLabel=$('label',panel,'完整实车链路安全使能（仅预留模式）');
     enabledLabel.className='keyboard-allow';
     const enabled=$('input',enabledLabel);enabled.type='checkbox';
@@ -478,6 +491,12 @@
     function refreshKeys(){
       for(const [key,b] of keyButtons)b.classList.toggle(
         'pressed',active.has(key)&&deadmanHeld());
+      const held=[...active].sort();
+      keyboardCapture.dataset.active=String(held.length>0);
+      keyboardCapture.textContent=held.length?
+        '浏览器已捕获底盘按键：'+held.map(k=>k.toUpperCase()).join(' + ')+
+        ' · 正在等待 HTTP / ROS2 回环确认':
+        '底盘按键：未按下 · 点击「启用键盘操作」后按住 W';
     }
     // A physical hold button is a deliberate deadman, only for the
     // PC-only route. It requires no Raspberry Pi or physical keyboard.
@@ -626,7 +645,11 @@
         if(health.source_type!=='LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY'||
           health.hardware_authorized!==false)
           throw Error('链路诊断数据来源不合法');
-        healthStatus.textContent='ROS2 直通诊断 '+health.reason+'：'+health.hint;
+        healthStatus.textContent=health.reason==='NO_KEYS_OR_TIMEOUT'?
+          (active.size?
+            '键盘已捕获但服务器暂无有效速度：检查 HTTP 指令或 300ms 超时':
+            '底盘待命：未按住 WASDQE（正常）；按住 W 或右侧按键检测'):
+          'ROS2 直通诊断 '+health.reason+'：'+health.hint;
         healthStatus.dataset.reason=health.reason;
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
@@ -724,6 +747,7 @@
       status.textContent='需在运行 HTTP 服务的电脑上通过 localhost 打开映射集';
     }
     draw([]);
+    refreshKeys();
     refreshMotion();
     refresh();
     if(window.requestAnimationFrame)requestAnimationFrame(animateMock);

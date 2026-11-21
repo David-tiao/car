@@ -27,7 +27,7 @@ function balancedCss(text) {
 }
 
 balancedCss(css);
-assert.match(html, /href="operator_polish\.css\?v=15\.0\.0"/);
+assert.match(html, /href="operator_polish\.css\?v=15\.1\.0"/);
 assert.ok(
   html.indexOf('keyboard_mapping.css') < html.indexOf('operator_polish.css'),
   'polish CSS must override the previous keyboard styles'
@@ -50,6 +50,12 @@ assert.match(mapping,/Math\.min\(2,Math\.max\(1,window\.devicePixelRatio\|\|1\)\
 assert.match(mapping,/r\.online===true && r\.source===routeMode/);
 assert.match(mapping,/signalChip\.dataset\.online=String\(receiptOnline\)/);
 assert.match(mapping,/signalChip\.setAttribute\('aria-live','polite'\)/);
+assert.match(mapping,/keyboard-focus-button/);
+assert.match(mapping,/keyboard-input-capture/);
+assert.match(mapping,/键盘已捕获但服务器暂无有效速度/);
+assert.match(mapping,/active\.add\(key\);refreshKeys\(\);sendNow\(\)/);
+assert.match(mapping,/active\.delete\(key\);refreshKeys\(\);sendNow\(\)/);
+
 assert.match(mapping,/setAttribute\('aria-keyshortcuts',key\.toUpperCase\(\)\)/);
 assert.ok(
   !/serial\.Serial\(|\/dev\/ttyUSB|create_publisher\(Twist,["']\/cmd_vel/.test(css),

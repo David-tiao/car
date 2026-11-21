@@ -458,3 +458,44 @@ summary:focus-visible,
     transition-duration:.01ms!important;
   }
 }
+
+
+/* Operator-friendly live keyboard capture: distinguishes page focus, actual
+ * browser key events and server/ROS2 acknowledgement. Visual only. */
+.keyboard-focus-button {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-height:34px;
+  margin:9px 0 0;
+  padding:7px 13px;
+  border:1px solid rgba(140,197,228,.58);
+  border-radius:9px;
+  color:#e4f8ff;
+  background:linear-gradient(135deg,#22496b,#183f58);
+  font-size:12px;
+  font-weight:750;
+  cursor:pointer;
+}
+.keyboard-focus-button:focus-visible,
+.keyboard-focus-button:focus {
+  outline:2px solid #b2edff;
+  outline-offset:2px;
+  background:#276487;
+}
+.keyboard-input-capture {
+  margin:8px 0 12px;
+  padding:10px 12px;
+  border:1px solid rgba(132,173,206,.38);
+  border-radius:9px;
+  color:#bad4e6;
+  background:rgba(10,35,52,.72);
+  font-size:12px;
+  font-weight:700;
+  line-height:1.6;
+}
+.keyboard-input-capture[data-active="true"] {
+  color:#ccffe5;
+  border-color:rgba(110,227,177,.73);
+  background:rgba(18,71,62,.68);
+}

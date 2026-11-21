@@ -27,7 +27,10 @@ let updates=0;
 const keys=api.create({model,axes:preview.AXES,setTarget:preview.setTarget,
   windowTarget:win,documentTarget:doc,onChange:()=>updates++});
 assert.deepEqual(Object.keys(api.HELD).sort(),['i','j','k','l','m','n','o','u'].sort());
-assert.equal(api.isEditable({tagName:'INPUT',type:'range'}),true);
+assert.equal(api.isEditable({tagName:'INPUT',type:'range'}),false);
+assert.equal(api.isEditable({tagName:'INPUT',type:'checkbox'}),false);
+assert.equal(api.isEditable({tagName:'INPUT',type:'text'}),true);
+assert.equal(api.isEditable({tagName:'INPUT',type:'number'}),true);
 assert.equal(api.isEditable({tagName:'TEXTAREA'}),true);
 assert.equal(api.isEditable({tagName:'DIV'}),false);
 assert.equal(win.fire('keydown',{key:'w'}).defaultPrevented,false);
@@ -66,9 +69,18 @@ for(const [k,v] of [['z',0],['x',110],['c',140]]){
 win.fire('keydown',{key:'t'});near(model.target.lift_mm,24);
 win.fire('keydown',{key:'r'});
 for(const n of Object.keys(preview.AXES))near(model.target[n],0);
+// A focused slider should no longer swallow J/L/I/K/U/O/N/M keys.
+const sliderKey=win.fire('keydown',{
+  key:'l',target:{tagName:'INPUT',type:'range'}});
+assert.equal(sliderKey.defaultPrevented,true);
+keys.tick(1350);
+assert.ok(model.target.tray_deg>0);
+win.fire('keyup',{key:'l'});
+win.fire('keydown',{key:'r'});
+near(model.target.tray_deg,0);
+// Text and number input must still be protected.
 assert.equal(win.fire('keydown',{
-  key:'l',target:{tagName:'INPUT',type:'range'}}).defaultPrevented,false);
-keys.tick(1350);near(model.target.tray_deg,0);
+  key:'l',target:{tagName:'INPUT',type:'text'}}).defaultPrevented,false);
 win.fire('keydown',{key:'i'});
 assert.deepEqual(keys.heldKeys(),['i']);
 win.fire('blur');assert.deepEqual(keys.heldKeys(),[]);
