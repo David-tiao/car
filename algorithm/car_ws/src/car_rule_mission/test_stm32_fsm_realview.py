@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[4]
 sys.path.insert(0, str(ROOT / "sim2real"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'sim2real' / 'labs'))
 import test_stm32_fsm_lab as lab
 import web_mode_gateway
 

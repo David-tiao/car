@@ -5,6 +5,7 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'sim2real'))
+sys.path.insert(0, str(Path(__file__).resolve().parents[4] / 'sim2real' / 'labs'))
 import test_mission_store
 
 
