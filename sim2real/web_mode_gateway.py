@@ -14,6 +14,14 @@ import threading
 import time
 from http.server import SimpleHTTPRequestHandler
 from urllib.parse import urlsplit, parse_qs
+# Keep direct script execution and existing bare-module imports compatible.
+from pathlib import Path
+import sys
+_SIM_ROOT = Path(__file__).resolve().parent
+for _module_group in ("keyboard", "labs", "bridges"):
+    _module_path = str(_SIM_ROOT / _module_group)
+    if _module_path not in sys.path:
+        sys.path.insert(0, _module_path)
 import test_inspection
 import test_mission_store
 import test_v4_qr_lab

@@ -19,7 +19,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 LAB_PATH = "/api/test/stm32_fsm_lab"
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SIM_CODE = ROOT / "algorithm" / "car_ws" / "src" / "car_rule_mission"
 if str(SIM_CODE) not in sys.path:
     sys.path.insert(0, str(SIM_CODE))

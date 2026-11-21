@@ -17,7 +17,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT.parent / "algorithm/car_ws/bash/start_keyboard_local_ros2.sh"
 SETUP = Path("/opt/ros/humble/setup.bash")
 LOG = ROOT / "data/web_modes/keyboard_local_autostart.log"
