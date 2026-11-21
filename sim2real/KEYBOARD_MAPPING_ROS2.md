@@ -19,6 +19,8 @@
 物理造型参考：`Hardware_mechanical/mechanical/俯视图.png`、`前视图.png`、`侧视图.png`；实际针脚与角度参考：`STM32F4/App/app_pick_motion.c`、`STM32F4/Config/race_config.h`。验收命令为 `node sim2real/tests/test_keyboard_mechanism_preview.js` 和 `bash algorithm/car_ws/bash/test_all_offline.sh`。本次仅更改 GitHub 待验收分支，不创建任何 Ubuntu 桌面目录。
 
 
+**键盘运动回归修复（2026-11-21）：** 撤销上一版可能造成“键盘无法移动”的持久追踪器与按键松开 STOP 改动，恢复此前已验收可移动的 HTTP/ROS2 与 WASDQE 逻辑。新的平滑处理仅在最终 SVG 显示处调用 `smoothPose()`，在连续 ROS2 反馈快照之间插值，不更改网络数据源、键盘发布、ROS2 订阅、STM32 电机通信。保留直接 HTTP 位姿绘制的后备路径，并检查浏览器缓存版本。仍需在 Ubuntu 浏览器人工确认持续 W、W+A、Q/E 转动和停止效果；GitHub 离线测试不能替代现场验收。
+
 **动画流畅性优化：** 本机 ROS2 的位置快照独立以约 75ms 更新，紫色 MOCK 车通过浏览器 `requestAnimationFrame` 按屏幕刷新率绘制（通常 60Hz）。帧间只按**最后一次实际订阅的速度消息**最多外推 120ms，以消除 250ms 一跳的视觉问题；超出这个窗口不再继续前进，刷新/松键/重置也不伪造 ROS2 消息。数据卡片和误差统计约每 300ms 更新。键盘长按不会因系统键盘重复事件重复发送请求；组合键变更可在上一 HTTP 请求结束后立刻补发最新状态。**这只是网页渲染优化，不是实体运动实测或新的电机控制通道。**
 
 **网页自动启动 ROS2（新增）：** 在 Ubuntu 本机启动网站后，打开 `/keyboard` 将自动启动现有的 PC ROS2 发布与 Web 订阅回传两个节点；不需要第二个终端运行 `start_keyboard_local_ros2.sh`。保留原有 WASDQE 按键、限速及消息格式，本机话题依旧是 `/car/teleop/local_test_twist` (`TwistStamped`)。运行环境需有 `/opt/ros/humble/setup.bash`；如果自动启动失败，查看 `/api/keyboard/autostart` 和 `sim2real/data/web_modes/keyboard_local_autostart.log`。设置 `CAR_KEYBOARD_AUTOSTART=0` 可关闭自动启动并继续使用下文的手动方式。网站退出时清理自动启动的两个节点，不会启动 Pi 或 STM32 实体驱动。

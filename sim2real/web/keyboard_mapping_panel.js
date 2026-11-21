@@ -159,6 +159,9 @@
     // ROS2/HTTP remains the authoritative MOCK pose. requestAnimationFrame
     // only extrapolates the last fresh subscribed velocity for <=120ms.
     let motionSnapshot=null, motionReceivedAt=0, motionBusy=false, motionEpoch=0;
+    // Purely visual lag compensation; keyboard, STOP, ROS2 and HTTP remain
+    // the same known-working implementation as before this UI fix.
+    let smoothDisplayPose=null, lastDrawAt=null;
     let queuedDesired=false;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
@@ -230,12 +233,24 @@
     }
     function renderMockPose(pose) {
       if(!mockLayer||!mockLayer.isConnected)return;
-      const angle=90-pose.yaw_rad*180/Math.PI;
+      const now=performance.now();
+      // Keep the visual position between HTTP packets. A true user reset
+      // is the only intentional snap. After a suspended tab, resynchronise.
+      if(!smoothDisplayPose||mockResetInProgress||lastDrawAt===null||
+         now-lastDrawAt>350) {
+        smoothDisplayPose={x_m:pose.x_m,y_m:pose.y_m,yaw_rad:pose.yaw_rad};
+      }else{
+        smoothDisplayPose=window.CarKeyboardPreviewMotion.smoothPose(
+          smoothDisplayPose,pose,now-lastDrawAt);
+      }
+      lastDrawAt=now;
+      const shown=smoothDisplayPose;
+      const angle=90-shown.yaw_rad*180/Math.PI;
       mockLayer.querySelector('#keyboardMockChassisBody')?.setAttribute(
-        'transform',`translate(${fx(pose.x_m).toFixed(2)} ${fy(pose.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
+        'transform',`translate(${fx(shown.x_m).toFixed(3)} ${fy(shown.y_m).toFixed(3)}) rotate(${angle.toFixed(3)})`);
       const text=mockLayer.querySelector('#keyboardMockChassisCaption');
-      text?.setAttribute('x',String(fx(pose.x_m)+24));
-      text?.setAttribute('y',String(fy(pose.y_m)-23));
+      text?.setAttribute('x',String(fx(shown.x_m)+24));
+      text?.setAttribute('y',String(fy(shown.y_m)-23));
     }
     function animateMock(frameNow) {
       // Frame timestamp is shared by all mechanism projections; it is
@@ -290,6 +305,7 @@
       refreshAppliedSeq=++refreshRequestSeq;
       motionEpoch++; // Discard any pre-reset in-flight motion snapshot.
       motionSnapshot=null;
+      smoothDisplayPose=null;lastDrawAt=null;
       const payload=currentMap();
       payload.reset_seq=nextSeq();
       const version=++mockResetVersion;
@@ -370,6 +386,7 @@
       routeChanging=true;
       motionEpoch++; // Discard any old route's in-flight motion snapshot.
       motionSnapshot=null;
+      smoothDisplayPose=null;lastDrawAt=null;
       enabled.checked=false;active.clear();shift=false;holdTest=false;
       refreshKeys();
       for(const b of [routeLocal,routePi])b.disabled=true;
@@ -399,8 +416,13 @@
       // waiting for the next HTTP round trip or creating a fake ROS2 receipt.
       motionEpoch++;
       if(motionSnapshot) {
-        motionSnapshot={...motionSnapshot,state:'STOPPED',
-          velocity:{vx:0,vy:0,wz:0},
+        // Freeze at the last DRAWN position, not the older HTTP origin.
+        // This changes display only; server STOP/physical hardware are untouched.
+        motionSnapshot={...motionSnapshot,
+          x_m:smoothDisplayPose?.x_m??motionSnapshot.x_m,
+          y_m:smoothDisplayPose?.y_m??motionSnapshot.y_m,
+          yaw_rad:smoothDisplayPose?.yaw_rad??motionSnapshot.yaw_rad,
+          state:'STOPPED',velocity:{vx:0,vy:0,wz:0},
           input_provenance:'ZERO_NO_FRESH_LOCAL_ROS2_OR_DEADMAN'};
       }
       shift=false;holdTest=false;
