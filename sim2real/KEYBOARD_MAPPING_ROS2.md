@@ -21,6 +21,10 @@
 
 **动画流畅性优化：** 本机 ROS2 的位置快照独立以约 75ms 更新，紫色 MOCK 车通过浏览器 `requestAnimationFrame` 按屏幕刷新率绘制（通常 60Hz）。帧间只按**最后一次实际订阅的速度消息**最多外推 120ms，以消除 250ms 一跳的视觉问题；超出这个窗口不再继续前进，刷新/松键/重置也不伪造 ROS2 消息。数据卡片和误差统计约每 300ms 更新。键盘长按不会因系统键盘重复事件重复发送请求；组合键变更可在上一 HTTP 请求结束后立刻补发最新状态。**这只是网页渲染优化，不是实体运动实测或新的电机控制通道。**
 
+**键盘运动抖动修复（2026-11-21）**：之前浏览器每 75ms 收到 `/api/keyboard/dryrun` 时，直接把新的采样位置写到 SVG，导致逐帧短时外推后出现瞬间回拉/跳步。现使用 `CarKeyboardPreviewMotion.createTracker()` 在网页内保持独立的显示位姿：新的 ROS2 实际回环快照只更新**目标**，绘制时由 `requestAnimationFrame` 根据真实经过的时间逐步修正。位置使用 58ms 时间常数，角度使用 65ms 时间常数及最短圆周角差；仅对有效 `OBSERVED_PC_ROS2_LOCAL_TEST_TWIST` 快照做最多 120ms 外推，断联不持续虚拟行驶。瞬间松开全部键/离开页面会立即停止显示预测并发送 STOP；重置 generation 才允许跳回起点。采样乱序拒绝，SVG 使用亚像素变换精度。该滤波只改变**网页画面**，绝不改变实际 ROS2 速度发布/订阅、底盘模型、STM32 电机或 REAL `/odom` 数据。
+
+验收：`node sim2real/tests/test_keyboard_preview_motion.js` 模拟 60fps、75ms 不规则回包、转角 ±180° 边界、STOP、网络中断和重置；完整 `bash algorithm/car_ws/bash/test_all_offline.sh`。Ubuntu 浏览器手测保持按住 W、W+A、Q/E 持续旋转并松键，检查是否仍有周期性回拉。
+
 **网页自动启动 ROS2（新增）：** 在 Ubuntu 本机启动网站后，打开 `/keyboard` 将自动启动现有的 PC ROS2 发布与 Web 订阅回传两个节点；不需要第二个终端运行 `start_keyboard_local_ros2.sh`。保留原有 WASDQE 按键、限速及消息格式，本机话题依旧是 `/car/teleop/local_test_twist` (`TwistStamped`)。运行环境需有 `/opt/ros/humble/setup.bash`；如果自动启动失败，查看 `/api/keyboard/autostart` 和 `sim2real/data/web_modes/keyboard_local_autostart.log`。设置 `CAR_KEYBOARD_AUTOSTART=0` 可关闭自动启动并继续使用下文的手动方式。网站退出时清理自动启动的两个节点，不会启动 Pi 或 STM32 实体驱动。
 
 **本机模式已改为最简单的电脑 ROS 2 → 网页反馈，不使用任务 FSM 或场地约束。**
