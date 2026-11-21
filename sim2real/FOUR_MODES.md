@@ -83,6 +83,14 @@ CAR_REAL_PORT=/dev/ttyUSB0 CAR_REAL_PROTOCOL=ulog43 bash algorithm/car_ws/bash/w
 详细安装、验收、误差公式和安全边界见
 [`KEYBOARD_MAPPING_ROS2.md`](KEYBOARD_MAPPING_ROS2.md)。
 
+## 5.1 V15 显示质量优化（独立验收分支）
+
+原有四个入口、TEST/REAL 数据源、WASDQE 键盘映射与现场地图的 SVG 几何均不改变。本轮只增加最后加载的 `sim2real/web/operator_polish.css`，优化顶部模式导航、地图外框、按钮、MOCK 紫色面板、ROS2 回环速度卡片及窄屏排版。通过 `focus-visible` 加强键盘可操作性，遵循系统 `prefers-reduced-motion` 设置，不引入外部字体或额外前端依赖。
+
+`/keyboard` 标题旁新增小型 **ROS2 回环状态标识**：只有从当前所选链路实际收到在线回执时才显示“在线”；Pi 候选链路不等于实体电机反馈。原速度差曲线采用按设备像素比适配的高分辨率 Canvas 绘制（像素比最高 2），改善高 DPI Ubuntu 屏幕上的线条与刻度清晰度。图表的 ROS2 数据及交互频率仍为原有实现，**这不是额外的实体运动控制或更高频的实际里程计采样**。
+
+验收：`node sim2real/tests/test_operator_polish.js`；随后运行 `bash algorithm/car_ws/bash/test_all_offline.sh`。视觉效果还需在 Ubuntu 浏览器实际观察，因为静态测试不能替代真实屏幕截图、视口断点和帧率检测。若只想回退样式，从 `web/index.html` 移除最后的 `operator_polish.css` 引用，并把键盘面板的新增状态标签及 Canvas 高清适配代码按此分支的 diff 还原。
+
 ## 6. 架构与边界
 
 - `sim2real/web_mode_gateway.py`：测试和实车 HTTP API、隔离缓存、输入校验；保留旧 `/api/*` 接口。

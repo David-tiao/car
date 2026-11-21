@@ -36,7 +36,34 @@
     return result;
   }
 
-  const api = Object.freeze({predict, valid, MAX_PREDICT_MS});
+  // Display-only smoothing. Unlike a snapshot tracker this does not own any
+  // ROS2 state: the existing known-working HTTP poll and RAF loop remain
+  // unchanged. Even if RAF stalls, HTTP painting still works independently.
+  function smoothPose(displayed, target, elapsedMs) {
+    if(!target || ![target.x_m,target.y_m,target.yaw_rad].every(Number.isFinite))
+      throw new Error('A finite MOCK target pose is required');
+    if(!displayed) return {
+      x_m:target.x_m,y_m:target.y_m,yaw_rad:target.yaw_rad
+    };
+    if(![displayed.x_m,displayed.y_m,displayed.yaw_rad].every(Number.isFinite))
+      throw new Error('A finite MOCK displayed pose is required');
+    const dt=Math.max(0,Math.min(50,Number.isFinite(elapsedMs)?elapsedMs:0));
+    const xyAlpha=-Math.expm1(-dt/55);
+    const yawAlpha=-Math.expm1(-dt/65);
+    const diff=Math.atan2(
+      Math.sin(target.yaw_rad-displayed.yaw_rad),
+      Math.cos(target.yaw_rad-displayed.yaw_rad)
+    );
+    return {
+      x_m:displayed.x_m+(target.x_m-displayed.x_m)*xyAlpha,
+      y_m:displayed.y_m+(target.y_m-displayed.y_m)*xyAlpha,
+      yaw_rad:Math.atan2(
+        Math.sin(displayed.yaw_rad+diff*yawAlpha),
+        Math.cos(displayed.yaw_rad+diff*yawAlpha))
+    };
+  }
+
+  const api = Object.freeze({predict, smoothPose, valid, MAX_PREDICT_MS});
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (root) root.CarKeyboardPreviewMotion = api;
 })(typeof window === 'undefined' ? null : window);

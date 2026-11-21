@@ -1,0 +1,275 @@
+/* Car mechanical structure preview: mock, never actuator feedback.
+ * CAD-proportioned top/side views, independent of ROS2 chassis motion.
+ */
+.keyboard-mechanism-panel {
+  min-width:0;
+  margin:15px 0;
+  padding:18px;
+  color:#eaf1ff;
+  border:1px solid rgba(172,138,224,.55);
+  border-left:4px solid #b68eeb;
+  border-radius:14px;
+  background:linear-gradient(150deg,#20243d,#13263e 85%);
+  box-shadow:0 12px 34px rgba(5,12,30,.23),inset 0 1px rgba(226,209,255,.06);
+}
+.keyboard-mechanism-eyebrow {
+  color:#d0aeff;
+  font-weight:820;
+  font-size:10px;
+  line-height:1.5;
+  letter-spacing:.13em;
+}
+.keyboard-mechanism-title {
+  font-size:17px;
+  font-weight:820;
+  line-height:1.35;
+  color:#f2eaff;
+  letter-spacing:-.02em;
+  margin:5px 0 8px;
+}
+.keyboard-mechanism-note {
+  font-size:11px;
+  line-height:1.75;
+  color:#b6c6df;
+  margin:8px 0 12px;
+}
+.keyboard-mechanism-figure {
+  border:1px solid rgba(140,166,207,.25);
+  border-radius:11px;
+  background:
+    radial-gradient(ellipse 60% 80% at 25% 30%,rgba(75,91,138,.21),transparent),
+    linear-gradient(130deg,#0c1a2c,#111f35);
+  overflow:hidden;
+}
+.keyboard-mechanism-figure svg {
+  display:block;
+  width:100%;
+  height:auto;
+  min-height:170px;
+}
+.km-view-label {
+  fill:#d9eaf9;
+  font:750 13px/1.4 system-ui,sans-serif;
+  letter-spacing:.1px;
+}
+.km-view-small {
+  fill:#99b4d2;
+  font:600 10px/1.4 system-ui,sans-serif;
+}
+.keyboard-mechanism-controls {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-top:13px;
+}
+.keyboard-mechanism-axis {
+  min-width:0;
+  background:rgba(11,29,49,.8);
+  border:1px solid rgba(122,155,195,.32);
+  border-radius:11px;
+  padding:11px 12px;
+}
+.keyboard-mechanism-axis-head {
+  display:flex;
+  align-items:baseline;
+  justify-content:space-between;
+  gap:8px;
+  min-width:0;
+  line-height:1.5;
+}
+.keyboard-mechanism-axis-head strong {
+  color:#d7e7f8;
+  font-size:11px;
+  font-weight:760;
+  overflow-wrap:anywhere;
+}
+.keyboard-mechanism-value {
+  color:#e8c8ff;
+  white-space:nowrap;
+  font:800 14px/1.4 ui-monospace,Consolas,monospace;
+  font-variant-numeric:tabular-nums;
+}
+.keyboard-mechanism-axis input[type=range] {
+  display:block;
+  width:100%;
+  margin:10px 0 11px;
+  accent-color:#b597ef;
+  cursor:pointer;
+}
+.keyboard-mechanism-presets {
+  display:flex;
+  gap:5px;
+  flex-wrap:wrap;
+}
+.keyboard-mechanism-presets button {
+  border:1px solid rgba(137,158,197,.35);
+  background:#1a304a;
+  color:#c4d7e8;
+  padding:6px 8px;
+  min-height:32px;
+  border-radius:7px;
+  font-size:11px;
+  font-weight:700;
+  line-height:1.2;
+}
+.keyboard-mechanism-presets button:hover {
+  color:white;
+  border-color:#b3a1e1;
+  background:#294367;
+}
+.keyboard-mechanism-presets button.selected {
+  color:#250c3d;
+  background:#ddc3ff;
+  border-color:#ead9ff;
+}
+.keyboard-mechanism-footer {
+  display:flex;
+  flex-wrap:wrap;
+  gap:9px;
+  align-items:center;
+  justify-content:space-between;
+  margin-top:14px;
+}
+.keyboard-mechanism-home {
+  background:#322949;
+  color:#eddfff;
+  border:1px solid #8669b5;
+  border-radius:9px;
+  min-height:35px;
+  padding:7px 11px;
+  font-size:11px;
+  font-weight:750;
+}
+.keyboard-mechanism-home:hover {border-color:#c0a6ff;background:#40325d;}
+.keyboard-mechanism-only {
+  border:1px solid rgba(199,151,252,.6);
+  border-radius:999px;
+  color:#e8d1ff;
+  background:rgba(71,44,101,.45);
+  font:800 10px/1.3 ui-monospace,Consolas,monospace;
+  padding:7px 10px;
+  letter-spacing:.035em;
+}
+.keyboard-mechanism-footnote {
+  margin-bottom:0;
+  padding-top:9px;
+  border-top:1px solid rgba(159,149,195,.2);
+  font-size:11px;
+}
+.keyboard-mechanism-presets button:focus-visible,
+.keyboard-mechanism-home:focus-visible,
+.keyboard-mechanism-axis input:focus-visible {
+  outline:2px solid #bfaaff;
+  outline-offset:2px;
+}
+@media(max-width:650px) {
+  .keyboard-mechanism-panel {padding:12px;}
+  .keyboard-mechanism-controls {grid-template-columns:1fr;}
+  .keyboard-mechanism-figure svg {min-height:120px;}
+}
+@media(prefers-reduced-motion:reduce) {
+  .keyboard-mechanism-presets button,
+  .keyboard-mechanism-home {
+    animation:none!important;
+    transition:none!important;
+  }
+}
+
+/* Dedicated local-only mechanism keyboard cockpit. Keyboard controller only
+ * changes the in-memory MOCK model; this is not a hardware control surface. */
+.keyboard-mechanism-shortcuts {
+  margin:13px 0 0;
+  padding:11px 12px;
+  border:1px solid rgba(166,146,225,.36);
+  border-radius:11px;
+  background:linear-gradient(110deg,rgba(48,46,84,.72),rgba(20,42,66,.86));
+}
+.keyboard-mechanism-shortcuts > strong {
+  display:block;
+  margin:0 0 9px;
+  color:#e9ddff;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.015em;
+}
+.keyboard-mechanism-shortcut-list {
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:5px 10px;
+}
+.keyboard-mechanism-shortcut-list span {
+  min-width:0;
+  color:#c5dcf0;
+  font-size:10.5px;
+  line-height:1.55;
+  padding:4px 6px;
+  border:1px solid rgba(117,156,201,.20);
+  border-radius:6px;
+  background:rgba(9,29,48,.46);
+}
+.keyboard-mechanism-key-state {
+  margin-top:9px;
+  padding:7px 9px;
+  border-radius:8px;
+  font:750 11px/1.5 ui-monospace,Consolas,monospace;
+  color:#d0baff;
+  background:rgba(42,27,68,.69);
+  border:1px solid rgba(189,152,246,.29);
+  overflow-wrap:anywhere;
+}
+.keyboard-mechanism-axis {
+  transition:border-color .16s ease,box-shadow .16s ease,background-color .16s ease;
+}
+.keyboard-mechanism-axis[data-key-active="true"] {
+  border-color:rgba(217,167,255,.91);
+  background:linear-gradient(155deg,rgba(58,39,83,.95),rgba(22,39,66,.96));
+  box-shadow:0 0 0 1px rgba(217,167,255,.16),0 0 17px rgba(190,131,246,.13);
+}
+.keyboard-mechanism-axis[data-moving="true"] .keyboard-mechanism-value {
+  color:#fff2c0;
+  text-shadow:0 0 10px rgba(250,209,150,.20);
+}
+.keyboard-mechanism-figure {
+  box-shadow:inset 0 0 0 1px rgba(233,214,255,.045);
+}
+.keyboard-mechanism-figure svg {
+  filter:drop-shadow(0 5px 11px rgba(1,8,18,.10));
+}
+@media(max-width:650px) {
+  .keyboard-mechanism-shortcut-list {grid-template-columns:1fr;}
+}
+@media(prefers-reduced-motion:reduce) {
+  .keyboard-mechanism-axis {transition:none!important;}
+}
+
+
+/* Fifth DOF: an uncalibrated, browser-only upright lift-column yaw.
+ * Amber distinguishes it from the four STM32-mapped axes above. */
+.keyboard-mechanism-axis[data-axis="column_yaw_deg"] {
+  grid-column:1/-1;
+  border:1px solid rgba(244,185,117,.7);
+  background:linear-gradient(135deg,rgba(67,49,49,.9),rgba(26,38,59,.97));
+}
+.keyboard-mechanism-axis[data-axis="column_yaw_deg"] .keyboard-mechanism-axis-head strong,
+.keyboard-mechanism-axis[data-axis="column_yaw_deg"] .keyboard-mechanism-value {
+  color:#ffe2a9;
+}
+.keyboard-mechanism-axis[data-axis="column_yaw_deg"] input[type=range] {
+  accent-color:#f1ba7b;
+}
+.keyboard-mechanism-axis[data-axis="column_yaw_deg"] .keyboard-mechanism-presets button.selected {
+  color:#2b1b18;
+  background:#ffd99f;
+  border-color:#ffe1b7;
+}
+.keyboard-mechanism-axis[data-axis="column_yaw_deg"]::after {
+  content:"仅浏览器模拟 · ±180° 是未验证的演示范围 · 实车限位、线束和碰撞均待确认";
+  display:block;
+  margin-top:8px;
+  color:#dfc8ac;
+  font-size:10px;
+  line-height:1.65;
+}
+@media(max-width:650px) {
+  .keyboard-mechanism-axis[data-axis="column_yaw_deg"] {grid-column:auto;}
+}

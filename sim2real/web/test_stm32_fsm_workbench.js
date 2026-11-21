@@ -115,6 +115,10 @@
           fill:'#fcf0df',opacity:.95});
         addSVG(vehicle,'path',{d:'M0,-25 L-7,-14 L7,-14 Z',fill:'#ffd67d'});
         addSVG(vehicle,'circle',{cx:0,cy:0,r:4,fill:'#fff'});
+        // Identical CAD outline to SIM/REAL and the keyboard purple car.
+        // TEST FSM has no mechanism-position telemetry: static schematic.
+        if(window.CarMechanismPreview)
+          window.CarMechanismPreview.decorateChassis(vehicle,{scale:.22});
         addSVG(group,'text',{x:70,y:84,fill:'#ae2940',
           'font-size':17,'font-weight':800,'paint-order':'stroke',stroke:'#fff',
           'stroke-width':3}).textContent='MOCK';

@@ -27,6 +27,18 @@
     $('div',header,'03 / KEYBOARD MAPPING · ROS2 DRY RUN').className='keyboard-eyebrow';
     $('h2',header,'键盘直控映射 · ROS2 实时回环');
     $('p',header,'本机模式：W/S 前后、A/D 横移、Q/E 转向；按下立即输出 ROS2 速度，网页只按实际订阅值积分绘图。无需 Shift、任务状态机、避障或树莓派。未来实车链路仍单独预留。');
+    const signalChip=$('span',header,'ROS2 回环：等待话题');
+    signalChip.className='keyboard-signal-chip';
+    signalChip.dataset.online='false';
+    signalChip.setAttribute('role','status');
+    signalChip.setAttribute('aria-live','polite');
+    const focusKeyboard=$('button',header,'⌨ 启用键盘操作');
+    focusKeyboard.type='button';
+    focusKeyboard.className='keyboard-focus-button';
+    focusKeyboard.title='点击后按住 WASDQE 控制紫色 MOCK 底盘，机构使用 IJKL/UONM';
+    focusKeyboard.addEventListener('click',()=>{
+      focusKeyboard.focus({preventScroll:true});
+    });
 
     const modes=$('div',panel);modes.className='keyboard-route-switch';
     modes.setAttribute('role','group');modes.setAttribute('aria-label','ROS2 键盘控制链路');
@@ -42,6 +54,12 @@
     const healthStatus=$('div',panel,'诊断：等待服务器、ROS2 与 MOCK 状态');
     healthStatus.className='keyboard-link-health';
     healthStatus.setAttribute('aria-live','polite');
+    const keyboardCapture=$('div',panel,
+      '底盘按键：未按下 · 点击「启用键盘操作」后按住 W');
+    keyboardCapture.className='keyboard-input-capture';
+    keyboardCapture.dataset.active='false';
+    keyboardCapture.setAttribute('role','status');
+    keyboardCapture.setAttribute('aria-live','polite');
     const enabledLabel=$('label',panel,'完整实车链路安全使能（仅预留模式）');
     enabledLabel.className='keyboard-allow';
     const enabled=$('input',enabledLabel);enabled.type='checkbox';
@@ -56,6 +74,7 @@
       const button=$('button',grid,label);
       button.type='button';button.className='keyboard-key';
       button.setAttribute('aria-label','模拟按住 '+label);
+      button.setAttribute('aria-keyshortcuts',key.toUpperCase());
       button.dataset.key=key;keyButtons.set(key,button);
     }
     const calibrate=$('div',panel);calibrate.className='keyboard-tuning';
@@ -81,7 +100,7 @@
     holdTestButton.title='本机 ROS2 模式下按住相当于键盘 W；松开立即归零。绝不发送真实电机控制。';
     const exportButton=$('button',controls,'↓ 导出误差 CSV');
     exportButton.type='button';
-    const noMechanisms=$('div',panel,'G 夹爪、R 伸缩：仅预留映射，不发送机构指令。必须先对齐 STM32 机械动作协议、限位与完成回执。');
+    const noMechanisms=$('div',panel,'G/R 与实车机械动作仍是预留接口。下方的转盘、升降、旋转和夹爪操作只改变浏览器 MOCK 示意，不发送机构指令；实车仍需先验证 STM32 协议、限位与回执。');
     noMechanisms.className='keyboard-caution';
     const stats=$('div',panel);stats.className='keyboard-metrics';
     const metric={};
@@ -119,8 +138,12 @@
     twinStatus.className='keyboard-twin-status';
     const twinStats=$('div',twinPanel,'直通位姿：— · 实际订阅速度：—');
     twinStats.className='keyboard-twin-stats';
-    // Keep the direct preview beside the map and input buttons.
+    // Preserve the subscribed ROS2 position preview as-is.
     controls.after(twinPanel);
+    if(!window.CarMechanismPreview)
+      throw Error('机构 MOCK 预览模块未加载，请刷新浏览器缓存');
+    const mechanism=window.CarMechanismPreview.create(panel);
+    twinPanel.after(mechanism.root);
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
     pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
     const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
@@ -149,6 +172,9 @@
     // ROS2/HTTP remains the authoritative MOCK pose. requestAnimationFrame
     // only extrapolates the last fresh subscribed velocity for <=120ms.
     let motionSnapshot=null, motionReceivedAt=0, motionBusy=false, motionEpoch=0;
+    // Purely visual lag compensation; keyboard, STOP, ROS2 and HTTP remain
+    // the same known-working implementation as before this UI fix.
+    let smoothDisplayPose=null, lastDrawAt=null;
     let queuedDesired=false;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
@@ -201,6 +227,9 @@
         forward.setAttribute('d','M -6,-15 L 0,-22 L 6,-15 Z');
         forward.setAttribute('fill','#fff');
         car.append(forward);
+        // Decorative CAD-derived tray / lift / gripper follows the local
+        // MOCK chassis; controls never enter a ROS2 or STM32 endpoint.
+        mechanism.attachMap(car);
         const text=document.createElementNS(svgNS,'text');
         text.id='keyboardMockChassisCaption';
         text.textContent='MOCK';
@@ -217,14 +246,29 @@
     }
     function renderMockPose(pose) {
       if(!mockLayer||!mockLayer.isConnected)return;
-      const angle=90-pose.yaw_rad*180/Math.PI;
+      const now=performance.now();
+      // Keep the visual position between HTTP packets. A true user reset
+      // is the only intentional snap. After a suspended tab, resynchronise.
+      if(!smoothDisplayPose||mockResetInProgress||lastDrawAt===null||
+         now-lastDrawAt>350) {
+        smoothDisplayPose={x_m:pose.x_m,y_m:pose.y_m,yaw_rad:pose.yaw_rad};
+      }else{
+        smoothDisplayPose=window.CarKeyboardPreviewMotion.smoothPose(
+          smoothDisplayPose,pose,now-lastDrawAt);
+      }
+      lastDrawAt=now;
+      const shown=smoothDisplayPose;
+      const angle=90-shown.yaw_rad*180/Math.PI;
       mockLayer.querySelector('#keyboardMockChassisBody')?.setAttribute(
-        'transform',`translate(${fx(pose.x_m).toFixed(2)} ${fy(pose.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
+        'transform',`translate(${fx(shown.x_m).toFixed(3)} ${fy(shown.y_m).toFixed(3)}) rotate(${angle.toFixed(3)})`);
       const text=mockLayer.querySelector('#keyboardMockChassisCaption');
-      text?.setAttribute('x',String(fx(pose.x_m)+15));
-      text?.setAttribute('y',String(fy(pose.y_m)-16));
+      text?.setAttribute('x',String(fx(shown.x_m)+24));
+      text?.setAttribute('y',String(fy(shown.y_m)-23));
     }
-    function animateMock() {
+    function animateMock(frameNow) {
+      // Frame timestamp is shared by all mechanism projections; it is
+      // independent of the 75ms ROS2 pose sampling and 300ms metrics loop.
+      mechanism.tick(frameNow);
       // Only the rendered pose is predicted; no writes to ROS2 or backend model.
       if(!disposed && routeMode==='local_ros2' && motionSnapshot &&
          !mockResetInProgress && !document.hidden) {
@@ -274,6 +318,7 @@
       refreshAppliedSeq=++refreshRequestSeq;
       motionEpoch++; // Discard any pre-reset in-flight motion snapshot.
       motionSnapshot=null;
+      smoothDisplayPose=null;lastDrawAt=null;
       const payload=currentMap();
       payload.reset_seq=nextSeq();
       const version=++mockResetVersion;
@@ -335,6 +380,9 @@
         '本机 ROS2 收发差值趋势（非小车运动误差）':
         'REAL /odom 速度跟踪误差趋势（必须连接实车）';
       twinPanel.hidden=routeMode!=='local_ros2';
+      signalChip.dataset.online='false';
+      signalChip.textContent=routeMode==='local_ros2'?
+        '本机 ROS2：等待话题':'Pi 候选链路未连接';
       holdTestButton.disabled=routeMode!=='local_ros2';
       enabledLabel.hidden=routeMode==='local_ros2';
       noMechanisms.hidden=routeMode==='local_ros2';
@@ -351,6 +399,7 @@
       routeChanging=true;
       motionEpoch++; // Discard any old route's in-flight motion snapshot.
       motionSnapshot=null;
+      smoothDisplayPose=null;lastDrawAt=null;
       enabled.checked=false;active.clear();shift=false;holdTest=false;
       refreshKeys();
       for(const b of [routeLocal,routePi])b.disabled=true;
@@ -380,8 +429,13 @@
       // waiting for the next HTTP round trip or creating a fake ROS2 receipt.
       motionEpoch++;
       if(motionSnapshot) {
-        motionSnapshot={...motionSnapshot,state:'STOPPED',
-          velocity:{vx:0,vy:0,wz:0},
+        // Freeze at the last DRAWN position, not the older HTTP origin.
+        // This changes display only; server STOP/physical hardware are untouched.
+        motionSnapshot={...motionSnapshot,
+          x_m:smoothDisplayPose?.x_m??motionSnapshot.x_m,
+          y_m:smoothDisplayPose?.y_m??motionSnapshot.y_m,
+          yaw_rad:smoothDisplayPose?.yaw_rad??motionSnapshot.yaw_rad,
+          state:'STOPPED',velocity:{vx:0,vy:0,wz:0},
           input_provenance:'ZERO_NO_FRESH_LOCAL_ROS2_OR_DEADMAN'};
       }
       shift=false;holdTest=false;
@@ -437,6 +491,12 @@
     function refreshKeys(){
       for(const [key,b] of keyButtons)b.classList.toggle(
         'pressed',active.has(key)&&deadmanHeld());
+      const held=[...active].sort();
+      keyboardCapture.dataset.active=String(held.length>0);
+      keyboardCapture.textContent=held.length?
+        '浏览器已捕获底盘按键：'+held.map(k=>k.toUpperCase()).join(' + ')+
+        ' · 正在等待 HTTP / ROS2 回环确认':
+        '底盘按键：未按下 · 点击「启用键盘操作」后按住 W';
     }
     // A physical hold button is a deliberate deadman, only for the
     // PC-only route. It requires no Raspberry Pi or physical keyboard.
@@ -522,7 +582,17 @@
     }
     function draw(samples){
       const ctx=chart.getContext('2d');if(!ctx)return;
-      const w=chart.width,h=chart.height;
+      // The CSS size stays stable while the drawing buffer follows device
+      // pixel density. This keeps axes/labels crisp on HiDPI laptop displays.
+      const bounds=chart.getBoundingClientRect();
+      const w=Math.max(240,Math.round(bounds.width||chart.clientWidth||800));
+      const h=175;
+      const ratio=Math.min(2,Math.max(1,window.devicePixelRatio||1));
+      const pixelWidth=Math.round(w*ratio),pixelHeight=Math.round(h*ratio);
+      if(chart.width!==pixelWidth||chart.height!==pixelHeight){
+        chart.width=pixelWidth;chart.height=pixelHeight;
+      }
+      ctx.setTransform(ratio,0,0,ratio,0,0);
       ctx.clearRect(0,0,w,h);ctx.fillStyle='#071629';ctx.fillRect(0,0,w,h);
       for(let i=0;i<=4;i++){
         const y=16+i*(h-32)/4;
@@ -575,7 +645,11 @@
         if(health.source_type!=='LOCAL_ROS2_AND_MOCK_DIAGNOSTIC_ONLY'||
           health.hardware_authorized!==false)
           throw Error('链路诊断数据来源不合法');
-        healthStatus.textContent='ROS2 直通诊断 '+health.reason+'：'+health.hint;
+        healthStatus.textContent=health.reason==='NO_KEYS_OR_TIMEOUT'?
+          (active.size?
+            '键盘已捕获但服务器暂无有效速度：检查 HTTP 指令或 300ms 超时':
+            '底盘待命：未按住 WASDQE（正常）；按住 W 或右侧按键检测'):
+          'ROS2 直通诊断 '+health.reason+'：'+health.hint;
         healthStatus.dataset.reason=health.reason;
         if(data.hardware_authorized!==false||data.stm32_tx_enabled!==false)
           throw Error('拒绝未授权的映射数据');
@@ -587,6 +661,13 @@
         const d=data.desired,c=data.comparison||{},r=data.ros2_feedback||{},
           observed=r.observed||{},delta=r.delta||{},
           m=c.measured||{},p=c.pose||{},e=c.error||{};
+        const receiptOnline=r.online===true && r.source===routeMode;
+        const receiptText=routeMode==='local_ros2' ?
+          (receiptOnline?'本机 ROS2 回环在线':'本机 ROS2：等待话题') :
+          (receiptOnline?'Pi 候选话题已收到（非电机反馈）':'Pi 候选链路未连接');
+        signalChip.dataset.online=String(receiptOnline);
+        if(signalChip.textContent!==receiptText)
+          signalChip.textContent=receiptText;
         metric.ros_observed.textContent=r.online?
           `${fmt(observed.vx)} / ${fmt(observed.vy)} / ${fmt(observed.wz)}`:'—（话题未到达）';
         metric.ros_delta.textContent=r.online?
@@ -666,6 +747,7 @@
       status.textContent='需在运行 HTTP 服务的电脑上通过 localhost 打开映射集';
     }
     draw([]);
+    refreshKeys();
     refreshMotion();
     refresh();
     if(window.requestAnimationFrame)requestAnimationFrame(animateMock);
