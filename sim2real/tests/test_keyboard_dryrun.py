@@ -12,6 +12,10 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+# Grouped modules remain importable under direct unittest discovery.
+import pathlib as _sim2real_pathlib
+for _module_group in ("keyboard", "bridges", "labs"):
+    sys.path.insert(0, str(_sim2real_pathlib.Path(__file__).resolve().parents[1] / _module_group))
 from keyboard_dryrun_chassis import (
     KeyboardChassisTwin, cell_box, valid_blocked_cells, FOOTPRINT_RADIUS_M)
 import keyboard_mapping_core as mapping

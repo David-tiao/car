@@ -12,10 +12,10 @@ import subprocess
 import threading
 import time
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parents[1]
 ROS_SETUP = Path('/opt/ros/humble/setup.bash')
 WS_SETUP = ROOT.parent / 'algorithm/car_ws/install/setup.bash'
-BRIDGE = ROOT / 'ros2_keyboard_feedback_bridge.py'
+BRIDGE = ROOT / 'bridges/ros2_keyboard_feedback_bridge.py'
 LOG_PATH = ROOT / 'data/web_modes/keyboard_autostart.log'
 _LOCK = threading.RLock()
 _PROCESS = None

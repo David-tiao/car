@@ -19,7 +19,7 @@ def read_token(user_value):
         return user_value
     if os.environ.get('CAR_CAMERA_TOKEN'):
         return os.environ['CAR_CAMERA_TOKEN']
-    file = Path(__file__).resolve().parent / 'data/camera_token.txt'
+    file = Path(__file__).resolve().parents[1] / 'data/camera_token.txt'
     if file.exists():
         return file.read_text('ascii').strip()
     sys.exit('Camera token missing; use --token or export CAR_CAMERA_TOKEN')

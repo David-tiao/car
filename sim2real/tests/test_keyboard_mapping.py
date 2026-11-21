@@ -12,6 +12,10 @@ import unittest
 
 HERE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
+# Grouped modules remain importable under direct unittest discovery.
+import pathlib as _sim2real_pathlib
+for _module_group in ("keyboard", "bridges", "labs"):
+    sys.path.insert(0, str(_sim2real_pathlib.Path(__file__).resolve().parents[1] / _module_group))
 import keyboard_mapping_core as mapping
 import keyboard_ros2_pc as pc
 import keyboard_ros2_pi as pi

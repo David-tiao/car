@@ -2,6 +2,19 @@
 
 **启动：** `car` · **工作目录：** `~/Desktop/car/sim2real` · **访问：** `http://127.0.0.1:8080/`
 
+## 目录分工（保持原有启动命令）
+
+- `server.py` / `launcher.py` / `web_mode_gateway.py` / `web_mode_runner.py`：网站、路由、TEST/REAL 数据隔离与启动总控；保持原路径。
+- `start_*.sh` / `start_server_windows.bat`：原公开启动入口原地保留；内部指向对应模块。
+- `keyboard/`：WASDQE、ROS2 本地回环、反馈、离线故障仿真及看门狗。
+- `bridges/`：ROS2 里程计 / 可视化 / 键盘反馈 / TEST 数据桥接。
+- `cameras/`：OpenMV USB、OpenMV 设备示例、Pi5 CSI 摄像头上传。
+- `labs/`：任务码、FSM、地图和通信验收、ULog43 分析等试验工具。
+- `tests/`：原有 Python / Node 回归用例；`web/`：所有四种模式共用的前端；`data/`：运行时状态与配置（未迁移）。
+- `docs/`：四模式说明、键盘与 TEST 操作手册；`archive/`：旧 JS 与历史备份快照（内容原样保留，不参与运行）。
+
+从仓库根目录运行 `bash algorithm/car_ws/bash/test_all_offline.sh` 进行无硬件回归；`car`、`bash sim2real/start_server.sh`、`bash sim2real/start_ros_visualization.sh` 等原有入口不变。历史文档 `docs/README_LEGACY.txt` 中的旧文件路径请以上面的分类为准。
+
 ## 设备状态
 
 目前实体小车：STM32F4 + OpenMV H7 Plus。理想结构：STM32F4 + OpenMV + 树莓派 5（ROS2）+ 77° 摄像头 + 未来接入的激光雷达。**雷达和真实 `/odom` 通信尚需硬件联调**。
@@ -56,4 +69,4 @@ curl -s http://127.0.0.1:8080/api/telemetry
 测试和实车通过不同的 `/api/test/*`、`/api/real/*` 传输数据；`keyboard` 使用原有 WASDQE 交互面板。Ubuntu 本机打开 `/keyboard` 时，网站自动启动现有的 PC ROS2 发布节点与网页反馈订阅节点，使用 `/car/teleop/local_test_twist`（`TwistStamped`），网页按实际 ROS2 回环数据渲染紫色 MOCK 小车，动画按浏览器刷新率更新。需要 ROS2 Humble，缺失时查询 `/api/keyboard/autostart`；可设置 `CAR_KEYBOARD_AUTOSTART=0` 禁用自动启动。**这不意味着 STM32 已连接，实体 UART TX/电机控制仍禁用。**
 
 原 `/cmd_vel` 独立只读观察器保留为旧代码兼容，但**不再是 `/keyboard` 默认页面或默认通信路径**。
-完整启动及验收步骤见 `sim2real/FOUR_MODES.md`。
+完整启动及验收步骤见 `sim2real/docs/FOUR_MODES.md`。

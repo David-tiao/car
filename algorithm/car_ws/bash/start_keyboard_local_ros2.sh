@@ -49,9 +49,9 @@ cleanup(){
   wait 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
-/usr/bin/python3 "$ROOT/sim2real/keyboard_ros2_pc.py" --server "$SERVER" &
+/usr/bin/python3 "$ROOT/sim2real/keyboard/keyboard_ros2_pc.py" --server "$SERVER" &
 pc=$!
-/usr/bin/python3 "$ROOT/sim2real/keyboard_ros2_web_feedback.py" --server "$SERVER" &
+/usr/bin/python3 "$ROOT/sim2real/keyboard/keyboard_ros2_web_feedback.py" --server "$SERVER" &
 feedback=$!
 echo "[KEYBOARD] LOCAL ROS2 pub+sub running (no Pi needed). Open $SERVER/keyboard"
 echo "[KEYBOARD] Default mode is local ROS2; STM32 UART TX remains disabled."

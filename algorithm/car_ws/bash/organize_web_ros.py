@@ -78,7 +78,7 @@ case "$CMD" in
     fi
     echo '[REAL] 只读 ROS2 -> Sim2Real 网页桥接；请自行确认话题来自真实硬件。'
     echo '[REAL] 本脚本不会验证所有外部发布者的硬件真实性，不会发送 /cmd_vel。'
-    exec /usr/bin/python3 "$SITE/ros2_visualization_bridge.py" \\
+    exec /usr/bin/python3 "$SITE/bridges/ros2_visualization_bridge.py" \\
       --plan /car/navigation/preview_path \\
       --road-path /competition/mission_road_path "$@"
     ;;

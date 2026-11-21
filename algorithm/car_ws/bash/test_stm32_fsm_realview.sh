@@ -29,7 +29,7 @@ import ast
 from pathlib import Path
 import sys
 root = Path(sys.argv[1])
-for path in ('sim2real/test_stm32_fsm_lab.py',
+for path in ('sim2real/labs/test_stm32_fsm_lab.py',
              'sim2real/web_mode_gateway.py'):
     target = root / path
     ast.parse(target.read_text(encoding='utf-8'), filename=str(target))

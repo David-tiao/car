@@ -129,15 +129,15 @@ def main():
     time.sleep(1)
     if producer.poll() is not None:
         raise RuntimeError('ROS launch exited early; inspect ' + str(LOG_DIR / (args.mode + '_ros.log')))
-    bridge = spawn(args.mode + '_web_bridge', [sys.executable, str(ROOT / 'ros2_visualization_bridge.py'),
+    bridge = spawn(args.mode + '_web_bridge', [sys.executable, str(ROOT / 'bridges/ros2_visualization_bridge.py'),
         '--server', url, '--web-channel', args.mode,
         '--plan', '/car/navigation/preview_path', '--road-path', '/competition/mission_road_path'])
     if args.mode == 'test':
-        inspector = spawn('test_inspection_bridge', [sys.executable, str(ROOT / 'test_telemetry_bridge.py'),
+        inspector = spawn('test_inspection_bridge', [sys.executable, str(ROOT / 'bridges/test_telemetry_bridge.py'),
             '--server', url])
         print('[TEST] Collecting wheels, vision, mission, link CRC, synthetic command feedback.', flush=True)
     if args.mode == 'test':
-        spawn('test_path_bridge', [sys.executable, str(ROOT/'test_path_bridge.py'), '--server', url])
+        spawn('test_path_bridge', [sys.executable, str(ROOT/'bridges/test_path_bridge.py'), '--server', url])
     print(f'[READY] Open {url}/{args.mode}; actual data may still be OFFLINE until received.', flush=True)
     print('[STOP] Ctrl+C stops only the subprocesses created by this launcher.', flush=True)
     while True:

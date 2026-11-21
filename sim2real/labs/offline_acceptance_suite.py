@@ -16,7 +16,7 @@ import subprocess
 import sys
 import time
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "algorithm/car_ws/bash"
 # Import the actual host-only OpenMV tests with an explicit start/top
 # directory. The tests/__init__.py marker makes discovery Python 3.10-safe.

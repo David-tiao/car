@@ -3,4 +3,4 @@
 set -Eeuo pipefail
 ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 export PYTHONDONTWRITEBYTECODE=1
-exec python3 "$ROOT/sim2real/offline_acceptance_suite.py" "$@"
+exec python3 "$ROOT/sim2real/labs/offline_acceptance_suite.py" "$@"

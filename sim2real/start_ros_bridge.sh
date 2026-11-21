@@ -9,4 +9,4 @@ if [[ ! -f "$ROS_SETUP" ]]; then
 fi
 source "$ROS_SETUP"
 # For custom robot nodes, source your workspace FIRST in the normal way if needed.
-exec /usr/bin/python3 "$ROOT/ros2_odom_bridge.py" "$@"
+exec /usr/bin/python3 "$ROOT/bridges/ros2_odom_bridge.py" "$@"
