@@ -26,6 +26,65 @@ jobs:
       - name: Full 14-category software-only acceptance (300 seeded competition cases)
         run: bash algorithm/car_ws/bash/test_all_offline.sh
 
+      - name: Site doctor and real HTTP four-mode smoke (no ROS2 or hardware)
+        run: |
+          bash algorithm/car_ws/bash/web.sh doctor
+          python3 - <<'PY'
+          import json
+          import os
+          import socket
+          import subprocess
+          import sys
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+          with socket.socket() as sock:
+              sock.bind(("127.0.0.1", 0))
+              port = sock.getsockname()[1]
+          base = "http://127.0.0.1:%s" % port
+          env = dict(os.environ, CAR_KEYBOARD_AUTOSTART="0")
+          proc = subprocess.Popen([sys.executable, "sim2real/server.py", "--host",
+                                   "127.0.0.1", "--port", str(port)], env=env,
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+          try:
+              for _ in range(50):
+                  if proc.poll() is not None:
+                      raise AssertionError("Sim2Real server exited before readiness")
+                  try:
+                      with urlopen(base + "/api/build", timeout=0.4) as response:
+                          assert response.status == 200
+                      break
+                  except (URLError, TimeoutError, ConnectionError):
+                      time.sleep(0.1)
+              else:
+                  raise AssertionError("Sim2Real HTTP did not become ready")
+              for route in ("/sim", "/test", "/real", "/keyboard",
+                            "/api/build", "/api/test/telemetry",
+                            "/api/real/telemetry", "/api/keyboard/health"):
+                  with urlopen(base + route, timeout=3) as response:
+                      assert response.status == 200, route
+              for route in ("/api/test/telemetry", "/api/real/telemetry"):
+                  with urlopen(base + route, timeout=3) as response:
+                      data = json.load(response)
+                  assert data.get("online") is False, (route, data)
+              command = Request(base + "/api/keyboard/command",
+                                data=b"{}", method="POST",
+                                headers={"Content-Type":"application/json"})
+              try:
+                  urlopen(command, timeout=3)
+                  raise AssertionError("Real motor command endpoint unexpectedly allowed")
+              except HTTPError as error:
+                  assert error.code == 403, error.code
+              print("PASS: four routes, distinct offline telemetry, keyboard TX disabled")
+          finally:
+              proc.terminate()
+              try:
+                  proc.wait(timeout=5)
+              except subprocess.TimeoutExpired:
+                  proc.kill()
+                  proc.wait()
+          PY
+
       - name: Prove no test endpoint sends physical motor commands
         run: |
           python3 - <<'PY'
