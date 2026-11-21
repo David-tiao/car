@@ -156,11 +156,9 @@
     let mockLayer=null, mockResetInProgress=false;
     let mockResetVersion=0;
     let refreshRequestSeq=0, refreshAppliedSeq=0;
-    // ROS2/HTTP alone defines the authoritative MOCK pose. A persistent
-    // display tracker bridges packet arrivals instead of teleporting back to
-    // each new 75ms HTTP snapshot.
-    const motionTracker=window.CarKeyboardPreviewMotion.createTracker();
-    let motionBusy=false, motionEpoch=0;
+    // ROS2/HTTP remains the authoritative MOCK pose. requestAnimationFrame
+    // only extrapolates the last fresh subscribed velocity for <=120ms.
+    let motionSnapshot=null, motionReceivedAt=0, motionBusy=false, motionEpoch=0;
     let queuedDesired=false;
     const svgNS='http://www.w3.org/2000/svg';
     const fx=x=>60+x*680/2.4, fy=y=>740-y*680/2.4;
@@ -178,7 +176,8 @@
         throw Error('映射集禁止启用碰撞/任务状态机预览');
       if(!window.CarKeyboardPreviewMotion?.valid(data))
         throw Error('ROS2 反馈运动数据不完整');
-      motionTracker.ingest(data,performance.now());
+      motionSnapshot=data;
+      motionReceivedAt=performance.now();
       twinStatus.textContent='电脑 ROS2 → 直通积分 · '+
         (data.state==='RUNNING'?'正在按订阅速度运动':'已停止（松键归零）');
       twinStats.textContent=
@@ -227,14 +226,13 @@
       const trail=mockLayer.querySelector('#keyboardMockChassisTrail');
       trail?.setAttribute('points',(data.trace||[]).map(p=>
         fx(p[0]).toFixed(1)+','+fy(p[1]).toFixed(1)).join(' '));
-      // The main animation loop renders the tracked pose (never raw data).
-      // Only a new generation/reset may snap to its authoritative origin.
+      renderMockPose(data);
     }
     function renderMockPose(pose) {
       if(!mockLayer||!mockLayer.isConnected)return;
       const angle=90-pose.yaw_rad*180/Math.PI;
       mockLayer.querySelector('#keyboardMockChassisBody')?.setAttribute(
-        'transform',`translate(${fx(pose.x_m).toFixed(3)} ${fy(pose.y_m).toFixed(3)}) rotate(${angle.toFixed(3)})`);
+        'transform',`translate(${fx(pose.x_m).toFixed(2)} ${fy(pose.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
       const text=mockLayer.querySelector('#keyboardMockChassisCaption');
       text?.setAttribute('x',String(fx(pose.x_m)+24));
       text?.setAttribute('y',String(fy(pose.y_m)-23));
@@ -243,12 +241,11 @@
       // Frame timestamp is shared by all mechanism projections; it is
       // independent of the 75ms ROS2 pose sampling and 300ms metrics loop.
       mechanism.tick(frameNow);
-      // Visual continuity is independent of network arrival. Smoothing only
-      // follows ROS2-observed /dryrun poses; never synthesizes physical odom.
-      if(!disposed && routeMode==='local_ros2' &&
+      // Only the rendered pose is predicted; no writes to ROS2 or backend model.
+      if(!disposed && routeMode==='local_ros2' && motionSnapshot &&
          !mockResetInProgress && !document.hidden) {
-        const pose=motionTracker.frame(frameNow);
-        if(pose)renderMockPose(pose);
+        renderMockPose(window.CarKeyboardPreviewMotion.predict(
+          motionSnapshot, performance.now()-motionReceivedAt));
       }
       if(!disposed)requestAnimationFrame(animateMock);
     }
@@ -292,7 +289,7 @@
       // must never redraw an old vehicle position after a scene reset.
       refreshAppliedSeq=++refreshRequestSeq;
       motionEpoch++; // Discard any pre-reset in-flight motion snapshot.
-      motionTracker.clear();
+      motionSnapshot=null;
       const payload=currentMap();
       payload.reset_seq=nextSeq();
       const version=++mockResetVersion;
@@ -304,11 +301,7 @@
         }
         const twin=await mockPost(payload);
         if(version!==mockResetVersion)return;
-        motionTracker.reset(twin,performance.now());
         paintMock(twin);
-        // A deliberate scene reset changes the origin immediately.
-        const resetPose=motionTracker.frame(performance.now());
-        if(resetPose)renderMockPose(resetPose);
         if(stopKeys){
           const note='网页位置已手动归零；直接按住 W/A/S/D/Q/E 继续。';
           twinStatus.textContent=note;
@@ -376,7 +369,7 @@
       if(routeChanging||mode===routeMode)return;
       routeChanging=true;
       motionEpoch++; // Discard any old route's in-flight motion snapshot.
-      motionTracker.clear();
+      motionSnapshot=null;
       enabled.checked=false;active.clear();shift=false;holdTest=false;
       refreshKeys();
       for(const b of [routeLocal,routePi])b.disabled=true;
@@ -405,7 +398,11 @@
       // A released key must stop the visual prediction immediately, without
       // waiting for the next HTTP round trip or creating a fake ROS2 receipt.
       motionEpoch++;
-      motionTracker.freeze(performance.now());
+      if(motionSnapshot) {
+        motionSnapshot={...motionSnapshot,state:'STOPPED',
+          velocity:{vx:0,vy:0,wz:0},
+          input_provenance:'ZERO_NO_FRESH_LOCAL_ROS2_OR_DEADMAN'};
+      }
       shift=false;holdTest=false;
       if(disable)enabled.checked=false;
       for(const b of keyButtons.values())b.classList.remove('pressed');
@@ -509,8 +506,7 @@
         return;
       }
       if(!KEYS.has(key)||!active.has(key))return;
-      active.delete(key);refreshKeys();
-      if(active.size===0)stopNow();else sendNow();
+      active.delete(key);refreshKeys();sendNow();
     });
     for(const [key,b] of keyButtons){
       b.addEventListener('pointerdown',ev=>{
@@ -522,10 +518,7 @@
         ev.preventDefault();
       });
       const released=()=>{
-        if(active.delete(key)){
-          refreshKeys();
-          if(active.size===0)stopNow();else sendNow();
-        }
+        if(active.delete(key)){refreshKeys();sendNow();}
       };
       b.addEventListener('pointerup',released);
       b.addEventListener('pointercancel',released);
