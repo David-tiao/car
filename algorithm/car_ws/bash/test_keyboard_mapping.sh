@@ -56,6 +56,8 @@ if command -v node >/dev/null 2>&1; then
   node sim2real/tests/test_operator_polish.js
   node --check sim2real/web/keyboard_mechanism_preview.js
   node sim2real/tests/test_keyboard_mechanism_preview.js
+  node --check sim2real/web/keyboard_mechanism_mapping.js
+  node sim2real/tests/test_keyboard_mechanism_mapping.js
   node --check sim2real/web/mode_router.js
   node sim2real/tests/test_mode_router.js
 fi

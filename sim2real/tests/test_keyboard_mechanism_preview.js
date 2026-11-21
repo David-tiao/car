@@ -82,7 +82,7 @@ const sim=fs.readFileSync(path.join(web,'app.js'),'utf8');
 const test=fs.readFileSync(path.join(web,'test_stm32_fsm_workbench.js'),'utf8');
 const html=fs.readFileSync(path.join(web,'index.html'),'utf8');
 const css=fs.readFileSync(path.join(web,'keyboard_mechanism.css'),'utf8');
-assert.match(html,/keyboard_mechanism\.css\?v=1\.0\.0/);
+assert.match(html,/keyboard_mechanism\.css\?v=1\.2\.0/);
 assert.ok(html.indexOf('keyboard_mechanism_preview.js')<html.indexOf('app.js'),
   'CAD generator must load before SIM/REAL initial rendering');
 assert.ok(html.indexOf('keyboard_mechanism_preview.js')<
@@ -93,7 +93,7 @@ assert.match(panel,/mechanism\.tick\(frameNow\)/);
 assert.match(sim,/CarMechanismPreview\.decorateChassis\(g/);
 assert.match(test,/CarMechanismPreview\.decorateChassis\(vehicle/);
 assert.match(code,/const top=buildTopRig\(/);
-assert.match(code,/const rig=buildTopRig\(mount\)/);
+assert.match(code,/const rig=buildTopRig\(mount,\{compact:true\}\)/);
 assert.match(code,/applyTopPose\(top,pose\)/);
 assert.match(code,/mapThumb\.update\(s\)/);
 assert.match(code,/UNMEASURED_SCHEMATIC_ONLY/);
