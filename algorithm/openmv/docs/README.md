@@ -4,7 +4,7 @@
 
 ## 装到相机
 
-从 `openmv_all/` 取出 `main.py`、`tools.py`、`serial.py`、`config.py`，四个文件放在 OpenMV 启动盘根目录。默认 `UART_PROTOCOL = 'V4'`。要在自己的 Git 仓库采用这次修改，将四个文件放回 `algorithm/openmv/openmv_all/`。只在使用原有 V5 电控时才选择 `'V5'`。
+把相机目录中的 `main.py`、`config.py`、`serial.py`、`tools.py` 一起复制到 OpenMV 启动盘根目录。默认配置已对接 `architecture-v2` 电控。[上板文件](../openmv_all/)
 
 OpenMV P4（TX）接 STM32 PD9（RX），P5（RX）接 PD8（TX），两板共地。双方使用 UART3、115200、8N1。上电后相机发 `READY,IDLE`。下表给出消息正文。实际上线时，收发层自动封装为 `@SEQ,LEN,BODY*XX\n`。LEN 为正文字节数，XX 为从 SEQ 到 BODY 末尾所有 ASCII 字节的异或。例子 `@1,9,ALIGN,2,7*40\n` 最后一个字节为 LF。
 
@@ -19,19 +19,9 @@ OpenMV P4（TX）接 STM32 PD9（RX），P5（RX）接 PD8（TX），两板共�
 | 中止与复位 | `CANCEL` 或 `RESET` | `IDLE` | 停止本轮观测；复位还清除任务码。 |
 | 状态查询 | `STATUS` | 空闲时回 `READY,IDLE`；忙时回 `STATUS,当前视觉任务` | 电控使用 READY 建立就绪状态，忙时 STATUS 供观察。 |
 
-圆环偏差以画面中的 (160,120) 为目标。物块沿用你们的 `PICK_TARGET_X/Y=(160,190)`，默认抓取容差为 12 像素，需要按实车夹爪位置核对。首次找盘仍需三个不同颜色物块和盘面几何。包内测试包含首次仅见两块时不确认、出现第三块时确认。
+圆环偏差以画面中的 (160,120) 为目标。物块沿用你们的 `PICK_TARGET_X/Y=(160,190)`，默认抓取容差为 12 像素，需要按实车夹爪位置核对。首次找盘仍需三个不同颜色物块和盘面几何。
 
 ## 和电控同学一起核对的两处
 
 1. `JOB,40` 的 `AREA_OK` 和 `IDLE` 是两帧。相机连续写出两帧，串口仍可能分两次交给电控主循环。主机测试复现了只收到第一帧时，电控已取得有效区域，但 `Vision_StartJob(41)` 会返回 0。建议电控在区域已确认后等待 `VISION_IDLE`，再从主循环下发 41；无需靠固定延时猜测。该分支原料区功能默认 `RACE_MATERIAL_ALIGN_ENABLE=0`，相机姿态、夹爪目标及纠偏矩阵另有实车标定配置。[任务切换](https://github.com/Wangdachang888/GongChuangSai/blob/1da165ccc48b3a7d4f15743a5b2a6660b77226dc/App/app_race.c#L293-L313) · [电控配置](https://github.com/Wangdachang888/GongChuangSai/blob/1da165ccc48b3a7d4f15743a5b2a6660b77226dc/Config/race_config.h#L37-L114)
 2. 电控底层允许发送 11～16、21～23、31、32、42 等通用 JOB 编号，但本次核对的比赛调用链对接的是扫码、40、41 和单独的 ALIGN。这个四文件版在 V4 模式下对其余 JOB 回 `ERR,UNSUPPORTED_JOB`。尤其是 42，当前比赛代码没有可供核对的自动抓取请求与成功/失败回执闭环。原视觉算法和旧 V5 的取放流程保留在 V5 模式。
-
-## 在电脑复现测试
-
-需要 Python 3、C99 编译器，并在本机已有所列电控版本的检出目录。在解压目录运行：
-
-```bash
-MCU_TREE=/实际路径/GongChuangSai python3 host_test/test_peer.py
-```
-
-脚本用板级函数替身编译对方原版 `Hardware/vision.c`，收发字节真实经过两端编解码器。11 项测试覆盖扫码会话、重复及坏帧、复位、环号与复测步号、原料区切换、物料对准和未接入命令。其中一项使用合成转盘场景贯穿本方识别器。测试环境未连接实体 OpenMV、STM32、底盘或夹爪。
