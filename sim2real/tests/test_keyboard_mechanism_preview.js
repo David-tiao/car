@@ -114,13 +114,17 @@ const compoundA=api.projectTraySide(0,90);
 const compoundB=api.projectTraySide(90,0);
 for(let i=0;i<3;i++)nearly(compoundA[i].x,compoundB[i].x);
 assert.ok(api.projectTraySide(0,-90)[0].x < -30.9);
-assert.throws(()=>api.projectTraySide(0,999),RangeError);
+for(let i=0;i<3;i++)
+  nearly(api.projectTraySide(0,999)[i].x,api.projectTraySide(0,90)[i].x);
+// Values outside provisional limits CLAMP; malformed numbers are rejected.
+assert.throws(()=>api.projectTraySide(0,NaN),RangeError);
 // Side-on a yawed platform foreshortens; does not roll or tilt the tray.
 nearly(api.projectRearBaseSide(0).widthRatio,1);
 nearly(api.projectRearBaseSide(90).widthRatio,.33);
 nearly(api.projectRearBaseSide(-90).pointerX,-25);
 nearly(api.projectRearBaseSide(90).pointerX,25);
-assert.throws(()=>api.projectRearBaseSide(1000),RangeError);
+nearly(api.projectRearBaseSide(1000).widthRatio,api.projectRearBaseSide(90).widthRatio);
+assert.throws(()=>api.projectRearBaseSide(NaN),RangeError);
 // Detailed TOP rig has a distinct rotating platform with PC7 relative
 // beneath it; changing platform angle cannot mutate the PC7 target itself.
 const previousDoc=global.document;
