@@ -1,11 +1,11 @@
 {
-  "revision": 358,
+  "revision": 433,
   "scene": {
     "obstacles": [],
     "scenarioVersion": 10,
     "rawX": 1.12,
     "rawY": 2.42,
-    "qrY": 1.2,
+    "qrY": 1.24,
     "gridStep": 0.48,
     "start": {
       "x": 2.25,
@@ -29,7 +29,7 @@
     "mode": "mission",
     "planner": "astar",
     "goalPolicy": "other",
-    "task": "156+123+516+213",
+    "task": "123+321+213+321",
     "showGrid": true,
     "ringFollow": true,
     "pathView": "global",
