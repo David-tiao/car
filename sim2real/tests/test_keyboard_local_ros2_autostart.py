@@ -9,6 +9,10 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Grouped modules remain importable under direct unittest discovery.
+import pathlib as _sim2real_pathlib
+for _module_group in ("keyboard", "bridges", "labs"):
+    sys.path.insert(0, str(_sim2real_pathlib.Path(__file__).resolve().parents[1] / _module_group))
 import keyboard_local_ros2_autostart as auto
 
 

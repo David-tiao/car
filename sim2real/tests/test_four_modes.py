@@ -12,6 +12,10 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+# Grouped modules remain importable under direct unittest discovery.
+import pathlib as _sim2real_pathlib
+for _module_group in ("keyboard", "bridges", "labs"):
+    sys.path.insert(0, str(_sim2real_pathlib.Path(__file__).resolve().parents[1] / _module_group))
 from web_mode_gateway import mode_get, mode_post
 
 
