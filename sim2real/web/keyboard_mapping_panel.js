@@ -87,7 +87,7 @@
     holdTestButton.title='本机 ROS2 模式下按住相当于键盘 W；松开立即归零。绝不发送真实电机控制。';
     const exportButton=$('button',controls,'↓ 导出误差 CSV');
     exportButton.type='button';
-    const noMechanisms=$('div',panel,'G 夹爪、R 伸缩：仅预留映射，不发送机构指令。必须先对齐 STM32 机械动作协议、限位与完成回执。');
+    const noMechanisms=$('div',panel,'G/R 与实车机械动作仍是预留接口。下方的转盘、升降、旋转和夹爪操作只改变浏览器 MOCK 示意，不发送机构指令；实车仍需先验证 STM32 协议、限位与回执。');
     noMechanisms.className='keyboard-caution';
     const stats=$('div',panel);stats.className='keyboard-metrics';
     const metric={};
@@ -125,8 +125,12 @@
     twinStatus.className='keyboard-twin-status';
     const twinStats=$('div',twinPanel,'直通位姿：— · 实际订阅速度：—');
     twinStats.className='keyboard-twin-stats';
-    // Keep the direct preview beside the map and input buttons.
+    // Preserve the subscribed ROS2 position preview as-is.
     controls.after(twinPanel);
+    if(!window.CarMechanismPreview)
+      throw Error('机构 MOCK 预览模块未加载，请刷新浏览器缓存');
+    const mechanism=window.CarMechanismPreview.create(panel);
+    twinPanel.after(mechanism.root);
     const pipeline=$('div',panel);pipeline.className='keyboard-pipeline';
     pipeline.textContent='本机模式：网页 → 本机 HTTP → PC ROS2 /car/teleop/local_test_twist → PC ROS2 订阅 → 网页';
     const detail=$('p',panel,'本机 ROS2 话题反馈仅用于验证通信和命令一致性；实体车速必须来自独立 REAL /odom。缺少树莓派或 STM32 时不会虚构实测车辆运动。');
@@ -207,6 +211,9 @@
         forward.setAttribute('d','M -6,-15 L 0,-22 L 6,-15 Z');
         forward.setAttribute('fill','#fff');
         car.append(forward);
+        // Decorative CAD-derived tray / lift / gripper follows the local
+        // MOCK chassis; controls never enter a ROS2 or STM32 endpoint.
+        mechanism.attachMap(car);
         const text=document.createElementNS(svgNS,'text');
         text.id='keyboardMockChassisCaption';
         text.textContent='MOCK';
@@ -227,10 +234,12 @@
       mockLayer.querySelector('#keyboardMockChassisBody')?.setAttribute(
         'transform',`translate(${fx(pose.x_m).toFixed(2)} ${fy(pose.y_m).toFixed(2)}) rotate(${angle.toFixed(1)})`);
       const text=mockLayer.querySelector('#keyboardMockChassisCaption');
-      text?.setAttribute('x',String(fx(pose.x_m)+15));
-      text?.setAttribute('y',String(fy(pose.y_m)-16));
+      text?.setAttribute('x',String(fx(pose.x_m)+24));
+      text?.setAttribute('y',String(fy(pose.y_m)-23));
     }
     function animateMock() {
+      // Mechanism model is a client-only demo even when ROS2 is offline.
+      mechanism.tick(performance.now());
       // Only the rendered pose is predicted; no writes to ROS2 or backend model.
       if(!disposed && routeMode==='local_ros2' && motionSnapshot &&
          !mockResetInProgress && !document.hidden) {

@@ -1,5 +1,19 @@
 # 映射集当前行为：键盘直通（2026-11-20）
 
+## 车载机械结构 MOCK 操作台（2026-11-21，待浏览器验收）
+
+打开 `/keyboard` 可在现有 ROS2 速度回环和紫色 MOCK 小车旁看到仓库机械结构的俯视、侧视示意：左前方的升降导轨与旋转夹爪、车身侧部的三工位物料托盘、四个麦克纳姆轮。可调整以下纯浏览器演示目标：
+
+- **PC7 / SERVO_3 车载三工位转盘**：0–270°，预设 0、90、180、270°；按 `Config/race_config.h` 的名义速度 60°/s 做网页过渡。
+- **PC6 / PC8 / PC9 升降轴**：0–175 mm，提供 0、24、80、141、170、175 mm 预设。网页用 65 mm/s 的**演示速度**；其位置不是通过步进脉冲实测的真实高度，也没有限位寻零。
+- **PB15 / SERVO_2 夹持机构旋转**：0–180°，使用固件的 127.764°/s 名义速度；
+- **PB14 / SERVO_1 夹爪开合**：0° 打开、110° 预夹、140° 夹紧；按固件名义 720°/s 演示开合。
+
+四组控制由 `sim2real/web/keyboard_mechanism_preview.js` 在浏览器内保存目标并动画绘制，**没有任何 fetch/ROS2/UART/电机发送**。旧版底盘 W/A/S/D/Q/E 通信和真实 `/odom` 接口没有修改。页面显示的是模拟机构姿态，**绝不能当作电机已动作、实测机构反馈或机械限位合格**。仓库的 `/car/mechanism/state` 有效位仍为独立硬件后续对接事项。
+
+物理造型参考：`Hardware_mechanical/mechanical/俯视图.png`、`前视图.png`、`侧视图.png`；实际针脚与角度参考：`STM32F4/App/app_pick_motion.c`、`STM32F4/Config/race_config.h`。验收命令为 `node sim2real/tests/test_keyboard_mechanism_preview.js` 和 `bash algorithm/car_ws/bash/test_all_offline.sh`。本次仅更改 GitHub 待验收分支，不创建任何 Ubuntu 桌面目录。
+
+
 **动画流畅性优化：** 本机 ROS2 的位置快照独立以约 75ms 更新，紫色 MOCK 车通过浏览器 `requestAnimationFrame` 按屏幕刷新率绘制（通常 60Hz）。帧间只按**最后一次实际订阅的速度消息**最多外推 120ms，以消除 250ms 一跳的视觉问题；超出这个窗口不再继续前进，刷新/松键/重置也不伪造 ROS2 消息。数据卡片和误差统计约每 300ms 更新。键盘长按不会因系统键盘重复事件重复发送请求；组合键变更可在上一 HTTP 请求结束后立刻补发最新状态。**这只是网页渲染优化，不是实体运动实测或新的电机控制通道。**
 
 **网页自动启动 ROS2（新增）：** 在 Ubuntu 本机启动网站后，打开 `/keyboard` 将自动启动现有的 PC ROS2 发布与 Web 订阅回传两个节点；不需要第二个终端运行 `start_keyboard_local_ros2.sh`。保留原有 WASDQE 按键、限速及消息格式，本机话题依旧是 `/car/teleop/local_test_twist` (`TwistStamped`)。运行环境需有 `/opt/ros/humble/setup.bash`；如果自动启动失败，查看 `/api/keyboard/autostart` 和 `sim2real/data/web_modes/keyboard_local_autostart.log`。设置 `CAR_KEYBOARD_AUTOSTART=0` 可关闭自动启动并继续使用下文的手动方式。网站退出时清理自动启动的两个节点，不会启动 Pi 或 STM32 实体驱动。
