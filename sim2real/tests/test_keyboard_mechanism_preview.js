@@ -76,6 +76,27 @@ nearly(p.holderRotate,-180);
 nearly(p.jawOffset,13);
 nearly(p.sideJawScale,.65);
 assert.ok(Object.isFrozen(p));
+// PC7 is the SAME yaw degree of freedom in top and side projections.
+// The side view used to be hard-coded bowls and never changed on rotation.
+const side0=api.projectTraySide(0);
+const side90=api.projectTraySide(90);
+const side180=api.projectTraySide(180);
+assert.equal(side0.length,3);
+assert.ok(side0.every(st=>Object.isFrozen(st)));
+nearly(side0[0].x,0);
+nearly(side90[0].x,31);
+nearly(side180[0].x,0);
+assert.ok(side90.some((st,i)=>Math.abs(st.x-side0[i].x)>10));
+for(const angle of [0,45,90,180,270]){
+  const positions=api.projectTraySide(angle);
+  assert.equal(positions.length,3);
+  for(const st of positions){
+    assert.ok(Number.isFinite(st.x)&&Number.isFinite(st.y));
+    assert.ok(st.x>=-31.001&&st.x<=31.001);
+    assert.ok(st.opacity>.6&&st.opacity<=1);
+  }
+}
+assert.throws(()=>api.projectTraySide(NaN),RangeError);
 const code=fs.readFileSync(path.join(web,'keyboard_mechanism_preview.js'),'utf8');
 const panel=fs.readFileSync(path.join(web,'keyboard_mapping_panel.js'),'utf8');
 const sim=fs.readFileSync(path.join(web,'app.js'),'utf8');

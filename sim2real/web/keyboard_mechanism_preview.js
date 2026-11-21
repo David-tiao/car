@@ -89,6 +89,22 @@
       sideJawScale:1-.35*r
     });
   }
+  // Project the SAME PC7 three-pocket yaw into the side silhouette.
+  // CAD/firmware provide only ONE driven tray axis, not a second tilt motor.
+  function projectTraySide(angleDeg){
+    const phase=clamp('tray_deg',angleDeg)*Math.PI/180;
+    return Object.freeze([0,1,2].map(index=>{
+      const theta=phase-Math.PI/2+index*2*Math.PI/3;
+      const depth=Math.sin(theta);
+      return Object.freeze({
+        index,
+        x:31*Math.cos(theta),
+        y:2.8*depth,
+        scale:.91+.13*(depth+1)/2,
+        opacity:.67+.33*(depth+1)/2
+      });
+    }));
+  }
   function element(tag,parent,label,klass){
     const n=document.createElement(tag);
     if(label!==undefined)n.textContent=label;
@@ -196,13 +212,17 @@
       'stroke-linejoin':'round'});
     svgNode('path',tray,{d:'M 0 -31 L 27 16 L -27 16 Z',
       fill:'#a5b9ca',stroke:'#d3e7f5','stroke-width':1.4});
-    for(const [x,y] of [[0,-25],[-22,14],[22,14]]){
+    for(const [index,[x,y]] of [[0,-25],[-22,14],[22,14]].entries()){
       svgNode('circle',tray,{cx:x,cy:y,r:13.5,fill:'#d9e4ee',
         stroke:'#697f95','stroke-width':1.6});
       svgNode('circle',tray,{cx:x,cy:y,r:10.1,fill:'#425d75',
         stroke:'#f2f7fc','stroke-width':1.1});
       svgNode('circle',tray,{cx:x,cy:y,r:6.6,fill:'#17293c',
         stroke:'#8397ae','stroke-width':1});
+      // Station markings are visual identifiers, not raw-material colours.
+      svgNode('circle',tray,{cx:x+5.6,cy:y-5.4,r:2.3,
+        fill:['#d4b9ff','#8ce5d1','#f4bd80'][index],
+        stroke:'#eaf6ff','stroke-width':.7});
       if(!compact)svgNode('path',tray,{d:'M '+(x-3.2)+' '+(y-2.3)+' h 5.1',
         stroke:'#a5bdd1','stroke-width':1,'stroke-linecap':'round'});
     }
@@ -271,17 +291,40 @@
       '<circle cx="-18" cy="0" r="7" fill="#40385e" stroke="#ead7ff" stroke-width="1.5"/>',
       '<g data-side-jaw><path d="M -25 -17 V 17" stroke="#eadcf9" stroke-width="6"/>',
       '<path d="M -25 -17 l -7 -4 M -25 17 l -7 4" stroke="#be99fa" stroke-width="3" fill="none"/></g></g></g>',
-      '<ellipse cx="491" cy="180" rx="42" ry="8" fill="#c6d4e0" stroke="#859aac" stroke-width="2"/>',
-      '<ellipse cx="491" cy="178" rx="34" ry="4" fill="#536e87" stroke="#e1eafa"/>',
-      '<path d="M 454 177 L 462 189 L 483 189 L 488 177" fill="#9faebc"/>',
-      '<path d="M 489 177 L 495 189 L 514 189 L 521 177" fill="#c3cedd"/>',
-      '<text x="438" y="225" class="km-view-small">车载三工位托盘</text>',
+      '<g data-side-tray-assembly>',
+      '<rect x="486" y="179" width="10" height="13" rx="2" fill="#536578" stroke="#cedae6"/>',
+      '<ellipse cx="491" cy="185" rx="42" ry="7" fill="#7990a4" stroke="#d6e4f1" stroke-width="1.4"/>',
+      '<ellipse cx="491" cy="181" rx="42" ry="7" fill="#c6d4e0" stroke="#859aac" stroke-width="2"/>',
+      '<ellipse cx="491" cy="177" rx="35" ry="5" fill="#536e87" stroke="#e1eafa"/>',
+      '<g data-side-tray-stations></g>',
+      '<circle cx="491" cy="177" r="4" fill="#d2c8ef" stroke="#5a6580" stroke-width="1.2"/>',
+      '</g>',
+      '<text x="432" y="225" class="km-view-small">PC7 · 三工位同步旋转</text>',
+      '<text x="483" y="238" data-side-tray-angle class="km-view-small">0°</text>',
       '</g><text x="18" y="235" class="km-view-small">MOCK / 非实车位置测量</text>'
     ].join('');
     const top=buildTopRig(svg.querySelector('[data-km-top-mount]'));
     const lift=svg.querySelector('[data-lift]');
     const sideHolder=svg.querySelector('[data-side-holder]');
     const sideJaw=svg.querySelector('[data-side-jaw]');
+    const sideTrayStations=svg.querySelector('[data-side-tray-stations]');
+    const sideTrayAngle=svg.querySelector('[data-side-tray-angle]');
+    const sideCups=[];
+    // Each of the three pockets remains attached to the same PC7 yaw angle
+    // shown by the detailed top view and purple chassis map overlay.
+    for(const [i,colour] of ['#d4b9ff','#8ce5d1','#f4bd80'].entries()){
+      const cup=svgNode('g',sideTrayStations,{'data-tray-pocket':i+1});
+      svgNode('path',cup,{
+        d:'M -15 -8 L -10 3 Q 0 8 10 3 L 15 -8 Z',
+        fill:'#b6c5d4',stroke:'#7c92a8','stroke-width':1.3
+      });
+      svgNode('ellipse',cup,{cx:0,cy:-8,rx:15,ry:5,
+        fill:'#dce9f2',stroke:'#90a5b5','stroke-width':1.5});
+      svgNode('ellipse',cup,{cx:0,cy:-8,rx:10,ry:3.2,
+        fill:'#344e66',stroke:'#d7e6f3','stroke-width':.9});
+      svgNode('circle',cup,{cx:0,cy:-8,r:2.2,fill:colour});
+      sideCups.push(cup);
+    }
     const keyboardHelp=element('div',panel,undefined,'keyboard-mechanism-shortcuts');
     element('strong',keyboardHelp,'MOCK 机构键盘 · 当前控制：紫色主车');
     const keyboardLegend=element('div',keyboardHelp,undefined,'keyboard-mechanism-shortcut-list');
@@ -360,6 +403,17 @@
       sideHolder.setAttribute('transform',
         'translate(373 140) rotate('+pose.holderRotate.toFixed(3)+')');
       sideJaw.setAttribute('transform','scale(1 '+pose.sideJawScale.toFixed(3)+')');
+      // Side profile changes as the three stations orbit the vertical PC7
+      // axis. No extra tilt/roll servo or fabricated mechanism feedback.
+      const stations=projectTraySide(s.tray_deg);
+      for(const station of stations){
+        const cup=sideCups[station.index];
+        cup.setAttribute('transform','translate('+
+          (491+station.x).toFixed(3)+' '+(170+station.y).toFixed(3)+
+          ') scale('+station.scale.toFixed(3)+')');
+        cup.setAttribute('opacity',station.opacity.toFixed(3));
+      }
+      sideTrayAngle.textContent=s.tray_deg.toFixed(1)+'°';
       if(mapThumb&&mapThumb.mount.isConnected)mapThumb.update(s);
       for(const name of NAMES){
         outputs[name].textContent=s[name].toFixed(name==='lift_mm'?0:1)+AXES[name].unit;
@@ -416,5 +470,5 @@
       keyboard:keyboardController});
   }
   return Object.freeze({AXES,PRESETS,clamp,fresh,setTarget,advance,reset,
-    computeMechanismPose,buildTopRig,applyTopPose,decorateChassis,create});
+    computeMechanismPose,projectTraySide,buildTopRig,applyTopPose,decorateChassis,create});
 });
