@@ -18,9 +18,8 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "algorithm/car_ws/bash"
-# Python 3.10 unittest CLI defaults -t to the repository CWD, which rejects
-# a non-package OpenMV tests/ directory. Set BOTH -s and -t to that folder
-# to import the actual test modules without skipping them or adding hardware.
+# Import the actual host-only OpenMV tests with an explicit start/top
+# directory. The tests/__init__.py marker makes discovery Python 3.10-safe.
 SCHEMA = "car_hardware_free_acceptance_v1"
 BASICS = [
     ("KEYBOARD_AND_SOFTWARE_LOOPBACK", ["bash", str(SCRIPT/"test_keyboard_mapping.sh")], 140),
