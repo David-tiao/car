@@ -241,3 +241,35 @@
 @media(prefers-reduced-motion:reduce) {
   .keyboard-mechanism-axis {transition:none!important;}
 }
+
+
+/* Fifth DOF: an uncalibrated, browser-only rear-platform swivel.
+ * Amber distinguishes it from the four STM32-mapped axes above. */
+.keyboard-mechanism-axis[data-axis="base_yaw_deg"] {
+  grid-column:1/-1;
+  border:1px solid rgba(244,185,117,.7);
+  background:linear-gradient(135deg,rgba(67,49,49,.9),rgba(26,38,59,.97));
+}
+.keyboard-mechanism-axis[data-axis="base_yaw_deg"] .keyboard-mechanism-axis-head strong,
+.keyboard-mechanism-axis[data-axis="base_yaw_deg"] .keyboard-mechanism-value {
+  color:#ffe2a9;
+}
+.keyboard-mechanism-axis[data-axis="base_yaw_deg"] input[type=range] {
+  accent-color:#f1ba7b;
+}
+.keyboard-mechanism-axis[data-axis="base_yaw_deg"] .keyboard-mechanism-presets button.selected {
+  color:#2b1b18;
+  background:#ffd99f;
+  border-color:#ffe1b7;
+}
+.keyboard-mechanism-axis[data-axis="base_yaw_deg"]::after {
+  content:"仅浏览器模拟 · -90°～+90° 是待标定示意范围 · 无 STM32 驱动映射";
+  display:block;
+  margin-top:8px;
+  color:#dfc8ac;
+  font-size:10px;
+  line-height:1.65;
+}
+@media(max-width:650px) {
+  .keyboard-mechanism-axis[data-axis="base_yaw_deg"] {grid-column:auto;}
+}

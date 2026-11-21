@@ -1,5 +1,7 @@
 /* CAD-derived mechanism MOCK, shared across keyboard/SIM/TEST/REAL silhouettes.
- * Mechanical wiring: PC7 turntable, PC6/PC8/PC9 lift, PB15 holder, PB14 jaw.
+ * Hardware-supported: PC7 tray, PC6/PC8/PC9 lift, PB15 holder, PB14 jaw.
+ * Fifth browser-only axis base_yaw_deg models a rear platform swivel:
+ * no mapped STM32 driver, known end stops, or calibrated zero exists.
  * No network, ROS2, serial, motor or physical position feedback is generated.
  */
 (function(root,factory){
@@ -12,6 +14,9 @@
   // firmwareRate is documentation only; previewRate/previewAccel are visual
   // comfort settings. These never affect the robot or STM32 timing.
   const AXES=Object.freeze({
+    // Provisional MOCK-only bounds. NOT validated mechanical travel.
+    base_yaw_deg:{min:-90,max:90,firmwareRate:null,previewRate:55,previewAccel:140,
+      label:'车尾平台独立旋转 · 未接 STM32',unit:'°',mockOnly:true},
     tray_deg:{min:0,max:270,firmwareRate:60,previewRate:45,previewAccel:100,
       label:'PC7 · 车载三工位转盘',unit:'°'},
     lift_mm:{min:0,max:175,firmwareRate:null,previewRate:55,previewAccel:140,
@@ -22,6 +27,7 @@
       label:'PB14 · 夹爪开合',unit:'°'}
   });
   const PRESETS=Object.freeze({
+    base_yaw_deg:[-90,0,90],
     tray_deg:[0,90,180,270],
     lift_mm:[0,24,80,141,170,175],
     holder_deg:[0,180],
@@ -81,7 +87,9 @@
   function computeMechanismPose(s){
     const r=clamp('grip_deg',s.grip_deg)/140;
     return Object.freeze({
+      baseRotate:clamp('base_yaw_deg',s.base_yaw_deg),
       trayRotate:clamp('tray_deg',s.tray_deg),
+      absoluteTrayRotate:clamp('base_yaw_deg',s.base_yaw_deg)+clamp('tray_deg',s.tray_deg),
       liftOffset:-clamp('lift_mm',s.lift_mm)/175*104,
       liftTopOffset:-clamp('lift_mm',s.lift_mm)/175*3.8,
       holderRotate:-clamp('holder_deg',s.holder_deg),
@@ -91,8 +99,10 @@
   }
   // Project the SAME PC7 three-pocket yaw into the side silhouette.
   // CAD/firmware provide only ONE driven tray axis, not a second tilt motor.
-  function projectTraySide(angleDeg){
-    const phase=clamp('tray_deg',angleDeg)*Math.PI/180;
+  function projectTraySide(angleDeg,baseYawDeg=0){
+    // Three cups orbit in the platform frame: absolute yaw = platform + PC7.
+    const phase=(clamp('tray_deg',angleDeg)+
+      clamp('base_yaw_deg',baseYawDeg))*Math.PI/180;
     return Object.freeze([0,1,2].map(index=>{
       const theta=phase-Math.PI/2+index*2*Math.PI/3;
       const depth=Math.sin(theta);
@@ -104,6 +114,16 @@
         opacity:.67+.33*(depth+1)/2
       });
     }));
+  }
+  function projectRearBaseSide(baseYawDeg){
+    const rad=clamp('base_yaw_deg',baseYawDeg)*Math.PI/180;
+    // A yawing rectangular base appears narrower from a fixed side camera.
+    // Never describe this as tilt about the horizontal axis.
+    return Object.freeze({
+      widthRatio:.33+.67*Math.abs(Math.cos(rad)),
+      pointerX:25*Math.sin(rad),
+      angleDeg:baseYawDeg
+    });
   }
   function element(tag,parent,label,klass){
     const n=document.createElement(tag);
@@ -193,12 +213,26 @@
       'stroke-width':2.2,'stroke-linecap':'round'});
     // Machined three-pocket tray with bearing race and a visible spindle.
     const turret=svgNode('g',base,{transform:'translate(36 15)'});
+    // Fixed bearing is bolted to the chassis. The separate platform below
+    // the PC7 tray turns around this bearing even when the tray itself holds.
     svgNode('circle',turret,{r:50,fill:'#091827',
       stroke:'#7e9caf','stroke-width':2.8});
-    svgNode('circle',turret,{r:45,fill:'#22384f',
+    svgNode('circle',turret,{r:46,fill:'#14273b',
+      stroke:'#91b4c9','stroke-width':1.1});
+    const rearPlatform=svgNode('g',turret,{'data-km-rear-platform':'MOCK_UNMAPPED'});
+    svgNode('rect',rearPlatform,{x:-42,y:-33,width:84,height:66,rx:12,
+      fill:'#365a75',stroke:'#c5deed','stroke-width':2.1});
+    svgNode('rect',rearPlatform,{x:-36,y:-27,width:72,height:54,rx:9,
+      fill:'#203c58',stroke:'#6c9aba','stroke-width':1.4});
+    svgNode('path',rearPlatform,{d:'M -38 0 H -18 M 18 0 H 38',
+      stroke:'#e3b679','stroke-width':4,'stroke-linecap':'round'});
+    svgNode('path',rearPlatform,{d:'M 0 -42 L -8 -30 H 8 Z',
+      fill:'#f3c17e',stroke:'#fff2d5','stroke-width':1.2});
+    const trayHub=svgNode('g',rearPlatform,{});
+    svgNode('circle',trayHub,{r:36,fill:'#22384f',
       stroke:'#c3d9e8','stroke-width':1.7});
-    svgNode('circle',turret,{r:40,fill:'#142739',
-      stroke:'#5b7c98','stroke-width':2});
+    svgNode('circle',trayHub,{r:33,fill:'#142739',
+      stroke:'#5b7c98','stroke-width':1.8});
     if(!compact)for(let n=0;n<12;n++){
       const theta=2*Math.PI*n/12;
       svgNode('path',turret,{d:'M '+(44*Math.cos(theta)).toFixed(2)+
@@ -206,7 +240,7 @@
         (47*Math.cos(theta)).toFixed(2)+' '+(47*Math.sin(theta)).toFixed(2),
         stroke:'#c5dce9','stroke-width':1.3,opacity:.85});
     }
-    const tray=svgNode('g',turret,{});
+    const tray=svgNode('g',trayHub,{'data-km-pc7-tray':'RELATIVE_TO_PLATFORM'});
     svgNode('path',tray,{d:'M 0 -39 L 34 20 L -34 20 Z',
       fill:'#607e9c',stroke:'#e4f2ff','stroke-width':2.7,
       'stroke-linejoin':'round'});
@@ -226,12 +260,14 @@
       if(!compact)svgNode('path',tray,{d:'M '+(x-3.2)+' '+(y-2.3)+' h 5.1',
         stroke:'#a5bdd1','stroke-width':1,'stroke-linecap':'round'});
     }
-    svgNode('circle',turret,{r:6.5,fill:'#d9d4f6',
+    svgNode('circle',trayHub,{r:6.5,fill:'#d9d4f6',
       stroke:'#6d5a9c','stroke-width':2});
-    svgNode('circle',turret,{r:2.1,fill:'#7e69be'});
-    return {base,left,right,dial,tray,front};
+    svgNode('circle',trayHub,{r:2.1,fill:'#7e69be'});
+    return {base,left,right,dial,tray,front,rearPlatform};
   }
   function applyTopPose(rig,pose){
+    rig.rearPlatform.setAttribute('transform',
+      'rotate('+pose.baseRotate.toFixed(3)+')');
     rig.tray.setAttribute('transform','rotate('+pose.trayRotate.toFixed(3)+')');
     rig.dial.setAttribute('transform','translate(-14 0) rotate('+pose.holderRotate.toFixed(3)+')');
     rig.left.setAttribute('transform','translate(0 '+pose.jawOffset.toFixed(3)+')');
@@ -256,9 +292,9 @@
     const panel=element('section',host,undefined,'keyboard-mechanism-panel');
     panel.id='carKeyboardMechanismPreview';panel.dataset.mock='true';
     element('div',panel,'04 / ROBOT MECHANISM · 纯网页模拟','keyboard-mechanism-eyebrow');
-    element('h3',panel,'车载转盘 · 升降滑台 · 旋转夹爪','keyboard-mechanism-title');
+    element('h3',panel,'车尾平台 · 三工位转盘 · 升降旋转夹爪','keyboard-mechanism-title');
     element('p',panel,
-      '大图、地图小车采用同一套机械轮廓。机构数值仅为网页预览，不是 STM32 位置回执。',
+      '车尾平台和 PC7 托盘是两层独立旋转。新增平台角度仅供 MOCK 演示，未接 STM32，也未标定机械限位。',
       'keyboard-mechanism-note');
     const figure=element('div',panel,undefined,'keyboard-mechanism-figure');
     const svg=svgNode('svg',figure,{viewBox:'0 0 560 246',role:'img',
@@ -293,14 +329,21 @@
       '<path d="M -25 -17 l -7 -4 M -25 17 l -7 4" stroke="#be99fa" stroke-width="3" fill="none"/></g></g></g>',
       '<g data-side-tray-assembly>',
       '<rect x="486" y="179" width="10" height="13" rx="2" fill="#536578" stroke="#cedae6"/>',
-      '<ellipse cx="491" cy="185" rx="42" ry="7" fill="#7990a4" stroke="#d6e4f1" stroke-width="1.4"/>',
-      '<ellipse cx="491" cy="181" rx="42" ry="7" fill="#c6d4e0" stroke="#859aac" stroke-width="2"/>',
-      '<ellipse cx="491" cy="177" rx="35" ry="5" fill="#536e87" stroke="#e1eafa"/>',
+      '<ellipse cx="491" cy="187" rx="42" ry="7" fill="#7990a4" stroke="#d6e4f1" stroke-width="1.4"/>',
+      '<g data-side-swivel-platform transform="translate(491 181)">',
+      '<rect x="-43" y="-7" width="86" height="12" rx="5" fill="#516d88" stroke="#b4d3e7" stroke-width="1.5"/>',
+      '<ellipse cx="0" cy="-7" rx="39" ry="6" fill="#9ab1c7" stroke="#e0eefa" stroke-width="1.2"/>',
+      '<path d="M -35 2 H -17 M 17 2 H 35" stroke="#f0c27e" stroke-width="2.4"/>',
+      '</g>',
+      '<g data-side-swivel-pointer>',
+      '<circle cx="491" cy="173" r="3.5" fill="#ffcf8b"/>',
+      '</g>',
       '<g data-side-tray-stations></g>',
       '<circle cx="491" cy="177" r="4" fill="#d2c8ef" stroke="#5a6580" stroke-width="1.2"/>',
       '</g>',
-      '<text x="432" y="225" class="km-view-small">PC7 · 三工位同步旋转</text>',
-      '<text x="483" y="238" data-side-tray-angle class="km-view-small">0°</text>',
+      '<text x="411" y="223" class="km-view-small">平台旋转（MOCK）+ PC7 转盘</text>',
+      '<text x="412" y="238" data-side-platform-angle class="km-view-small">平台 0°</text>',
+      '<text x="494" y="238" data-side-tray-angle class="km-view-small">PC7 0°</text>',
       '</g><text x="18" y="235" class="km-view-small">MOCK / 非实车位置测量</text>'
     ].join('');
     const top=buildTopRig(svg.querySelector('[data-km-top-mount]'));
@@ -309,6 +352,9 @@
     const sideJaw=svg.querySelector('[data-side-jaw]');
     const sideTrayStations=svg.querySelector('[data-side-tray-stations]');
     const sideTrayAngle=svg.querySelector('[data-side-tray-angle]');
+    const sidePlatform=svg.querySelector('[data-side-swivel-platform]');
+    const sidePlatformPointer=svg.querySelector('[data-side-swivel-pointer] circle');
+    const sidePlatformAngle=svg.querySelector('[data-side-platform-angle]');
     const sideCups=[];
     // Each of the three pockets remains attached to the same PC7 yaw angle
     // shown by the detailed top view and purple chassis map overlay.
@@ -329,7 +375,8 @@
     element('strong',keyboardHelp,'MOCK 机构键盘 · 当前控制：紫色主车');
     const keyboardLegend=element('div',keyboardHelp,undefined,'keyboard-mechanism-shortcut-list');
     for(const text of [
-      'J / L · 转盘 − / +', 'I / K · 升 / 降',
+      '[ / ] · 尾部平台 − / +', '5/6/7 · 平台 −90/0/+90°',
+      'J / L · PC7 转盘 − / +', 'I / K · 升 / 降',
       'U / O · 翻转 − / +','N / M · 张开 / 夹紧',
       '1–4 · 转盘角度','Z / X / C · 夹爪预设',
       'T · 抓取低位','R · 演示零位'
@@ -342,6 +389,7 @@
     const controls=element('div',panel,undefined,'keyboard-mechanism-controls');
     const sliders={},outputs={};
     const presetNames={
+      base_yaw_deg:{'-90':'左转 90°',0:'中位 0°',90:'右转 90°'},
       tray_deg:{0:'0° 原点',90:'90°',180:'180°',270:'270°'},
       lift_mm:{0:'零位',24:'抓取低位',80:'接近',141:'转运',170:'上位',175:'最高预设'},
       holder_deg:{0:'朝前',180:'翻转 180°'},
@@ -380,7 +428,7 @@
     });
     element('span',foot,'MOCK ONLY · STM32 TX OFF','keyboard-mechanism-only');
     element('p',panel,
-      'PC7 转盘；PC6 升降脉冲、PC8/PC9 方向；PB15 机构翻转；PB14 夹爪。界面平滑速度独立于固件参数。升降 0 mm 为人工零位，尚未做限位寻零与机械干涉检测。',
+      '新增车尾平台旋转为假定的第五个 MOCK 自由度（-90°～+90°），仓库尚无对应 STM32 执行器、限位或零位定义；PC7 仍独立驱动三工位托盘。PC6/PC8/PC9 升降、PB15 翻转、PB14 夹爪均不发送实车命令。',
       'keyboard-mechanism-note keyboard-mechanism-footnote');
 
     let mapThumb=null;
@@ -403,9 +451,15 @@
       sideHolder.setAttribute('transform',
         'translate(373 140) rotate('+pose.holderRotate.toFixed(3)+')');
       sideJaw.setAttribute('transform','scale(1 '+pose.sideJawScale.toFixed(3)+')');
-      // Side profile changes as the three stations orbit the vertical PC7
-      // axis. No extra tilt/roll servo or fabricated mechanism feedback.
-      const stations=projectTraySide(s.tray_deg);
+      // Two nested yaw angles. The platform's own foreshortening and axis
+      // pointer change even when PC7 remains stationary, while the three
+      // bowls use the COMPOSED yaw of platform and PC7.
+      const swivel=projectRearBaseSide(s.base_yaw_deg);
+      sidePlatform.setAttribute('transform','translate(491 181) scale('+
+        swivel.widthRatio.toFixed(3)+' 1)');
+      sidePlatformPointer.setAttribute('cx',(491+swivel.pointerX).toFixed(3));
+      sidePlatformAngle.textContent='平台 '+s.base_yaw_deg.toFixed(1)+'°';
+      const stations=projectTraySide(s.tray_deg,s.base_yaw_deg);
       for(const station of stations){
         const cup=sideCups[station.index];
         cup.setAttribute('transform','translate('+
@@ -470,5 +524,6 @@
       keyboard:keyboardController});
   }
   return Object.freeze({AXES,PRESETS,clamp,fresh,setTarget,advance,reset,
-    computeMechanismPose,projectTraySide,buildTopRig,applyTopPose,decorateChassis,create});
+    computeMechanismPose,projectTraySide,projectRearBaseSide,
+    buildTopRig,applyTopPose,decorateChassis,create});
 });

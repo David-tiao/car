@@ -10,6 +10,8 @@
 })(typeof window==='undefined'?null:window,function(){
   'use strict';
   const HELD=Object.freeze({
+    '[':{axis:'base_yaw_deg',direction:-1},
+    ']':{axis:'base_yaw_deg',direction:1},
     j:{axis:'tray_deg',direction:-1},
     l:{axis:'tray_deg',direction:1},
     i:{axis:'lift_mm',direction:1},
@@ -22,11 +24,22 @@
   const PRESET=Object.freeze({
     '1':{axis:'tray_deg',value:0},'2':{axis:'tray_deg',value:90},
     '3':{axis:'tray_deg',value:180},'4':{axis:'tray_deg',value:270},
+    // Fifth MOCK axis, provisional bounds (NOT hardware-calibrated).
+    '5':{axis:'base_yaw_deg',value:-90},
+    '6':{axis:'base_yaw_deg',value:0},
+    '7':{axis:'base_yaw_deg',value:90},
     z:{axis:'grip_deg',value:0},x:{axis:'grip_deg',value:110},
     c:{axis:'grip_deg',value:140},
     t:{axis:'lift_mm',value:24}
   });
   const HOLD_KEYS=Object.freeze(Object.keys(HELD));
+  function eventKey(e){
+    // Physical bracket keys are reliable across Chinese/English IME layouts,
+    // whose KeyboardEvent.key may return full-width punctuation.
+    if(e.code==='BracketLeft')return '[';
+    if(e.code==='BracketRight')return ']';
+    return String(e.key||'').toLowerCase();
+  }
   function isEditable(element){
     if(!element)return false;
     if(element.isContentEditable)return true;
@@ -60,7 +73,7 @@
     function keydown(e){
       if(disposed||e.ctrlKey||e.metaKey||e.altKey||isEditable(e.target))return;
       if(doc.hidden)return;
-      const key=String(e.key||'').toLowerCase();
+      const key=eventKey(e);
       if(Object.prototype.hasOwnProperty.call(HELD,key)){
         e.preventDefault();
         if(!held.has(key)){held.add(key);update();}
@@ -77,7 +90,7 @@
       }
     }
     function keyup(e){
-      const key=String(e.key||'').toLowerCase();
+      const key=eventKey(e);
       if(held.delete(key)){e.preventDefault();update();}
     }
     function clear(){
@@ -119,5 +132,5 @@
     doc.addEventListener('visibilitychange',visibility);
     return Object.freeze({tick,clear,destroy,heldKeys:()=>[...held]});
   }
-  return Object.freeze({HELD,PRESET,HOLD_KEYS,isEditable,direction,create});
+  return Object.freeze({HELD,PRESET,HOLD_KEYS,eventKey,isEditable,direction,create});
 });
