@@ -12,6 +12,7 @@
 #include <array>
 #include <cerrno>
 #include <cmath>
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -346,7 +347,7 @@ void draw(const cv::Mat& frame, const Options& opt, const Target& step,
         cv::putText(shown, str, {14, 26 + line * 29}, cv::FONT_HERSHEY_SIMPLEX,
                     0.63, color, 2, cv::LINE_AA);
     };
-    cv::rectangle(shown, {0, 0, shown.cols, 142}, cv::Scalar(14, 15, 17), -1);
+    cv::rectangle(shown, cv::Rect(0, 0, shown.cols, std::min(142, shown.rows)), cv::Scalar(14, 15, 17), -1);
     print_line(0, "MATERIAL " + std::to_string(step_index + 1) +
                   "/6  BATCH " + std::to_string(step.batch) + "  " +
                   pi_material::color_name(step.color));
