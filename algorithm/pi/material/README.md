@@ -41,6 +41,12 @@ Pi5 Raspberry Pi OS ARM64（安装依赖先核实系统对应包版本）：
 sudo apt update
 sudo apt install -y build-essential cmake libopencv-dev rpicam-apps
 
+# 先构建 QR（产出 pi_qr 扫码程序）
+cmake -S algorithm/pi/QR -B build/pi_qr -DCMAKE_BUILD_TYPE=Release
+cmake --build build/pi_qr -j2
+ctest --test-dir build/pi_qr --output-on-failure
+
+# 再构建材料识别程序
 cmake -S algorithm/pi/material -B build/pi_material -DCMAKE_BUILD_TYPE=Release
 cmake --build build/pi_material -j2
 ctest --test-dir build/pi_material --output-on-failure
@@ -103,7 +109,7 @@ v_advice = clip_norm(K·Δq_full, max_v)    // mm/s，比例伺服速度建议
 ```bash
 ./build/pi_material/pi_material --source pi \
   --target-u 320 --target-v 380 \
-  --jacobian=-2.10,0.04,0.12,-1.85 \
+  --jacobian '-2.10,0.04,0.12,-1.85' \
   --pixel-tolerance 8 --gain 0.7 \
   --max-step-mm 5 --max-speed-mm-s 25
 ```
