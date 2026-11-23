@@ -30,20 +30,20 @@ const char* color_name(int id) {
 }
 
 std::array<Target, 6> make_targets(const pi_qr::TaskCode& task) {
-    if (!pi_qr::parse_task_code(task.text))
-        throw std::invalid_argument("invalid QR task code");
+    const auto parsed = pi_qr::parse_task_code(task.text);
+    if (!parsed) throw std::invalid_argument("invalid QR task code");
     std::array<int, 7> storage_ring{};
     for (int i = 0; i < 3; ++i) {
-        const int color = task.groups[0][i] - '0';
-        storage_ring[color] = task.groups[1][i] - '0';
+        const int color = parsed->groups[0][i] - '0';
+        storage_ring[color] = parsed->groups[1][i] - '0';
     }
     std::array<Target, 6> targets{};
     for (int index = 0; index < 6; ++index) {
         const int batch = index / 3;
         const int local = index % 3;
-        const int color = task.groups[batch * 2][local] - '0';
+        const int color = parsed->groups[batch * 2][local] - '0';
         targets[index] = {index, batch + 1, color,
-                          task.groups[batch * 2 + 1][local] - '0',
+                          parsed->groups[batch * 2 + 1][local] - '0',
                           storage_ring[color]};
     }
     return targets;
