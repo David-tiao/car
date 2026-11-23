@@ -11,6 +11,7 @@
 #include <opencv2/videoio.hpp>
 
 #include <algorithm>
+#include <cmath>
 #include <cerrno>
 #include <csignal>
 #include <cstdio>
@@ -132,7 +133,7 @@ Options parse_args(int argc, char** argv) {
         throw std::invalid_argument("capture dimensions must be even; width=320..1920 height=240..1080");
     if (opt.fps < 1 || opt.fps > 60 || opt.camera_id < 0 ||
         opt.screen_width < 320 || opt.screen_height < 240 ||
-        opt.screen_height_mm < 0)
+        !std::isfinite(opt.screen_height_mm) || opt.screen_height_mm < 0)
         throw std::invalid_argument("invalid camera or display setting");
     return opt;
 }
@@ -420,8 +421,7 @@ int run(const Options& opt) {
             }
         }
         // On a still image, repeats exercise the filter logic only; not true temporal stability.
-        if (static_image && (opt.headless || frame_count >= opt.confirm_frames) &&
-            opt.headless)
+        if (static_image && opt.headless && frame_count >= opt.confirm_frames)
             return filter.confirmed().has_value() ? 0 : 2;
     }
     if (!opt.headless) cv::destroyAllWindows();
