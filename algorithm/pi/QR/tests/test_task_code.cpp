@@ -1,5 +1,8 @@
 #include "pi_qr/task_code.hpp"
 
+#ifdef NDEBUG
+#undef NDEBUG  // Keep C++ unit assertions active in Release builds.
+#endif
 #include <cassert>
 #include <iostream>
 #include <stdexcept>
@@ -28,6 +31,9 @@ int main() {
         "156+123+516+231\0", // explicit literal backslash-zero? size differs
     };
     for (const auto& s : invalid) assert(!parse_task_code(s).has_value());
+    std::string embedded_nul = good->text;
+    embedded_nul.push_back('\\0');
+    assert(!parse_task_code(embedded_nul).has_value());
 
     ThreeFrameFilter filter;
     assert(!filter.observe({good->text}));
