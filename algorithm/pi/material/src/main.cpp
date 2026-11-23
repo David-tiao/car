@@ -4,6 +4,7 @@
 #include "pi_material/camera.hpp"
 #include "pi_material/core.hpp"
 #include "pi_material/detector.hpp"
+#include "pi_material/yolo_detector.hpp"
 
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -20,6 +21,7 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -36,6 +38,9 @@ using pi_material::ServoEstimate;
 struct Options {
     pi_material::CameraOptions camera;
     pi_material::DetectorConfig detector;
+    pi_material::YoloConfig yolo;
+    std::string backend = "hsv"; // hsv | yolo
+    bool hsv_file_given = false;
     pi_material::ServoSettings servo;
     std::string qr_file = "/tmp/pi_qr_verified.txt";
     std::string task_code;
@@ -91,6 +96,10 @@ void usage(const char* program) {
         << "  --width 640 --height 480 --fps 15\n"
         << "  --image-list /tmp/frames.txt      offline paths, one per line\n"
         << "  --repeat-each 3                   repeat each offline still image\n"
+        << "  --backend hsv|yolo                hsv by default; YOLO uses ONNX\n"
+        << "  --model /path/weights.onnx        REQUIRED for --backend yolo\n"
+        << "  --yolo-imgsz 640                  square ONNX input dimension\n"
+        << "  --confidence 0.50 --nms-iou 0.45  YOLO thresholds\n"
         << "  --roi x,y,w,h                     crop to material viewing station\n"
         << "  --disk cx,cy,r                    optional observed turntable orbit gate\n"
         << "  --hsv-file thresholds.csv         per-camera color thresholds 1..6\n"
@@ -123,6 +132,13 @@ Options parse_args(int argc, char** argv) {
         if (key == "--qr-file") opt.qr_file = val;
         else if (key == "--task-code") opt.task_code = val;
         else if (key == "--max-task-age-sec") opt.max_task_age_sec = integer(val.c_str(), key);
+        else if (key == "--backend") opt.backend = val;
+        else if (key == "--model") opt.yolo.onnx_path = val;
+        else if (key == "--yolo-imgsz") opt.yolo.input_size = integer(val.c_str(), key);
+        else if (key == "--confidence") opt.yolo.confidence =
+            static_cast<float>(number(val.c_str(), key));
+        else if (key == "--nms-iou") opt.yolo.nms_iou =
+            static_cast<float>(number(val.c_str(), key));
         else if (key == "--source") opt.camera.source = val;
         else if (key == "--device") opt.camera.device = val;
         else if (key == "--camera") opt.camera.camera_index = integer(val.c_str(), key);
@@ -157,6 +173,7 @@ Options parse_args(int argc, char** argv) {
             if (a[2] <= 0) throw std::invalid_argument("disk radius must be positive");
             opt.detector.disk = cv::Vec3d(a[0], a[1], a[2]);
         } else if (key == "--hsv-file") {
+            opt.hsv_file_given = true;
             opt.detector.ranges = pi_material::load_hsv_ranges(val);
         } else if (key == "--gain") opt.servo.gain_per_s = number(val.c_str(), key);
         else if (key == "--max-step-mm") opt.servo.max_step_mm = number(val.c_str(), key);
@@ -182,6 +199,14 @@ Options parse_args(int argc, char** argv) {
         opt.focal_px < 0 || opt.known_diameter_mm < 0 ||
         ((opt.focal_px > 0) != (opt.known_diameter_mm > 0)))
         throw std::invalid_argument("invalid camera, confirm or range calibration settings");
+    if (opt.backend != "hsv" && opt.backend != "yolo")
+        throw std::invalid_argument("--backend must be hsv or yolo");
+    if (opt.backend == "yolo" && opt.yolo.onnx_path.empty())
+        throw std::invalid_argument("--backend yolo REQUIRES --model six-class ONNX");
+    if (opt.backend == "yolo" && opt.hsv_file_given)
+        throw std::invalid_argument("--hsv-file applies to HSV backend only");
+    if (opt.backend == "hsv" && !opt.yolo.onnx_path.empty())
+        throw std::invalid_argument("--model requires --backend yolo");
     if (opt.camera.source != "pi" && opt.camera.source != "usb" &&
         opt.camera.source != "images")
         throw std::invalid_argument("source must be pi, usb or images");
@@ -225,6 +250,7 @@ struct Record {
     Spot spot;
     ServoEstimate servo;
     std::optional<double> range_mm;
+    std::optional<double> confidence; // YOLO confidence only, not calibrated probability
 };
 
 std::string status_of(const Record& r) {
@@ -260,6 +286,7 @@ void write_result(const Options& opt, const pi_qr::TaskCode& task,
     out << "{\n  \"schema\": \"pi_material_v1\",\n"
         << "  \"task_code\": \"" << task.text << "\",\n"
         << "  \"camera_source\": \"" << opt.camera.source << "\",\n"
+        << "  \"detector_backend\": \"" << opt.backend << "\",\n"
         << "  \"physical_actions_executed\": false,\n"
         << "  \"all_six_observed\": " << (observed == 6 ? "true" : "false") << ",\n"
         << "  \"observed_count\": " << observed << ",\n"
@@ -300,6 +327,9 @@ void write_result(const Options& opt, const pi_qr::TaskCode& task,
                     << ", \"bounded_step_mm\": null"
                     << ", \"suggested_velocity_mm_s\": null";
             }
+            out << ", \"detector_confidence\": ";
+            if (result.confidence) out << *result.confidence;
+            else out << "null";
             out << ", \"approx_monocular_range_mm\": ";
             if (result.range_mm) out << *result.range_mm;
             else out << "null";
@@ -331,6 +361,15 @@ void draw(const cv::Mat& frame, const Options& opt, const Target& step,
     }
     for (const auto& hit : detection.candidates) {
         cv::rectangle(shown, hit.box, cv::Scalar(0, 230, 255), 2);
+        if (hit.confidence > 0) {
+            std::ostringstream label;
+            label << "YOLO " << std::fixed << std::setprecision(2)
+                  << hit.confidence;
+            cv::putText(shown, label.str(),
+                {hit.box.x, std::max(18, hit.box.y - 5)},
+                cv::FONT_HERSHEY_SIMPLEX, 0.48, cv::Scalar(255,255,255),
+                1, cv::LINE_AA);
+        }
         cv::circle(shown,
                    cv::Point(static_cast<int>(hit.spot.u),
                              static_cast<int>(hit.spot.v)),
@@ -382,6 +421,7 @@ void report_record(int index, const Target& step, const Record& record) {
               << " storage_ring=" << step.storage_ring
               << " status=" << status_of(record);
     if (record.observed) {
+        if (record.confidence) std::cout << " yolo_conf=" << *record.confidence;
         std::cout << " uv=(" << record.spot.u << "," << record.spot.v << ")"
                   << " error_px=(" << record.servo.error_u_px << ","
                   << record.servo.error_v_px << ")";
@@ -403,10 +443,17 @@ int run(const Options& opt) {
     const auto plan = pi_material::make_targets(task);
     std::array<Record, 6> records{};
     pi_material::FrameSource frames(opt.camera);
-    pi_material::ColorDetector detector(opt.detector);
+    std::unique_ptr<pi_material::ColorDetector> hsv_detector;
+    std::unique_ptr<pi_material::YoloDetector> yolo_detector;
+    if (opt.backend == "yolo")
+        yolo_detector = std::make_unique<pi_material::YoloDetector>(
+            opt.yolo, opt.detector);
+    else
+        hsv_detector = std::make_unique<pi_material::ColorDetector>(opt.detector);
     pi_material::StableSpot tracking(opt.confirm_frames, opt.jitter_px);
 
     std::cout << "QR_TASK " << task.text << " SOURCE=" << opt.camera.source
+              << " BACKEND=" << opt.backend
               << " PLAN=6 TARGETS, NO HARDWARE ACTUATION\n";
     if (frames.offline())
         std::cout << "OFFLINE_IMAGE_REPEATS ARE NOT INDEPENDENT CAMERA FRAMES\n";
@@ -417,6 +464,7 @@ int run(const Options& opt) {
     std::optional<Spot> current;
     std::optional<ServoEstimate> current_servo;
     std::optional<double> current_range;
+    std::optional<double> current_confidence;
     int index = 0;
     std::size_t frame_no = 0;
     while (index < 6 && !pi_material::stop_requested()) {
@@ -425,6 +473,7 @@ int run(const Options& opt) {
         if (frame.empty()) {
             tracking.reset();
             current.reset(); current_servo.reset(); current_range.reset();
+            current_confidence.reset();
             continue;
         }
         pi_material::ServoSettings servo_cfg = opt.servo;
@@ -438,12 +487,15 @@ int run(const Options& opt) {
                    servo_cfg.ref_u_px < 0 || servo_cfg.ref_v_px < 0) {
             throw std::runtime_error("taught target is outside camera frame");
         }
-        const auto detection = detector.detect(frame, plan[index].color);
+        const auto detection = yolo_detector
+            ? yolo_detector->detect(frame, plan[index].color)
+            : hsv_detector->detect(frame, plan[index].color);
         const int previous_count = tracking.count();
         current = tracking.update(detection.unique);
         if (current) {
             current_servo = pi_material::calculate_servo(*current, servo_cfg);
             current_range = estimate_range(*current, opt);
+            current_confidence = detection.unique_confidence;
             if (previous_count < opt.confirm_frames) {
                 std::cout << "TARGET_STABLE step=" << (index+1)
                           << " color=" << pi_material::color_name(plan[index].color)
@@ -453,6 +505,7 @@ int run(const Options& opt) {
             }
         } else {
             current_servo.reset(); current_range.reset();
+            current_confidence.reset();
         }
         ++frame_no;
         if (!opt.headless) {
@@ -467,7 +520,7 @@ int run(const Options& opt) {
         if (key == 'q' || key == 'Q' || key == 27) break;
         if (key == 'r' || key == 'R') {
             tracking.reset(); current.reset(); current_servo.reset();
-            current_range.reset();
+            current_range.reset(); current_confidence.reset();
             std::cout << "TRACKER_RESET\n";
             continue;
         }
@@ -483,12 +536,14 @@ int run(const Options& opt) {
                 rec.spot = *current;
                 rec.servo = *current_servo;
                 rec.range_mm = current_range;
+                rec.confidence = current_confidence;
             }
             report_record(index, plan[index], rec);
             write_result(opt, task, plan, records);
             ++index;
             tracking.reset();
             current.reset(); current_servo.reset(); current_range.reset();
+            current_confidence.reset();
         } else if (accept) {
             std::cout << "NOT_STABLE: cannot mark target observed\n";
         }
