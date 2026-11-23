@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <csignal>
 #include <cstdio>
@@ -251,6 +252,7 @@ struct Record {
     ServoEstimate servo;
     std::optional<double> range_mm;
     std::optional<double> confidence; // YOLO confidence only, not calibrated probability
+    double processing_ms = 0;  // detector wall-time, NOT capture-to-action latency
 };
 
 std::string status_of(const Record& r) {
@@ -327,6 +329,7 @@ void write_result(const Options& opt, const pi_qr::TaskCode& task,
                     << ", \"bounded_step_mm\": null"
                     << ", \"suggested_velocity_mm_s\": null";
             }
+            out << ", \"detector_processing_ms\": " << result.processing_ms;
             out << ", \"detector_confidence\": ";
             if (result.confidence) out << *result.confidence;
             else out << "null";
@@ -422,6 +425,7 @@ void report_record(int index, const Target& step, const Record& record) {
               << " status=" << status_of(record);
     if (record.observed) {
         if (record.confidence) std::cout << " yolo_conf=" << *record.confidence;
+        std::cout << " detector_ms=" << record.processing_ms;
         std::cout << " uv=(" << record.spot.u << "," << record.spot.v << ")"
                   << " error_px=(" << record.servo.error_u_px << ","
                   << record.servo.error_v_px << ")";
@@ -487,9 +491,13 @@ int run(const Options& opt) {
                    servo_cfg.ref_u_px < 0 || servo_cfg.ref_v_px < 0) {
             throw std::runtime_error("taught target is outside camera frame");
         }
+        const auto infer_started = std::chrono::steady_clock::now();
         const auto detection = yolo_detector
             ? yolo_detector->detect(frame, plan[index].color)
             : hsv_detector->detect(frame, plan[index].color);
+        const double processing_ms =
+            std::chrono::duration<double, std::milli>(
+                std::chrono::steady_clock::now() - infer_started).count();
         const int previous_count = tracking.count();
         current = tracking.update(detection.unique);
         if (current) {
@@ -500,7 +508,8 @@ int run(const Options& opt) {
                 std::cout << "TARGET_STABLE step=" << (index+1)
                           << " color=" << pi_material::color_name(plan[index].color)
                           << " center=(" << current->u << "," << current->v
-                          << ") servo_calibrated="
+                          << ") detector_ms=" << processing_ms
+                          << " servo_calibrated="
                           << (current_servo->calibrated ? "yes" : "no") << "\n";
             }
         } else {
@@ -537,6 +546,7 @@ int run(const Options& opt) {
                 rec.servo = *current_servo;
                 rec.range_mm = current_range;
                 rec.confidence = current_confidence;
+                rec.processing_ms = processing_ms;
             }
             report_record(index, plan[index], rec);
             write_result(opt, task, plan, records);
