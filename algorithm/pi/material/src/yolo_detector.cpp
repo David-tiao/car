@@ -66,11 +66,15 @@ cv::Rect unproject(float cx, float cy, float w, float h,
     const double top = (cy - h * 0.5 - box.pad_top) / box.scale_y + box.roi.y;
     const double right = (cx + w * 0.5 - box.pad_left) / box.scale_x + box.roi.x;
     const double bottom = (cy + h * 0.5 - box.pad_top) / box.scale_y + box.roi.y;
-    // Saturate outrageous malformed predictions before converting to int.
+    // Don't servo on a truncated bounding box: its center is biased.
+    // Allow <=1 pixel floating-point/resize rounding beyond crop borders.
     if (!std::isfinite(left) || !std::isfinite(right) ||
         !std::isfinite(top) || !std::isfinite(bottom) ||
         std::max({std::abs(left), std::abs(right),
-                  std::abs(top), std::abs(bottom)}) > 1e7)
+                  std::abs(top), std::abs(bottom)}) > 1e7 ||
+        left < box.roi.x - 1.0 || top < box.roi.y - 1.0 ||
+        right > box.roi.x + box.roi.width + 1.0 ||
+        bottom > box.roi.y + box.roi.height + 1.0)
         return {};
     const auto clamp_x = [&](double x) {
         return static_cast<int>(std::clamp(std::lround(x),
