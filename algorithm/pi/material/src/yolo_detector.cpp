@@ -121,8 +121,9 @@ Detection decode_yolo_raw(const cv::Mat& output, const LetterboxInfo& info,
         throw std::invalid_argument("YOLO class must map to material color 1..6");
     if (info.input_size != yolo.input_size)
         throw std::invalid_argument("letterbox and model sizes disagree");
-    if (!(spatial.max_area_fraction > 0 && spatial.max_area_fraction <= 1))
-        throw std::invalid_argument("bad max_area_fraction");
+    if (!(spatial.max_area_fraction > 0 && spatial.max_area_fraction <= 1) ||
+        !(spatial.min_area_px > 0) || !std::isfinite(spatial.min_area_px))
+        throw std::invalid_argument("invalid material bounding-box area limits");
     const auto accessor = parse_layout(output);
     if (accessor.count <= 0 || accessor.count > 100000)
         throw std::invalid_argument("unsupported YOLO prediction count");
@@ -152,6 +153,7 @@ Detection decode_yolo_raw(const cv::Mat& output, const LetterboxInfo& info,
             accessor.get(row, 0), accessor.get(row, 1),
             accessor.get(row, 2), accessor.get(row, 3), info);
         if (rect.width < 10 || rect.height < 10 ||
+            rect.area() < spatial.min_area_px ||
             rect.area() > info.roi.area() * spatial.max_area_fraction)
             continue;
         const auto u = rect.x + rect.width * 0.5;
