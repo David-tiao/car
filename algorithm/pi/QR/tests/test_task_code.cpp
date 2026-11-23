@@ -28,11 +28,10 @@ int main() {
         "056+123+506+231",  // invalid color 0
         "156+123+516+23A",  // non-digit
         "156+123+516+231\nEXEC", // don't accept embedded text
-        "156+123+516+231\0", // explicit literal backslash-zero? size differs
     };
     for (const auto& s : invalid) assert(!parse_task_code(s).has_value());
     std::string embedded_nul = good->text;
-    embedded_nul.push_back('\\0');
+    embedded_nul.push_back('\0');
     assert(!parse_task_code(embedded_nul).has_value());
 
     ThreeFrameFilter filter;
