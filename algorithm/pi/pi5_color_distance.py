@@ -81,9 +81,13 @@ def main():
                 label = "No RGB material candidate"
             else:
                 _, color, x, y, w, h = candidate
-                reference_width = references.get(color)
-                if isinstance(reference_width, (int, float)) and reference_width > 0:
-                    distance_cm = args.distance_cm * reference_width / w
+                reference = references.get(color)
+                if (isinstance(reference, dict)
+                        and isinstance(reference.get("width_px"), (int, float))
+                        and isinstance(reference.get("distance_cm"), (int, float))
+                        and reference["width_px"] > 0
+                        and reference["distance_cm"] > 0):
+                    distance_cm = reference["distance_cm"] * reference["width_px"] / w
                     label = f"{color} ~ {distance_cm:.1f} cm (estimate only)"
                 else:
                     label = f"{color}: press C at {args.distance_cm:g} cm"
@@ -101,7 +105,10 @@ def main():
                 break
             if key == ord("c") and candidate is not None:
                 _, color, _, _, width, _ = candidate
-                references[color] = width
+                references[color] = {
+                    "width_px": width,
+                    "distance_cm": args.distance_cm,
+                }
                 CALIBRATION_FILE.write_text(
                     json.dumps(references, indent=2), encoding="utf-8")
                 print(f"Calibrated {color}: {width} px at "
