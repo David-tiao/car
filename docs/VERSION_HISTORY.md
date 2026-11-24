@@ -108,3 +108,4 @@ git branch -r
 | car_gazebo 0.1.0 | 预览 URDF/SDF、REAL 只读镜像 | 离线候选；ROS2/Gazebo 未运行 |
 | car_gazebo 0.2.0 | SIM 全向速度、虚拟雷达、odom/TF、超时门 | [软件 CI 成功](https://github.com/David-tiao/car/actions/runs/45332561062) |
 | car_gazebo 0.3.0 | SIM Nav2 DWB、锁路拓扑复用、FollowPath 显式触发及双状态门控 | 运行待验收 |
+| car_gazebo 0.4.0 | 碰撞包络与 Nav2 足迹对齐；独立 RViz2、一键启动、就绪门、运行级集成验收 | [离线 CI 通过](https://github.com/David-tiao/car/actions/runs/45335849607)；[运行 CI 结果](https://github.com/David-tiao/car/actions/runs/45335849586)；GUI/实车待验收 |

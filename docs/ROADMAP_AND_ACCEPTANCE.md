@@ -179,6 +179,43 @@ colcon test --packages-select car_gazebo
 colcon test-result --verbose
 ```
 
+
+### 推荐入口：一键 Gazebo + RViz2
+
+前提：Ubuntu 22.04、ROS2 Humble、与 Humble 匹配的 Gazebo Fortress、Nav2、RViz2。若尚未安装相应包，在已配置 ROS apt 源的 Ubuntu 中执行：
+
+```bash
+sudo apt install ros-humble-ros-gz ros-humble-nav2-bringup ros-humble-rviz2 ros-humble-robot-state-publisher python3-colcon-common-extensions
+```
+
+构建按上一段命令执行；不必重新编译 STM32 或启动真实雷达。自仓库根目录进入工作空间：
+
+```bash
+cd algorithm/car_ws
+bash bash/gazebo.sh doctor
+bash bash/gazebo.sh start A1
+```
+
+成功判据：环境检查通过，Gazebo 三维场地与 RViz2 俯视图打开，收到连续真实仿真时钟、激光、里程计、TF、轮关节，两个模拟障碍锁定、路线一致，Nav2 controller ACTIVE，终端显示 PASS READY；**此时小车静止，不自动启动任务**。默认 C3=(2.05,2.05)，目标 A1=(0.35,0.35)。两个模拟障碍来自固定可复现测试夹具，不是现场真实障碍。
+
+准备开始运动时，使用下节同一 SIM 域的显式 Trigger 服务。关闭本次会话使用 Ctrl+C；不会停止其他项目的进程。若启动失败，查看终端打印的 `launch.log`、`acceptance.log` 和生成的 SDF/URDF。日志默认位于 `~/.cache/car_gazebo/run.*/`；可通过 CAR_GAZEBO_RUN_DIR 指定自有目录。重复实例或已占用域 84 直接拒绝，不自动杀掉未知进程。
+
+仅查看当前 SIM 节点或执行可重复的无界面短路线验收（二者不能同时启动一套新仿真）：
+
+```bash
+bash bash/gazebo.sh status
+# 先结束 start 会话，再运行 test；需要可用 OpenGL/OGRE2 渲染环境。
+bash bash/gazebo.sh test C2
+```
+
+test 启动 server-only Gazebo，自动进行显式 SIM 路径测试，不启动真实串口或真实机器人；必须有 PASS READY 和 PASS ROUTE，后者要求 Nav2 SUCCEEDED、确实发生移动、目标误差≤0.06m 且零速度、静止里程计。Linux 无桌面测试可使用已安装的 xvfb/xauth/Mesa：
+
+```bash
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" bash bash/gazebo.sh test C2
+```
+
+下列分步命令用于排查某个子模块或独立 REAL 镜像，并非正常 SIM 一键启动的必需步骤。不要与一键脚本同时启动另一套仿真。
+
 静态预览：显式指定模拟障碍坐标，不会改动现行 PGM/YAML。输出目录必须是新目录，生成器拒绝覆盖已有文件。
 
 ```bash
@@ -263,7 +300,7 @@ rviz2 --ros-args -p use_sim_time:=true
 
 只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本采用原有 CLI，未变更源码；SIM TF/消息时间兼容性需在真实 ROS2 环境验证。手动模式下路径只是预览；使用下节 Nav2 专用模式才可执行，不能同时启动两套 map/lock/topology。不要将本节命令用于 REAL 域。
 
-### SIM Nav2 单段锁路执行（待 ROS2/Gazebo 实跑）
+### SIM Nav2 单段锁路执行（分步诊断）
 
 已安装 ROS2 Humble 的 Nav2 controller、DWB、lifecycle manager 与前述 Gazebo 依赖，重新构建 car_gazebo、car_navigation；仅在域84运行。为使真实仿真起点与拓扑 C3 对应，使用 --start 2.05 2.05；启动 Nav2 速度源（手动 cmd_vel 不再被 adapter 接收）：
 
@@ -305,4 +342,4 @@ ros2 service call /car_gz/cancel_locked_route std_srvs/srv/Trigger '{}'
 
 断开原始锁路/道路状态/路径/仿真数据，或发生冲突，速度门应输出零并取消；未开始不得产生非零 nav_checked_cmd。SIM 时钟回退后必须重启导航，不允许复用旧锁。此为仿真验收预期，不代表已经运行成功。原有网页与实体控制链不变。
 
-第二阶段离线 CI 已确认成功：[Actions #45332561062](https://github.com/David-tiao/car/actions/runs/45332561062)，覆盖新增场景/速度限制与原有全量软件回归。后续提交以其对应的 CI run 为准；没有 ROS2/Gazebo 实际运行记录，运行验收保持 NOT_RUN。
+离线全量软件回归：[Actions #45335849607](https://github.com/David-tiao/car/actions/runs/45335849607)，对应 56b503a，已通过。实际 ROS2/Fortress 无界面集成测试 [Actions #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 已启动，查看对应 run 的最终结果及日志；在结果确认之前，不能将运行级验收标为 PASS。GUI 联合显示和真实小车映射仍需单独现场验收。

@@ -66,4 +66,4 @@ https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操
 
 新增 [car_gazebo](algorithm/car_ws/src/car_gazebo/) 独立三维通道，不依赖网页。使用现有赛场几何生成 URDF（机器人模型）和 SDF（Gazebo 场景），区分静态预览、纯仿真 SIM 和真实位姿只读镜像 REAL。SIM 中的虚拟雷达和里程计进入独立 ROS2 图，复用道路锁定与 Dijkstra，用户确认后由 Nav2 FollowPath 执行单段路线；REAL 镜像只读取真实定位，不控制电机。
 
-现状：代码候选已提交，ROS2 Humble/Fortress 实际运行、完整机械 CAD、真实传感器外参及实车镜像仍待验收。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。
+统一启动入口为 [bash/gazebo.sh](algorithm/car_ws/bash/gazebo.sh)，提供环境检查、Gazebo + RViz2 联合启动、只读状态和独立 SIM 路径验收；运行日志保留在本地。现状：0.4.0 代码候选的离线 CI 已通过，真实 ROS2 Humble/Fortress 集成 CI 已启动，最终结果见 [运行验收](https://github.com/David-tiao/car/actions/runs/45335849586)。完整机械 CAD、真实传感器外参及实车镜像仍待验收。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。

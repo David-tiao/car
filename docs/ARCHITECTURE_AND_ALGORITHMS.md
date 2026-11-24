@@ -207,7 +207,7 @@ flowchart LR
 
 ### 全向 SIM 数据链（代码候选）
 
-Fortress VelocityControl 直接接收车体速度，不伪装真实麦轮滚子动力学；OdometryPublisher 读取 worldPose，GPU lidar 从虚拟场景产生 360° 扫描。仿真激光高度 0.092m 是工程假设（低于 0.10m 模拟障碍柱顶），不可写入实车外参。SDF 碰撞包络为 0.24×0.25×0.08m，质量暂设 2kg，仅仿真用；URDF 外观与 SDF 共用车体几何。
+Fortress VelocityControl 直接接收车体速度，不伪装真实麦轮滚子动力学；OdometryPublisher 读取 worldPose，GPU lidar 从虚拟场景产生 360° 扫描。仿真激光高度 0.092m 是工程假设（低于 0.10m 模拟障碍柱顶），不可写入实车外参。SDF 碰撞包络为 0.266×0.25×0.085m，质量暂设 2kg，仅仿真用；URDF 外观与 SDF 共用车体几何。包络长度取 max(底板长度, 2×(前后半轴距+轮半径))，宽度取 max(底板宽度, 2×左右半轮距+轮宽)。Nav2 足迹使用同一外包尺寸，另加 10mm footprint_padding；不是实车测量数据。
 
 ```mermaid
 flowchart LR
@@ -245,3 +245,6 @@ flowchart LR
 
 DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前只执行单段锁路路线，不自动推进两批比赛任务；碰撞、安全净空、DWB 参数与实际运行仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
 
+### 联合启动与运行验收
+
+`bash/gazebo.sh` 管理独立 SIM 会话：自定位工作空间、检查依赖、拒绝重复实例及已占用的 ROS 域 84，生成独立临时世界并启动 `sim_full.launch.py`。后者组合已有 Gazebo 和 Nav2 launch，以及预设 RViz2 显示；不复制算法。启动检查 `check_sim.py` 必须实际收到递增的时钟、里程计、扫描及轮关节数据、有效 TF、地图与掩膜、双障碍锁定及一致路径、ACTIVE controller 和零速度，才输出 READY。正常 start 不发车；test 显式触发 SIM action，检查到站结果、仿真位姿误差≤0.06m、零驱动指令及静止里程计。启动失败或退出只清理本次管理的进程组，保留场景和日志；不会清理真实雷达、网页、STM32 或其他用户进程。独立 GitHub Actions 使用 Ubuntu 22.04/Humble、Fortress、Nav2 与无界面渲染执行 C3→C2 的运行级测试；它不替代实体车、桌面 RViz/Gazebo GUI 或全部场景的验收。
