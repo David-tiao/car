@@ -9,6 +9,7 @@ usage() {
   echo "Usage: bash bash/gazebo.sh doctor | start [goal] | test [goal] | status"
   echo "start: GUI + RViz, readiness only; test: server only + explicit SIM route."
   echo "Fixed test fixture starts at C3; default goal A1 (start) or C2 (test)."
+  echo "CAR_GAZEBO_BACKEND=auto (default), fortress or harmonic; bridge ABI must match."
 }
 mode="${1:-}"
 if [[ "$mode" == "-h" || "$mode" == "--help" ]]; then usage; exit 0; fi
@@ -29,18 +30,15 @@ export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
 check_environment() {
   local p
   if [[ "${ROS_DISTRO:-}" != humble ]]; then echo "ENV FAIL: ROS_DISTRO must be humble"; return 1; fi
-  if ! command -v ign >/dev/null || ! ign gazebo --versions >/dev/null 2>&1; then
-    echo "ENV FAIL: Gazebo Fortress (ign gazebo) required; Harmonic/Classic alone are not supported by this backend." >&2
-    return 1
-  fi
-  for p in ros2 python3 flock setsid; do
+  for p in ros2 python3 flock setsid ldd; do
     command -v "$p" >/dev/null || { echo "ENV FAIL: missing $p"; return 1; }
   done
   for p in car_gazebo car_navigation ros_gz_bridge robot_state_publisher nav2_controller nav2_lifecycle_manager dwb_core dwb_critics rviz2; do
     ros2 pkg prefix "$p" >/dev/null || { echo "ENV FAIL: package $p unavailable"; return 1; }
   done
   python3 -c 'import rclpy; from nav2_msgs.action import FollowPath; from ros_gz_interfaces.srv import SetEntityPose' || return 1
-  echo "PASS ENV: Humble packages found, reserved local domain 84. Runtime not yet checked."
+  BACKEND="$(/usr/bin/python3 "$WS/src/car_gazebo/scripts/gazebo_backend.py" --backend "${CAR_GAZEBO_BACKEND:-auto}")" || return 1
+  echo "PASS ENV: Humble, matching $BACKEND simulator/bridge, reserved local domain 84. Runtime not yet checked."
 }
 check_environment
 if [[ "$mode" == doctor ]]; then exit 0; fi
@@ -71,7 +69,7 @@ MAP="$WS/maps/competition_v1"
 OUT="$(mktemp -d "$root/run.XXXXXXXX")"
 echo "Run files and logs: $OUT"
 ros2 run car_gazebo generate_scene.py --zones "$MAP/zones.json" --output "$OUT" \
-  --mode sim --start 2.05 2.05 --obstacle 1.2 1.5 --obstacle 1.5 2.05
+  --mode sim --backend "$BACKEND" --start 2.05 2.05 --obstacle 1.2 1.5 --obstacle 1.5 2.05
 server=false
 rviz=true
 extra=()
@@ -108,7 +106,7 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 setsid ros2 launch car_gazebo sim_full.launch.py \
   world:="$OUT/car_sim.sdf" map_dir:="$MAP" partition:="car_sim_$(basename "$OUT" | tr . _)" \
-  start:=C3 goal:="$goal" server_only:="$server" with_rviz:="$rviz" >"$OUT/launch.log" 2>&1 &
+  backend:="$BACKEND" start:=C3 goal:="$goal" server_only:="$server" with_rviz:="$rviz" >"$OUT/launch.log" 2>&1 &
 pid=$!
 echo "START: checking live clock, lidar, odometry, TF, lock and Nav2; see $OUT/launch.log"
 if ! ros2 run car_gazebo check_sim.py --topology "$MAP/topology_stage6/road_topology.py" \

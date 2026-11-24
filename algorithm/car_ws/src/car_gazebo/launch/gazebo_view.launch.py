@@ -1,4 +1,6 @@
 import os
+import runpy
+from ament_index_python.packages import get_package_prefix
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -16,7 +18,18 @@ def setup(context):
     mode = LaunchConfiguration("mode").perform(context)
     if not world.is_absolute() or not world.is_file() or not partition:
         raise RuntimeError("Absolute generated SDF and nonempty partition required")
-    actual_world = ET.parse(world).getroot().find("world").get("name")
+    root = ET.parse(world).getroot()
+    actual_world = root.find("world").get("name")
+    api = runpy.run_path(str(Path(get_package_prefix("car_gazebo")) / "lib/car_gazebo/gazebo_backend.py"))
+    backend = LaunchConfiguration("backend").perform(context)
+    if backend not in api["BACKENDS"]:
+        raise RuntimeError("explicit fortress or harmonic backend required")
+    expected = "ignition::gazebo::" if backend == "fortress" else "gz::sim::"
+    plugins = root.findall(".//plugin")
+    if not plugins or any(not p.get("name", "").startswith(expected) for p in plugins):
+        raise RuntimeError("generated world plugin namespace does not match backend")
+    if mode == "sim":
+        api["select_backend"](backend)
     if mode not in ("view", "sim"):
         raise RuntimeError("mode must be view or sim")
     if mode == "view" and actual_world not in ("car_preview", "car_mirror"):
@@ -25,11 +38,11 @@ def setup(context):
                           os.environ.get("ROS_DOMAIN_ID") != "84" or
                           os.environ.get("ROS_LOCALHOST_ONLY") != "1"):
         raise RuntimeError("SIM requires car_sim SDF, car_sim_* partition, ROS_DOMAIN_ID=84 and ROS_LOCALHOST_ONLY=1")
-    env = {"IGN_PARTITION": partition}
+    env = api["partition_environment"](backend, partition)
     server_only = LaunchConfiguration("server_only").perform(context)
     if server_only not in ("true", "false"):
         raise RuntimeError("server_only must be true or false")
-    gz_args = ["ign", "gazebo", "-r"]
+    gz_args = api["simulator_command"](backend) + ["-r"]
     if server_only == "true":
         gz_args.append("-s")
     gz = ExecuteProcess(cmd=gz_args + [str(world)], additional_env=env, output="screen")
@@ -43,11 +56,7 @@ def setup(context):
         raise RuntimeError("SIM URDF mismatch")
     bridge = ExecuteProcess(
         cmd=["ros2", "run", "ros_gz_bridge", "parameter_bridge",
-             "/world/car_sim/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock",
-             "/car_gz/odom_raw@nav_msgs/msg/Odometry[ignition.msgs.Odometry",
-             "/car_gz/scan_raw@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan",
-             "/car_gz/drive_cmd@geometry_msgs/msg/Twist]ignition.msgs.Twist",
-             "--ros-args", "-r", "/world/car_sim/clock:=/clock"],
+             *api["bridge_arguments"](backend)],
         additional_env=env, output="screen")
     adapter = Node(package="car_gazebo", executable="sim_adapter.py",
                    parameters=[{"use_sim_time": True, "command_source": command_source}], output="screen")
@@ -65,7 +74,8 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("world", description="Absolute generated SDF path"),
-        DeclareLaunchArgument("partition", description="Unique Ignition Transport partition"),
+        DeclareLaunchArgument("partition", description="Unique Gazebo Transport partition"),
+        DeclareLaunchArgument("backend", default_value="fortress"),
         DeclareLaunchArgument("mode", default_value="view", description="view or isolated sim"),
         DeclareLaunchArgument("command_source", default_value="manual"),
         DeclareLaunchArgument("server_only", default_value="false"),

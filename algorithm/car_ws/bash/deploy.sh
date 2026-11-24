@@ -49,8 +49,8 @@ for tool in ros2 colcon cmake gcc g++ /usr/bin/python3; do
 done
 /usr/bin/python3 -c 'import rclpy; print("ROS system Python ready")'
 if [[ "$profile" == sim ]]; then
-  command -v ign >/dev/null && ign gazebo --versions >/dev/null 2>&1 ||
-    { echo 'ERROR: SIM requires Fortress; do not replace Harmonic automatically' >&2; exit 2; }
+  backend="$(/usr/bin/python3 "$CAR_WS/src/car_gazebo/scripts/gazebo_backend.py" --backend "${CAR_GAZEBO_BACKEND:-auto}")"
+  echo "SIM backend: $backend (matching bridge ABI)"
 fi
 # Check declared ROS dependencies, not all packages in the source tree.
 # External non-ROS dependencies still belong to rosdep / platform provisioning.

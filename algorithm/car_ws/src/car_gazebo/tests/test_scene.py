@@ -2,6 +2,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+import tempfile
 import xml.etree.ElementTree as ET
 
 P = Path(__file__).resolve().parents[1]
@@ -13,6 +14,9 @@ ZONES = json.loads((MAP_DIR / "zones.json").read_text())
 route_spec = importlib.util.spec_from_file_location("route_gate", P / "scripts/follow_locked_route.py")
 route_gate = importlib.util.module_from_spec(route_spec)
 route_spec.loader.exec_module(route_gate)
+backend_spec = importlib.util.spec_from_file_location('gazebo_backend', P / 'scripts/gazebo_backend.py')
+backend = importlib.util.module_from_spec(backend_spec)
+backend_spec.loader.exec_module(backend)
 
 
 class SceneTest(unittest.TestCase):
@@ -156,6 +160,54 @@ class SceneTest(unittest.TestCase):
         self.assertFalse(route_gate.fresh_lock_scan(dict(good, scan_tf_ready=False), 2_000_000_000))
         self.assertFalse(route_gate.fresh_lock_scan({}, 2_000_000_000))
         self.assertFalse(route_gate.fresh_lock_scan(dict(good, scan_tf_stamp_ns=True), 2_000_000_000))
+
+    def test_harmonic_scene_is_only_backend_translation(self):
+        f = scene.world_description(ZONES, [(1.2, 1.2)], mode="sim")
+        h = scene.world_description(ZONES, [(1.2, 1.2)], mode="sim", backend="harmonic")
+        for a, b in zip(f.findall(".//plugin"), h.findall(".//plugin")):
+            self.assertEqual(b.get("name"), a.get("name").replace("ignition::gazebo::", "gz::sim::"))
+            self.assertEqual(b.get("filename"), a.get("filename").removeprefix("lib").removesuffix(".so").replace("ignition-gazebo-", "gz-sim-"))
+            b.attrib.update(a.attrib)
+        for frame in h.findall(".//sensor/gz_frame_id"):
+            frame.tag = "ignition_frame_id"
+        self.assertEqual(scene.xml_bytes(f), scene.xml_bytes(h))
+        with self.assertRaises(ValueError):
+            scene.world_description(ZONES, backend="classic")
+
+    def test_bridge_abi_and_direction(self):
+        for name, spec in backend.BACKENDS.items():
+            linker = f"lib{spec[2]}.so.1 => /lib/a\nlib{spec[3]}.so.1 => /lib/b"
+            self.assertEqual(backend.bridge_backend(linker), name)
+            with self.assertRaises(ValueError):
+                backend.bridge_backend(linker + "\nlibother.so => not found")
+            args = backend.bridge_arguments(name)
+            self.assertEqual(sum("[" in a for a in args), 3)
+            self.assertEqual(sum("]" in a for a in args), 1)
+            self.assertIn(spec[4] + ".Twist", args[3])
+            self.assertTrue(backend.version_available(f"{spec[1]}.12.0", spec[1]))
+            self.assertFalse(backend.version_available("11.0.0", spec[1]))
+            self.assertEqual(set(backend.partition_environment(name, "car_sim_x").values()), {"car_sim_x"})
+        with self.assertRaises(ValueError):
+            backend.bridge_backend("libgz-transport13.so.13 => /a")
+
+    def test_backend_selection_requires_matching_installed_simulator(self):
+        with tempfile.TemporaryDirectory(prefix="bridge prefix ") as temp:
+            exe = Path(temp) / "lib/ros_gz_bridge/parameter_bridge"
+            exe.parent.mkdir(parents=True)
+            exe.touch()
+            exe.chmod(0o755)
+            def run(args):
+                if args[0] == "ros2":
+                    return temp
+                if args[0] == "ldd":
+                    return "libgz-transport13.so.13 => /a\nlibgz-msgs10.so.10 => /b"
+                self.assertEqual(args, ["gz", "sim", "--versions"])
+                return "8.9.0"
+            self.assertEqual(backend.select_backend("auto", run), "harmonic")
+            with self.assertRaises(ValueError):
+                backend.select_backend("fortress", run)
+            with self.assertRaises(ValueError):
+                backend.select_backend("harmonic", lambda args: "9.0.0" if args[0] == "gz" else run(args))
 
     def test_mirror_has_no_synthetic_obstacles(self):
         w = scene.world_description(ZONES, mode="mirror").find("world")
