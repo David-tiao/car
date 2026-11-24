@@ -14,6 +14,8 @@ R, LX, LY = 0.04, 0.093, 0.11
 BODY = (0.24, 0.18, 0.05)
 WHEEL_WIDTH = 0.03
 BODY_Z = 0.060
+# Complete provisional wheel/body envelope.
+SIM_ENVELOPE = (max(BODY[0], 2*(LX+R)), max(BODY[1], 2*LY+WHEEL_WIDTH), 0.085)
 LASER_Z = 0.092
 SIM_DOMAIN = "84"
 SIM_PREFIX = "/car_gz"
@@ -189,9 +191,9 @@ def sim_model(world, start):
     sub(model, "pose", vec((*start, 0.001, 0, 0, 0)))
     link = sub(model, "link", name="base_link")
     inertial = sub(link, "inertial")
-    sub(inertial, "pose", "0 0 0.04 0 0 0")
+    sub(inertial, "pose", vec((0, 0, SIM_ENVELOPE[2]/2, 0, 0, 0)))
     mass = 2.0
-    dims = (BODY[0], 2*LY + WHEEL_WIDTH, 0.08)
+    dims = SIM_ENVELOPE
     sub(inertial, "mass", mass)
     inertia = sub(inertial, "inertia")
     for axis, moment in zip(("ixx", "iyy", "izz"),
@@ -202,7 +204,7 @@ def sim_model(world, start):
     for axis in ("ixy", "ixz", "iyz"):
         sub(inertia, axis, 0)
     envelope = sub(link, "collision", name="provisional_envelope")
-    sub(envelope, "pose", "0 0 0.04 0 0 0")
+    sub(envelope, "pose", vec((0, 0, SIM_ENVELOPE[2]/2, 0, 0, 0)))
     geometry(envelope, "box", dims)
     sdf_part(link, "chassis", "box", BODY, (0, 0, BODY_Z, 0, 0, 0), BODY_COLOR, False)
     for suffix, x, y in WHEELS:
@@ -243,7 +245,7 @@ def world_description(zones, obstacles=(), mode="preview", start=(2.25, 2.25)):
     validate(zones, obstacles, mode)
     if mode == "sim":
         x, y = start
-        hx, hy = BODY[0]/2, LY + WHEEL_WIDTH/2
+        hx, hy = SIM_ENVELOPE[0]/2, SIM_ENVELOPE[1]/2
         if not (hx <= x <= 2.4-hx and hy <= y <= 2.4-hy):
             raise ValueError("SIM start outside field")
         footprint = (x-hx, y-hy, x+hx, y+hy)

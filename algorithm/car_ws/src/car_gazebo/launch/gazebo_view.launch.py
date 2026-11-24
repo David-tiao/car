@@ -26,7 +26,13 @@ def setup(context):
                           os.environ.get("ROS_LOCALHOST_ONLY") != "1"):
         raise RuntimeError("SIM requires car_sim SDF, car_sim_* partition, ROS_DOMAIN_ID=84 and ROS_LOCALHOST_ONLY=1")
     env = {"IGN_PARTITION": partition}
-    gz = ExecuteProcess(cmd=["ign", "gazebo", "-r", str(world)], additional_env=env, output="screen")
+    server_only = LaunchConfiguration("server_only").perform(context)
+    if server_only not in ("true", "false"):
+        raise RuntimeError("server_only must be true or false")
+    gz_args = ["ign", "gazebo", "-r"]
+    if server_only == "true":
+        gz_args.append("-s")
+    gz = ExecuteProcess(cmd=gz_args + [str(world)], additional_env=env, output="screen")
     if mode == "view":
         return [gz]
     command_source = LaunchConfiguration("command_source").perform(context)
@@ -62,5 +68,6 @@ def generate_launch_description():
         DeclareLaunchArgument("partition", description="Unique Ignition Transport partition"),
         DeclareLaunchArgument("mode", default_value="view", description="view or isolated sim"),
         DeclareLaunchArgument("command_source", default_value="manual"),
+        DeclareLaunchArgument("server_only", default_value="false"),
         OpaqueFunction(function=setup),
     ])
