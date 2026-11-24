@@ -119,6 +119,19 @@ class SceneTest(unittest.TestCase):
         for a,b in zip(dense, dense[1:]):
             self.assertLessEqual(((a[0]-b[0])**2+(a[1]-b[1])**2)**.5, .02500001)
 
+    def test_segment_paths_stop_at_each_locked_node(self):
+        nodes, edges = route_gate.load_topology(MAP_DIR / "topology_stage6/road_topology.py")
+        names = ("C3", "C2", "B2", "A2", "A1")
+        segments = route_gate.segment_paths(names, nodes)
+        self.assertEqual(len(segments), 4)
+        for leg, a, b in zip(segments, names, names[1:]):
+            self.assertEqual(leg[0], nodes[a])
+            self.assertEqual(leg[-1], nodes[b])
+            for x, y in leg:
+                self.assertTrue(abs(x-nodes[a][0]) < 1e-9 or abs(y-nodes[a][1]) < 1e-9)
+        with self.assertRaises(ValueError):
+            route_gate.segment_paths(("C3",), nodes)
+
     def test_lock_scan_freshness(self):
         good = {"scan_tf_ready": True, "scan_tf_stamp_ns": 2_000_000_000}
         self.assertTrue(route_gate.fresh_lock_scan(good, 3_000_000_000))
