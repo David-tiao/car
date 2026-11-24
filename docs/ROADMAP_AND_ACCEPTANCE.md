@@ -164,3 +164,51 @@ PASS / FAIL / SKIP / NOT_RUN：
 ~~~
 
 严禁写“车动了，所以协议全通”；要能回答 **谁发命令、谁执行、谁确认、物料和底盘真实发生了什么**。源码和历史参考请查 [当前进度](PROJECT_STATUS.md)、[通信对齐](PROTOCOLS_AND_DATA_FLOW.md) 与 [错误复盘](ISSUES_AND_LESSONS.md)。
+
+## Gazebo / URDF 初版验收（独立于网页）
+
+目标环境 Ubuntu 22.04 / ROS2 Humble / Gazebo Fortress，需本机已有 ign、ros_gz、colcon。执行位置为仓库根目录。先确认当前分支与安装环境。
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+python3 src/car_gazebo/tests/test_scene.py
+colcon build --packages-select car_gazebo
+source install/setup.bash
+colcon test --packages-select car_gazebo
+colcon test-result --verbose
+```
+
+静态预览：显式指定模拟障碍坐标，不会改动现行 PGM/YAML。输出目录必须是新目录，生成器拒绝覆盖已有文件。
+
+```bash
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --obstacle 1.2 1.2
+ros2 launch car_gazebo gazebo_view.launch.py world:="$OUT/car_preview.sdf" partition:=car_preview_local
+```
+
+预期：赛场 2.4m × 2.4m，黄色/蓝色区、两个工位、原料盘、一个黑柱及四轮静态车；模型暂时不运动。前台 Ctrl+C 退出自己的 launch，不清理其他项目进程。
+
+真实镜像：确保实际雷达、定位/里程计链已经提供**真实**且新鲜的 map→base_link TF，运行在 REAL ROS domain，不能与模拟 TF 共用。先在工作空间另生成镜像场景：
+
+```bash
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --mode mirror
+ros2 launch car_gazebo gazebo_view.launch.py world:="$OUT/car_mirror.sdf" partition:=car_mirror_local
+```
+
+另一个已 source 同一工作空间的终端：
+
+```bash
+IGN_PARTITION=car_mirror_local ros2 run ros_gz_bridge parameter_bridge /world/car_mirror/set_pose@ros_gz_interfaces/srv/SetEntityPose
+```
+
+确认服务存在，再在同一真实 ROS domain 启动（不要启动任何真车运动）：
+
+```bash
+ros2 service type /world/car_mirror/set_pose
+ros2 run tf2_ros tf2_echo map base_link
+ros2 run car_gazebo mirror_pose.py --ros-args -p enable_real_mirror:=true -p use_sim_time:=false
+```
+
+成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。Gazebo 运行、服务调用、URDF/RViz 显示和实车镜像均尚未验收。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。

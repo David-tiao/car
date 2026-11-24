@@ -62,4 +62,6 @@ ros2整体的数据流有没有打通          --- 模拟与实际隔离开来  
 
 https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操控版本
 
+## Gazebo 三维建模（开发分支初版）
 
+新增 `algorithm/car_ws/src/car_gazebo/`：从现有地图几何生成三维赛场与预览 URDF，提供独立只读真实 TF 镜像接口。现有网页、雷达及电控代码保持不变。当前非物理运动仿真，未完成 ROS2/Gazebo 实际验收。详见 [专业架构](docs/ARCHITECTURE_AND_ALGORITHMS.md)、[运行与验收](docs/ROADMAP_AND_ACCEPTANCE.md)、[当前状态](docs/PROJECT_STATUS.md)。

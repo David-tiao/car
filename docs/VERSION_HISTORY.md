@@ -100,3 +100,7 @@ git branch -r
 ~~~
 
 旧资料中的 `refactor/architecture-v2`、`feat/stm32-pty-fsm-realview-20261120` 等分支名反映当时的工作背景；确认现在的事实必须再次查看 `main` 和最新提交。更多事故与修复细节见 [错误复盘](ISSUES_AND_LESSONS.md)。
+
+## 2026-11-24 · Gazebo 建模初版（开发分支）
+
+2026-11-24（开发分支） | car_gazebo 初版：统一预览 URDF/SDF 几何、赛场生成、只读 REAL 镜像接口及离线测试；真实构建和运行待验收。

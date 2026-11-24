@@ -184,3 +184,21 @@ y' = y + (sin θ_mid · vx + cos θ_mid · vy) Δt
 - **硬件安全优先**：未知舵机、线束、零位、限位，所有新功能只允许模拟显示，不能因为网页多了滑块就发实机动作。
 
 延伸：[通信与数据流](PROTOCOLS_AND_DATA_FLOW.md) · [当前进度](PROJECT_STATUS.md) · [验收计划](ROADMAP_AND_ACCEPTANCE.md)。
+
+## Gazebo 三维通道（第一阶段，未验收）
+
+新增 `algorithm/car_ws/src/car_gazebo/`，不依赖网页，也不改 STM32/OpenMV。URDF 与 SDF 共享同一份预览车体几何；SDF 场地由现行 `maps/competition_v1/zones.json` 生成，黄色、蓝色和工位为视觉层，真实原料盘及显式模拟障碍有碰撞体。世界原点与比赛 map 左下角一致。轮半径 0.04m、前后半轴距 0.093m、左右半轮距 0.11m 取自 STM32 源码，其他预览外形非实测；未写入雷达、相机外参和机械关节假值。
+
+```mermaid
+flowchart LR
+    Z[zones.json] --> S[SDF 静态赛场]
+    G[预览几何] --> S
+    G --> U[URDF]
+    T[真实 map 到 base_link TF] --> M[只读镜像节点]
+    M -->|SetEntityPose| W[独立 Gazebo mirror]
+    S --> W
+    T --> R[RViz2]
+    T --> E[已有网页独立通道]
+```
+
+镜像仅取真实 ROS2 图中 0.5s 内的 map 到 base_link TF；以平面 x/y/yaw 设置模型位姿，过期或异常则保留上次显示并告警。镜像世界不生成假障碍，不发布 /scan、/odom、/tf 或 /clock，不下发电机命令。当前是**静态预览及镜像接口初版**，非麦轮动力学、虚拟雷达、Nav2 执行闭环或机械关节实测。后续须验证 Fortress 实体服务、统一模型尺寸、实车 TF 来源及动态仿真数据隔离。

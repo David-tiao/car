@@ -94,3 +94,7 @@
 - 一次端到端“扫码→一个物料抓放→完成反馈”的最小闭环，之后扩展至整批与码垛。
 
 详细可执行计划见 [路线图与验收标准](ROADMAP_AND_ACCEPTANCE.md)，代码依据见 [架构与算法](ARCHITECTURE_AND_ALGORITHMS.md)。
+
+## Gazebo 建模后续阶段
+
+新增独立 car_gazebo 初版：可生成预览 URDF、静态 SDF 赛场与只读真车位姿镜像入口。当前仅代码交付候选，真实 CAD、雷达/相机外参、机械关节、Gazebo 麦轮动力学与虚拟雷达、ROS2 运行及真实镜像均待验证；不影响原 SIM/TEST/REAL/KEYBOARD 网页。
