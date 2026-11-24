@@ -98,6 +98,8 @@ def verify(folder):
 def backup(root, folder):
     if Path(git(root, "rev-parse", "--show-toplevel").decode().strip()).resolve() != root:
         raise ValueError("--repo must be repository root")
+    if folder.is_symlink():
+        raise ValueError("backup destination must not be a symlink")
     folder = folder.resolve()
     if folder == root or root in folder.parents:
         raise ValueError("backup destination must be outside repository")

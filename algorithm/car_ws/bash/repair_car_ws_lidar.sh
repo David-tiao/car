@@ -16,17 +16,54 @@ SDK_SRC="$WS/vendor/YDLidar-SDK"
 SDK_PREFIX="$WS/install_oneclick_sdk"
 BACKUP=""
 MODE="${1:-build}"
-[[ $# -le 1 && ( "$MODE" == build || "$MODE" == doctor || "$MODE" == --allow-sdk-build ) ]] || {
-  echo 'Usage: repair_car_ws_lidar.sh [doctor|build|--allow-sdk-build]' >&2; exit 2;
+[[ $# -le 1 && ( "$MODE" == build || "$MODE" == doctor || "$MODE" == verify || "$MODE" == --allow-sdk-build ) ]] || {
+  echo 'Usage: repair_car_ws_lidar.sh [doctor|build|verify|--allow-sdk-build]' >&2; exit 2;
 }
 
 err() { echo "[ERROR] $*" >&2; exit 1; }
 [[ -f "$SRC/package.xml" ]] || err "缺少驱动源码：$SRC/package.xml"
 [[ -f "$WS/config/x3.yaml" ]] || err "缺少雷达配置：$WS/config/x3.yaml"
 [[ -r "$CAR_ROS_SETUP" ]] || err "缺少 ROS 2 Humble: $CAR_ROS_SETUP"
-for x in colcon cmake git make; do command -v "$x" >/dev/null || err "缺少编译工具：$x"; done
 # ROS 环境脚本会读取未定义变量，仅在 source 期间关闭 nounset。
 car_source_ros_base
+
+validate_install() {
+  local prefix exe
+  [[ -r "$INSTALL/local_setup.bash" && ! -L "$INSTALL" ]] || { echo '[ERROR] 缺少本机雷达 overlay local_setup.bash' >&2; return 1; }
+  car_source_setup "$INSTALL/local_setup.bash" || return 1
+  prefix="$(ros2 pkg prefix ydlidar_ros2_driver)" || return 1
+  [[ -d "$INSTALL/ydlidar_ros2_driver" && "$(cd -- "$prefix" && pwd -P)" == "$(cd -- "$INSTALL/ydlidar_ros2_driver" && pwd -P)" ]] || return 1
+  /usr/bin/python3 - "$prefix" <<'PY'
+from pathlib import Path
+import os
+import platform
+import subprocess
+import sys
+
+prefix = Path(sys.argv[1]).resolve()
+machine = {"x86_64": 62, "aarch64": 183}.get(platform.machine())
+if machine is None:
+    raise SystemExit("Unsupported native architecture")
+for name in ("node", "client"):
+    exe = prefix / "lib/ydlidar_ros2_driver" / ("ydlidar_ros2_driver_" + name)
+    if not exe.is_file() or exe.is_symlink() or exe.resolve() != exe or not os.access(exe, os.X_OK):
+        raise SystemExit(f"Missing/nonlocal/symlinked executable: {exe}")
+    with exe.open("rb") as fp:
+        h = fp.read(20)
+    if len(h) != 20 or h[:4] != b"\x7fELF" or h[4] != 2 or h[5] not in (1, 2) or int.from_bytes(h[18:20], "little" if h[5] == 1 else "big") != machine:
+        raise SystemExit(f"Wrong ELF architecture: {exe}")
+    result = subprocess.run(["ldd", str(exe)], capture_output=True, text=True, timeout=15)
+    if result.returncode or "not found" in result.stdout + result.stderr:
+        raise SystemExit(f"Unresolved runtime dependencies: {exe}\n{result.stdout}{result.stderr}")
+    print(f"PASS ELF/LINK: {exe.name} ({platform.machine()})")
+PY
+}
+if [[ "$MODE" == verify ]]; then
+  validate_install || err '本地驱动安装验证失败；先使用 build 重新编译'
+  echo '[PASS] 本机雷达 ROS 注册、ELF 与动态库验证通过；未运行驱动/未访问串口'
+  exit 0
+fi
+for x in colcon cmake git make; do command -v "$x" >/dev/null || err "缺少编译工具：$x"; done
 
 # 优先使用已成功安装的 SDK，避免重新下载与编译。
 SDK_DIR=""
@@ -66,6 +103,7 @@ if [[ "$MODE" == doctor ]]; then
 fi
 
 # Lock before any workspace writes, including SDK build.
+command -v flock >/dev/null || err "缺少 flock"
 exec 9>"$WS/bash/.lidar_build.lock"
 flock -n 9 || err '已有另一个雷达构建任务'
 if [[ -z "$SDK_DIR" ]]; then
@@ -111,7 +149,31 @@ restore_ignore() {
   fi
 }
 
-trap restore_ignore EXIT
+committed=0
+cleanup() {
+  local result=$?
+  trap - EXIT INT TERM
+  if (( ! committed )) && [[ -n "$BACKUP" ]]; then
+    if [[ -e "$INSTALL" || -L "$INSTALL" ]]; then
+      if ! mv -T -- "$INSTALL" "$WS/install_oneclick_lidar.failed_$STAMP"; then
+        echo '[ERROR] 无法移开失败安装；保留备份供人工恢复' >&2
+        restore_ignore || true
+        exit 1
+      fi
+    fi
+    if mv -T -- "$BACKUP" "$INSTALL"; then
+      echo '[ROLLBACK] 已恢复原驱动安装目录'
+    else
+      echo "[ERROR] 回滚失败；原备份仍在 $BACKUP" >&2
+      result=1
+    fi
+  fi
+  restore_ignore || result=1
+  exit "$result"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 if [[ -f "$IGNORE" && ! -L "$IGNORE" ]]; then
   SAVED="$WS/bash/.COLCON_IGNORE_$STAMP"
@@ -132,8 +194,11 @@ grep -Fxq 'ydlidar_ros2_driver' <<< "$PKGS" \
 
 # 备份旧 overlay，不覆盖移动前生成的安装文件或其他 ROS 功能包。
 if [[ -e "$INSTALL" || -L "$INSTALL" ]]; then
-  BACKUP="$WS/install_oneclick_lidar.bak_$STAMP"
-  mv -- "$INSTALL" "$BACKUP"
+  [[ -d "$INSTALL" && ! -L "$INSTALL" ]] || err "现有安装目录不是普通目录：$INSTALL"
+  target="$WS/install_oneclick_lidar.bak_$STAMP"
+  [[ ! -e "$target" && ! -L "$target" ]] || err "备份路径已存在：$target"
+  mv -T -- "$INSTALL" "$target"
+  BACKUP="$target"
   echo "[BACKUP] $BACKUP"
 fi
 
@@ -150,31 +215,13 @@ if ! (cd "$WS" && colcon --log-base "$LOG" build \
       --packages-select ydlidar_ros2_driver \
       --cmake-args -DBUILD_TESTING=OFF "-Dydlidar_sdk_DIR=$SDK_DIR"); then
   echo "[ERROR] 驱动编译失败；构建日志目录：$LOG" >&2
-  if [[ -n "$BACKUP" ]]; then
-    [[ ! -e "$INSTALL" ]] || mv -- "$INSTALL" "$WS/install_oneclick_lidar.failed_$STAMP"
-    mv -- "$BACKUP" "$INSTALL"
-    echo '[ROLLBACK] 已恢复原驱动安装目录'
-  fi
   exit 1
 fi
-
-validate_install() {
-  local prefix
-  [[ -r "$INSTALL/setup.bash" ]] || return 1
-  car_source_setup "$INSTALL/setup.bash" || return 1
-  prefix="$(ros2 pkg prefix ydlidar_ros2_driver)" || return 1
-  [[ "$(cd -- "$prefix" && pwd -P)" == "$(cd -- "$INSTALL/ydlidar_ros2_driver" && pwd -P)" ]] || return 1
-  [[ -x "$prefix/lib/ydlidar_ros2_driver/ydlidar_ros2_driver_node" ]]
-}
 if ! validate_install; then
-  echo '[ERROR] 新驱动注册或可执行文件验证失败' >&2
-  if [[ -n "$BACKUP" ]]; then
-    [[ ! -e "$INSTALL" ]] || mv -- "$INSTALL" "$WS/install_oneclick_lidar.failed_$STAMP"
-    mv -- "$BACKUP" "$INSTALL"
-    echo '[ROLLBACK] 已恢复原驱动安装目录'
-  fi
+  echo '[ERROR] 新驱动注册、ELF 或依赖验证失败' >&2
   exit 1
 fi
+committed=1
 echo '[PASS] 驱动已在新 car_ws 环境注册，V6 可以找到 ydlidar_ros2_driver'
 echo "[LOG] $LOG"
 echo '[NEXT] bash bash/lidar.sh doctor'
