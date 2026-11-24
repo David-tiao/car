@@ -98,3 +98,4 @@
 ## Gazebo 建模后续阶段
 
 新增独立 car_gazebo 初版：可生成预览 URDF、静态 SDF 赛场与只读真车位姿镜像入口。当前仅代码交付候选，真实 CAD、雷达/相机外参、机械关节、Gazebo 麦轮动力学与虚拟雷达、ROS2 运行及真实镜像均待验证；不影响原 SIM/TEST/REAL/KEYBOARD 网页。
+离线验收：4 项场景测试通过，生成和 XML 解析及覆盖拒绝通过；ROS2/Gazebo 构建、运行和真实 TF 镜像未验收。此阶段未合并 main。

@@ -212,3 +212,5 @@ ros2 run car_gazebo mirror_pose.py --ros-args -p enable_real_mirror:=true -p use
 ```
 
 成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。Gazebo 运行、服务调用、URDF/RViz 显示和实车镜像均尚未验收。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
+
+本次离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。

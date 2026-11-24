@@ -23,6 +23,11 @@ jobs:
         with:
           python-version: "3.10"
 
+      - name: Gazebo description and static scene contracts (no ROS2 or hardware)
+        run: |
+          python3 -m py_compile algorithm/car_ws/src/car_gazebo/scripts/*.py algorithm/car_ws/src/car_gazebo/launch/*.py
+          python3 algorithm/car_ws/src/car_gazebo/tests/test_scene.py -v
+
       - name: Full 14-category software-only acceptance (300 seeded competition cases)
         run: bash algorithm/car_ws/bash/test_all_offline.sh
 
