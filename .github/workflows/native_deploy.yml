@@ -51,7 +51,7 @@ jobs:
       - name: Build and test relocated native workspace
         run: |
           root="$(mktemp -d "$RUNNER_TEMP/car-native-XXXXXXXX")"
-          git archive HEAD algorithm/car_ws/src algorithm/car_ws/bash algorithm/car_ws/maps/competition_v1 | tar -x -C "$root"
+          git -c safe.directory="$(pwd -P)" archive HEAD algorithm/car_ws/src algorithm/car_ws/bash algorithm/car_ws/maps/competition_v1 | tar -x -C "$root"
           echo "Native workspace: $root"
           entry="$root/algorithm/car_ws/bash/deploy.sh"
           cd /tmp
