@@ -441,7 +441,7 @@ bash bash/deploy.sh test pi5
 
 预期：PASS BUILD、PASS VERIFY、PASS TEST（包注册路径属于本工作区，关键 ELF 机器类型正确、软件测试成功、静态地图 probe 返回有效样例）。默认 isolated install，保留现有启动脚本兼容性。旧 CMakeCache 的源码/构建路径或编译器架构异常时拒绝继续，不自动删除；在干净工作区重新构建。此流程不需要 RViz2/Gazebo，不含 YDLIDAR SDK 编译及串口设备测试，不启动机器人。Pi5 上按上节雷达 doctor/build 另行验证。
 
-PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 已提供独立后端适配候选，须检查匹配的桥接 ABI；不自动替换安装。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
+PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 已通过固定场景实际运行验收，仍须检查匹配的桥接 ABI；不自动替换安装。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
 
 ### 历史构建产物审计
 
@@ -532,3 +532,5 @@ bash bash/gazebo.sh start A1
 ```
 
 Fortress 用户将环境变量改为 fortress，或 unset CAR_GAZEBO_BACKEND 自动选择。原手动生成场景与 launch 例子默认 Fortress；Harmonic 手动模式必须同时给 generator --backend harmonic 和 launch backend:=harmonic，不能混用旧生成文件。start 仅显示和检查就绪，不自动运动。test 使用同一套雷达锁路、Nav2、停车与误差门（≤0.06m）；默认输出目录和隔离策略不变。[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) 已通过。[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 分别执行 Fortress/C2、Fortress/A1、Harmonic/C2、Harmonic/A1；各自检查实际进程、传感器和运动，日志按后端/目标分开。当前不代表本地 GUI 或真实小车已验收。
+
+2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。

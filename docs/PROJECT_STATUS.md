@@ -97,10 +97,12 @@
 
 ## Gazebo 建模与导航
 
-99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。 已解决固定场景的扫描接缝、TF 阻塞等待、整条路径转弯失败及二维节点朝向检查问题。逐边 FollowPath，实际动作成功后验证节点位置和静止里程计，再发下一边；保留原带朝向检查器。当前仍是理想全向运动模型，完整 CAD、连续净空与全部场景、桌面 GUI、Harmonic 后端及真实位姿镜像未验收。
+99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。 已解决固定场景的扫描接缝、TF 阻塞等待、整条路径转弯失败及二维节点朝向检查问题。逐边 FollowPath，实际动作成功后验证节点位置和静止里程计，再发下一边；保留原带朝向检查器。当前仍是理想全向运动模型，完整 CAD、连续净空与全部场景、桌面 GUI、真实位姿镜像未验收。
 
 ## 跨电脑部署适配
 
 主要入口自动定位工作区并可显式覆盖 ROS/SDK/雷达配置；独立 PC/Pi5/SIM 部署配置，拒绝过期 CMake 路径/架构缓存，检查本地包前缀和原生 ELF。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) 两端均通过 12 包构建、7 ELF 校验、2 项软件测试及静态地图 probe；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) 14 类、300 组软件回归及新增扫描/路径测试通过。不是 Pi5 真机、真实 YDLIDAR、STM32/OpenMV 联调。历史 201 个跟踪构建项仅只读审计，未解除跟踪；本地用户数据、系统 SDK 与 Gazebo 均未修改。
 
-P5：双后端适配候选 2c56861。统一选择、ABI 校验、场景及 bridge 类型转换，Fortress 保留原参数。[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS；[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 与 [双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 按实际结果更新验收结论。只读环境检查不变更系统包；本机 Harmonic 是否具备配套 Humble bridge 需 doctor 确认。GUI/REAL 镜像、实车与历史产物解除跟踪仍独立待验收。
+P5：双后端适配 2c56861（实际运行验收通过）。统一选择、ABI 校验、场景及 bridge 类型转换，Fortress 保留原参数。[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS；[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 与 [双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 均已通过。只读环境检查不变更系统包；本机 Harmonic 是否具备配套 Humble bridge 需 doctor 确认。GUI/REAL 镜像、实车与历史产物解除跟踪仍独立待验收。
+
+2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。

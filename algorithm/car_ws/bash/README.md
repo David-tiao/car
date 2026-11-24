@@ -22,3 +22,5 @@
 固定场景运行验收（99fcf34）：`bash gazebo.sh test C2` 与 `bash gazebo.sh test A1` 均实际通过，分别 1/1、4/4 路段，误差 0.0387m、0.0374m，零驱动与静止里程计。[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287)。前提 Fortress/Humble；GUI 与真实镜像尚待现场验证。
 
 `CAR_GAZEBO_BACKEND=auto|fortress|harmonic`（默认 auto）：按已加载 ROS overlay 的实际桥接库 ABI 选择、检查 Gazebo major；不匹配即拒绝，无安装/替换行为。Harmonic 需要单独配对 Humble bridge，详见操作文档及 [双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228)。
+
+2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。
