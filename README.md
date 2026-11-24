@@ -67,3 +67,7 @@ https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操
 新增 [car_gazebo](algorithm/car_ws/src/car_gazebo/) 独立三维通道，不依赖网页。使用现有赛场几何生成 URDF（机器人模型）和 SDF（Gazebo 场景），区分静态预览、纯仿真 SIM 和真实位姿只读镜像 REAL。SIM 中的虚拟雷达和里程计进入独立 ROS2 图，复用道路锁定与 Dijkstra，用户确认后由 Nav2 FollowPath 执行单段路线；REAL 镜像只读取真实定位，不控制电机。
 
 统一启动入口为 [bash/gazebo.sh](algorithm/car_ws/bash/gazebo.sh)，提供环境检查、Gazebo + RViz2 联合启动、只读状态和独立 SIM 路径验收；运行日志保留在本地。现状：0.4.0 代码候选的离线 CI 已通过，ROS2 Humble/Fortress 依赖安装及 colcon 构建通过，但 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 路径验收 FAIL：雷达锁路 CONFLICT，未进入 FollowPath。作为未验收开发基线纳入主分支，不代表仿真运动闭环已完成。完整机械 CAD、真实传感器外参及实车镜像仍待验收。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。
+
+## 跨电脑部署与路径约定
+
+car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入口、树莓派或其他队员机器），不要求用户名、Desktop 或 workplace 目录。ROS 2 Humble 使用系统 Python；x86_64 与 ARM64 各自构建，不复制 build/install/log。项目内资源默认从脚本位置发现，外部 SDK、ROS setup、雷达配置等由环境变量或显式参数覆盖。启动前拒绝混用 Conda/venv，Gazebo Fortress 与 Harmonic 不视为等价环境。参见 [跨机操作与验收](docs/ROADMAP_AND_ACCEPTANCE.md#跨电脑部署与路径验收) 与 [路径设计](docs/ARCHITECTURE_AND_ALGORITHMS.md#跨电脑路径设计)。本次不清理历史已跟踪构建产物，避免破坏已有驱动；后续单独审核并迁移。

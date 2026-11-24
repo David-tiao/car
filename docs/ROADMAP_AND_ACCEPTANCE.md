@@ -343,3 +343,73 @@ ros2 service call /car_gz/cancel_locked_route std_srvs/srv/Trigger '{}'
 断开原始锁路/道路状态/路径/仿真数据，或发生冲突，速度门应输出零并取消；未开始不得产生非零 nav_checked_cmd。SIM 时钟回退后必须重启导航，不允许复用旧锁。此为仿真验收预期，不代表已经运行成功。原有网页与实体控制链不变。
 
 离线全量软件回归：[Actions #45335849607](https://github.com/David-tiao/car/actions/runs/45335849607)，对应 56b503a，已通过。实际 ROS2/Fortress 无界面集成测试 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 已完成，结论 FAIL。依赖安装、两个 ROS2 包构建、colcon test 均 PASS；运行检查收到时钟、激光、里程计、TF、地图及 ACTIVE 控制器，但 60s 内未取得一致的锁路路径（`READINESS failed: confirmed live locked path`，锁路状态 `CONFLICT`）。未发起 FollowPath，原因尚未定位，不能视为运动已通过。保留原锁路与速度门，不降低预期障碍数量或跳过检查。[运行日志制品](https://github.com/David-tiao/car/actions/runs/45335849586/artifacts/14893073841)。下一步检查激光反射点簇及地图过滤，识别额外候选来源后复测。GUI 联合显示和真实小车映射仍需单独现场验收。
+
+## 跨电脑部署与路径验收
+
+适用于 Ubuntu 22.04 ROS2 Humble（PC x86_64、Pi5 ARM64 的相应系统与依赖）。所有示例从任意位置开始：先进入你自己的 car 仓库根目录，下面的 `$PWD` 指该目录，而不是固定用户路径。不要在 Conda 或 venv 终端启动 ROS；不要求安装 workplace。若本地有未提交文件，先检查并保留；禁止 reset --hard 或强制覆盖。
+
+```bash
+git status -sb
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+预期：检查当前分支、未提交项与远端提交；仅当合并不会覆盖本地修改时执行正常快进。迁移或换架构时，保留旧安装及重要忽略文件，使用新工作区构建，不复制旧二进制。在已准备好的 Humble 环境进行软件检查：
+
+```bash
+python3 algorithm/car_ws/bash/test_portability.py -v
+cd algorithm/car_ws
+bash bash/build.sh core
+source bash/env.sh
+bash bash/web.sh doctor
+```
+
+预期：路径测试通过，核心软件包在当前架构构建，web doctor 通过；实际串口、真实 TF 与电机不由这些命令验证。Pi5 不需要 Gazebo/RViz2 桌面依赖才能构建核心包；仅在需要的 PC 上构建 car_navigation/car_gazebo。当前 ARM64 真机仍待验证。
+
+### 路径覆盖（可选）
+
+| 变量/参数 | 默认 | 范围 |
+| --- | --- | --- |
+| CAR_WS | 脚本推导的 car_ws | 已接入 common.sh 的入口及 V6 |
+| CAR_ROS_SETUP | /opt/ros/humble/setup.bash | 已接入 common.sh、V6、部分网页 ROS 入口 |
+| CAR_YDLIDAR_SDK_DIR | 自动发现 SDK 配置目录 | 雷达修复，最高优先级，目录含 ydlidar_sdkConfig.cmake |
+| CAR_YDLIDAR_SDK_PREFIX | 项目 SDK / CMAKE_PREFIX_PATH / 系统前缀 | 雷达修复 |
+| CAR_LIDAR_CONFIG | car_ws/config/x3.yaml | lidar.sh / V6 |
+| CAR_SIM2REAL_ROOT | 仓库内 sim2real | web.sh |
+| CAR_GAZEBO_RUN_DIR | ~/.cache/car_gazebo | SIM 日志与世界文件 |
+| CAR_V6_STATE_DIR | XDG_STATE_HOME 或 ~/.local/state 下的 competition_v6_viewer | V6 本地状态及日志 |
+
+显式覆盖建议使用绝对路径且双引号保护含空格目录；未设置时无需填写任何路径。不同 ROS 工作区不要共用已生成的安装目录或运行状态目录。设备路径通过自有 YAML / 参数配置；不能根据机器名猜测串口。
+
+### 雷达迁移
+
+先结束已有雷达会话并确认实际设备、SDK 与新架构。仅检查 SDK 路径（不编译、下载或打开硬件）：
+
+```bash
+bash bash/repair_car_ws_lidar.sh doctor
+```
+
+如果 SDK 不在默认路径，设置 CAR_YDLIDAR_SDK_DIR 为实际 CMake 配置目录后重新执行 doctor。已有 SDK、已核实备份且驱动未运行时可执行：
+
+```bash
+bash bash/repair_car_ws_lidar.sh build
+bash bash/lidar.sh doctor
+```
+
+预期：仅重建雷达驱动 overlay，旧 overlay 备份保留，安装失败或校验失败时恢复旧 overlay。doctor 检查实际可执行文件及串口权限，不启动雷达。SDK 缺失时 build 拒绝下载；只有明确审查依赖后使用 --allow-sdk-build，仍仅写项目内目录。不卸载系统 SDK。历史已跟踪的 201 个雷达构建/安装/日志文件暂保留，新增 ignore 规则不影响已跟踪文件；另行审核清理。
+
+### 旧 Nav2 配置
+
+旧两份 YAML 是参数模板，不能直接从任意工作目录交给 Nav2。需要保留比赛版行为树（失败等待，不主动旋转或倒车）时，用现有 XML 生成临时参数文件：
+
+```bash
+OUT="$(mktemp -d)"
+python3 bash/render_nav2_params.py --output "$OUT/nav2_competition.yaml"
+```
+
+预期：输出新文件，行为树路径自动解析为当前工作区绝对路径，其他参数保持不变。可指定 --params 或 --behavior-tree，缺失/错误路径、重复输出会失败。之后仅在已验证的 Nav2 启动入口中使用生成的参数；不因此启用实车控制。当前 Gazebo 单段 FollowPath 使用独立 nav2_sim.yaml，不依赖该历史配置。
+
+### 验收范围
+
+独立离线测试覆盖带空格的临时物理目录、符号链接、不同 cwd、显式 ROS/SDK 覆盖、nounset 恢复、环境拒绝、坏雷达符号链接及行为树配置生成；模拟 ROS 环境只用于验证路径逻辑，不代表真实 ROS2/雷达。还在实际 checkout 的符号链接外执行 web doctor 和 Bash 语法检查。真实 x86_64/ARM64 构建、串口、Gazebo 版本以及运行级路径执行独立验收，不能用路径测试替代。

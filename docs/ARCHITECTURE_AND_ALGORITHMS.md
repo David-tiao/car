@@ -248,3 +248,7 @@ DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprin
 ### 联合启动与运行验收
 
 `bash/gazebo.sh` 管理独立 SIM 会话：自定位工作空间、检查依赖、拒绝重复实例及已占用的 ROS 域 84，生成独立临时世界并启动 `sim_full.launch.py`。后者组合已有 Gazebo 和 Nav2 launch，以及预设 RViz2 显示；不复制算法。启动检查 `check_sim.py` 必须实际收到递增的时钟、里程计、扫描及轮关节数据、有效 TF、地图与掩膜、双障碍锁定及一致路径、ACTIVE controller 和零速度，才输出 READY。正常 start 不发车；test 显式触发 SIM action，检查到站结果、仿真位姿误差≤0.06m、零驱动指令及静止里程计。启动失败或退出只清理本次管理的进程组，保留场景和日志；不会清理真实雷达、网页、STM32 或其他用户进程。独立 GitHub Actions 使用 Ubuntu 22.04/Humble、Fortress、Nav2 与无界面渲染执行 C3→C2 的运行级测试；它不替代实体车、桌面 RViz/Gazebo GUI 或全部场景的验收。
+
+## 跨电脑路径设计
+
+以脚本所在真实目录（Bash BASH_SOURCE + pwd -P，Python Path(__file__).resolve()）作为默认锚点，不依赖当前目录及用户名。命令行显式参数优先；支持的设备级环境覆盖列于操作文档；缺省时才从项目定位或采用标准系统安装位置。指定不存在的 SDK 不回退为另一版本。ROS2 节点的已安装资源仍通过 ament_index 查找。ROS setup 可覆盖且使用 Humble，临时关闭 nounset 处理 ROS setup 的变量探测，之后恢复调用者 shell 状态；不得在已激活 Conda/venv 中加载。V6、Gazebo、web/keyboard 等入口保留既有数据与运动边界。旧 Nav2 YAML 的比赛行为树路径在部署时解析为绝对路径写入独立生成文件，不改变行为树、DWB 或恢复策略。雷达重建普通安装避免依赖源树/构建目录的符号链接；SDK 缺失时不默认下载，显式允许才构建本地 SDK。ROS 构建产物依然可能含绝对路径、ABI 和架构相关内容，迁移必须重建，源码可移植不等于二进制可移植。

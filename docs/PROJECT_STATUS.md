@@ -98,3 +98,7 @@
 ## Gazebo 建模与导航
 
 独立 `car_gazebo` 代码候选：预览 URDF、静态 SDF 场地、只读 REAL 位姿镜像、SIM 全向速度/虚拟雷达/odom/TF、复用已有锁路及 Nav2 单段 FollowPath。SIM 与网页及真实控制图分离。0.4.0 增加独立 Gazebo/RViz2 一键启动、运行就绪检查、server-only 路径测试、日志和进程隔离，并修正临时碰撞包络。提交 56b503a 的 [离线 CI](https://github.com/David-tiao/car/actions/runs/45335849607) 通过；[运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586)：依赖安装、colcon build/test 通过；路径就绪 FAIL，雷达锁路 CONFLICT，未执行路径运动。GUI 实际联动、真实镜像未验收。尚需 CAD、机械参数与传感器外参实测、仿真障碍锁定、连续跟踪/停令/净空验收；整车比赛控制链不因本项目变更而被宣称完成。
+
+## 跨电脑部署适配（开发中）
+
+本轮以 main@d7c49a0 为基线，统一主要 ROS 启动入口的自动路径发现与覆盖，修复雷达修复脚本、旧安装脚本和旧 Nav2 行为树绝对路径，增加独立离线移植回归。未调整 STM32/OpenMV 逻辑、传感器标定、Gazebo 版本或运动门控。新增 ignore 规则阻止新的历史类型产物，旧已跟踪文件及本地用户修改未清除。Pi5 ARM64 构建及实际运行仍 NOT_RUN；Gazebo 雷达锁路 CONFLICT 仍待排查。CI 结果以对应 PR 工作流实际结果为准。
