@@ -164,3 +164,182 @@ PASS / FAIL / SKIP / NOT_RUN：
 ~~~
 
 严禁写“车动了，所以协议全通”；要能回答 **谁发命令、谁执行、谁确认、物料和底盘真实发生了什么**。源码和历史参考请查 [当前进度](PROJECT_STATUS.md)、[通信对齐](PROTOCOLS_AND_DATA_FLOW.md) 与 [错误复盘](ISSUES_AND_LESSONS.md)。
+
+## Gazebo / URDF 验收（独立于网页）
+
+目标环境 Ubuntu 22.04 / ROS2 Humble / Gazebo Fortress，需本机已有 ign、ros_gz、colcon。执行位置为仓库根目录。先确认当前分支与安装环境。
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+python3 src/car_gazebo/tests/test_scene.py
+colcon build --packages-select car_navigation car_gazebo
+source install/setup.bash
+colcon test --packages-select car_gazebo
+colcon test-result --verbose
+```
+
+
+### 推荐入口：一键 Gazebo + RViz2
+
+前提：Ubuntu 22.04、ROS2 Humble、与 Humble 匹配的 Gazebo Fortress、Nav2、RViz2。若尚未安装相应包，在已配置 ROS apt 源的 Ubuntu 中执行：
+
+```bash
+sudo apt install ros-humble-ros-gz ros-humble-nav2-bringup ros-humble-rviz2 ros-humble-robot-state-publisher python3-colcon-common-extensions
+```
+
+构建按上一段命令执行；不必重新编译 STM32 或启动真实雷达。自仓库根目录进入工作空间：
+
+```bash
+cd algorithm/car_ws
+bash bash/gazebo.sh doctor
+bash bash/gazebo.sh start A1
+```
+
+成功判据：环境检查通过，Gazebo 三维场地与 RViz2 俯视图打开，收到连续真实仿真时钟、激光、里程计、TF、轮关节，两个模拟障碍锁定、路线一致，Nav2 controller ACTIVE，终端显示 PASS READY；**此时小车静止，不自动启动任务**。默认 C3=(2.05,2.05)，目标 A1=(0.35,0.35)。两个模拟障碍来自固定可复现测试夹具，不是现场真实障碍。
+
+准备开始运动时，使用下节同一 SIM 域的显式 Trigger 服务。关闭本次会话使用 Ctrl+C；不会停止其他项目的进程。若启动失败，查看终端打印的 `launch.log`、`acceptance.log` 和生成的 SDF/URDF。日志默认位于 `~/.cache/car_gazebo/run.*/`；可通过 CAR_GAZEBO_RUN_DIR 指定自有目录。重复实例或已占用域 84 直接拒绝，不自动杀掉未知进程。
+
+仅查看当前 SIM 节点或执行可重复的无界面短路线验收（二者不能同时启动一套新仿真）：
+
+```bash
+bash bash/gazebo.sh status
+# 先结束 start 会话，再运行 test；需要可用 OpenGL/OGRE2 渲染环境。
+bash bash/gazebo.sh test C2
+```
+
+test 启动 server-only Gazebo，自动进行显式 SIM 路径测试，不启动真实串口或真实机器人；必须有 PASS READY 和 PASS ROUTE，后者要求 Nav2 SUCCEEDED、确实发生移动、目标误差≤0.06m 且零速度、静止里程计。Linux 无桌面测试可使用已安装的 xvfb/xauth/Mesa：
+
+```bash
+LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1280x720x24" bash bash/gazebo.sh test C2
+```
+
+下列分步命令用于排查某个子模块或独立 REAL 镜像，并非正常 SIM 一键启动的必需步骤。不要与一键脚本同时启动另一套仿真。
+
+静态预览：显式指定模拟障碍坐标，不会改动现行 PGM/YAML。输出目录必须是新目录，生成器拒绝覆盖已有文件。
+
+```bash
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --obstacle 1.2 1.2
+ros2 launch car_gazebo gazebo_view.launch.py world:="$OUT/car_preview.sdf" partition:=car_preview_local
+```
+
+预期：赛场 2.4m × 2.4m，黄色/蓝色区、两个工位、原料盘、一个黑柱及四轮静态车；模型暂时不运动。前台 Ctrl+C 退出自己的 launch，不清理其他项目进程。
+
+真实镜像：确保实际雷达、定位/里程计链已经提供**真实**且新鲜的 map→base_link TF，运行在 REAL ROS domain，不能与模拟 TF 共用。先在工作空间另生成镜像场景：
+
+```bash
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --mode mirror
+ros2 launch car_gazebo gazebo_view.launch.py world:="$OUT/car_mirror.sdf" partition:=car_mirror_local
+```
+
+另一个已 source 同一工作空间的终端：
+
+```bash
+IGN_PARTITION=car_mirror_local ros2 run ros_gz_bridge parameter_bridge /world/car_mirror/set_pose@ros_gz_interfaces/srv/SetEntityPose
+```
+
+确认服务存在，再在同一真实 ROS domain 启动（不要启动任何真车运动）：
+
+```bash
+ros2 service type /world/car_mirror/set_pose
+ros2 run tf2_ros tf2_echo map base_link
+ros2 run car_gazebo mirror_pose.py --ros-args -p enable_real_mirror:=true -p use_sim_time:=false
+```
+
+成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。Gazebo 运行、服务调用、URDF/RViz 显示和实车镜像均尚未验收。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
+
+本次离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。
+
+### SIM 全向运动与虚拟雷达（手动测试，运行待验收）
+
+只在独立终端使用仿真域；先确认域 84 未被真实硬件/网页或其他实验占用。Ubuntu 22.04 / Humble / Fortress，已安装 robot_state_publisher、ros_gz_bridge、RViz2、colcon，并完成 car_gazebo、car_navigation 构建。每个 SIM 终端从仓库根目录进入 algorithm/car_ws：
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --mode sim --obstacle 1.2 1.5 --obstacle 1.5 2.05
+ros2 launch car_gazebo gazebo_view.launch.py mode:=sim world:="$OUT/car_sim.sdf" partition:=car_sim_local
+```
+
+预期：Gazebo 中可见四轮车体与两个显式模拟障碍柱，启动时静止；/clock、/odom、/scan、/joint_states 和 TF 连续更新。不能同时启动 real 或 TEST 的桥接。若无激光帧、GPU 渲染失败、frame_id/时间戳不匹配，adapter 拒绝非零速度；检查终端日志，不删除校验。
+
+在另一个同样 source 和 export 的 SIM 终端（不启动任何硬件）：
+
+```bash
+ros2 topic echo /odom --once
+ros2 topic echo /scan --once --qos-reliability best_effort
+ros2 run tf2_ros tf2_echo map laser_frame
+ros2 topic pub --rate 10 /car_gz/cmd_vel geometry_msgs/msg/Twist '{linear: {y: -0.1}}'
+```
+
+预期：车体沿自身右侧横移，按 Ctrl+C 停止发布后 watchdog 输出零；持续时间应短，观察车体不离开场地。不要通过直接 Gazebo topic 绕过 watchdog。该检查只验证仿真全向运动，不验证真实麦轮物理接触或安全停机。
+
+复用现有地图和锁路算法时，另一个 SIM 终端运行 map publisher（只启动一个 /map publisher）；将规则掩膜话题 remap 至现行道路拓扑输入。确认真实雷达节点不在此域。
+
+```bash
+ros2 run car_navigation car_map_publisher --ros-args -p use_sim_time:=true -p map_yaml:="$PWD/maps/competition_v1/competition_navigation_map.yaml" -p mask_yaml:="$PWD/maps/competition_v1/competition_keepout_mask.yaml" -r /car/navigation/keepout_mask:=/keepout_filter_mask
+```
+
+另两个相同 SIM 域终端：
+
+```bash
+python3 maps/competition_v1/simple_lock_stage/lock_obstacles.py --expected 2
+python3 maps/competition_v1/topology_stage6/road_topology.py --start C3 --goal A1 --expected-obstacles 2
+```
+
+另开 RViz2（Fixed Frame=map，Display 添加 /map、/keepout_filter_mask、/scan、RobotModel、/competition/locked_road_path、/competition/locked_obstacle_markers）：
+
+```bash
+rviz2 --ros-args -p use_sim_time:=true
+```
+
+只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本采用原有 CLI，未变更源码；SIM TF/消息时间兼容性需在真实 ROS2 环境验证。手动模式下路径只是预览；使用下节 Nav2 专用模式才可执行，不能同时启动两套 map/lock/topology。不要将本节命令用于 REAL 域。
+
+### SIM Nav2 单段锁路执行（分步诊断）
+
+已安装 ROS2 Humble 的 Nav2 controller、DWB、lifecycle manager 与前述 Gazebo 依赖，重新构建 car_gazebo、car_navigation；仅在域84运行。为使真实仿真起点与拓扑 C3 对应，使用 --start 2.05 2.05；启动 Nav2 速度源（手动 cmd_vel 不再被 adapter 接收）：
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select car_navigation car_gazebo
+source install/setup.bash
+export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --mode sim --start 2.05 2.05 --obstacle 1.2 1.5 --obstacle 1.5 2.05
+ros2 launch car_gazebo gazebo_view.launch.py mode:=sim command_source:=nav2 world:="$OUT/car_sim.sdf" partition:=car_sim_local
+```
+
+在另一 SIM 终端（同一工作空间与域）启动一次导航，不再重复执行上节 map/lock/topology 手动启动命令：
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
+ros2 launch car_gazebo sim_nav.launch.py map_dir:="$PWD/maps/competition_v1" start:=C3 goal:=A1
+```
+
+等待两个仿真障碍确认并冻结道路，观察 RViz2、/competition/road_status 与局部代价地图。另一个 SIM 终端执行：
+
+```bash
+ros2 topic echo /competition/road_status --once --qos-durability transient_local
+ros2 action info /follow_path
+ros2 service call /car_gz/follow_locked_route std_srvs/srv/Trigger '{}'
+ros2 topic echo /car_gz/route_status
+```
+
+预期：服务只有在真实仿真扫描锁定、路径一致、起点误差≤0.06m、controller ready 时受理；REQUESTED→FOLLOWING→SUCCEEDED（或 REJECTED/FAILED/STOPPED）；Gazebo 沿锁路路线运动。检查结束位姿与 A1=(0.35,0.35) 的误差。取消：
+
+```bash
+ros2 service call /car_gz/cancel_locked_route std_srvs/srv/Trigger '{}'
+```
+
+断开原始锁路/道路状态/路径/仿真数据，或发生冲突，速度门应输出零并取消；未开始不得产生非零 nav_checked_cmd。SIM 时钟回退后必须重启导航，不允许复用旧锁。此为仿真验收预期，不代表已经运行成功。原有网页与实体控制链不变。
+
+离线全量软件回归：[Actions #45335849607](https://github.com/David-tiao/car/actions/runs/45335849607)，对应 56b503a，已通过。实际 ROS2/Fortress 无界面集成测试 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 已完成，结论 FAIL。依赖安装、两个 ROS2 包构建、colcon test 均 PASS；运行检查收到时钟、激光、里程计、TF、地图及 ACTIVE 控制器，但 60s 内未取得一致的锁路路径（`READINESS failed: confirmed live locked path`，锁路状态 `CONFLICT`）。未发起 FollowPath，原因尚未定位，不能视为运动已通过。保留原锁路与速度门，不降低预期障碍数量或跳过检查。[运行日志制品](https://github.com/David-tiao/car/actions/runs/45335849586/artifacts/14893073841)。下一步检查激光反射点簇及地图过滤，识别额外候选来源后复测。GUI 联合显示和真实小车映射仍需单独现场验收。

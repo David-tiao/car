@@ -184,3 +184,67 @@ y' = y + (sin θ_mid · vx + cos θ_mid · vy) Δt
 - **硬件安全优先**：未知舵机、线束、零位、限位，所有新功能只允许模拟显示，不能因为网页多了滑块就发实机动作。
 
 延伸：[通信与数据流](PROTOCOLS_AND_DATA_FLOW.md) · [当前进度](PROJECT_STATUS.md) · [验收计划](ROADMAP_AND_ACCEPTANCE.md)。
+
+## Gazebo 三维通道
+
+### 共享几何和 REAL 镜像
+
+新增 `algorithm/car_ws/src/car_gazebo/`，不依赖网页，也不改 STM32/OpenMV。URDF 与 SDF 共享同一份预览车体几何；SDF 场地由现行 `maps/competition_v1/zones.json` 生成，黄色、蓝色和工位为视觉层，真实原料盘及显式模拟障碍有碰撞体。世界原点与比赛 map 左下角一致。轮半径 0.04m、前后半轴距 0.093m、左右半轮距 0.11m 取自 STM32 源码，其他预览外形非实测；未写入雷达、相机外参和机械关节假值。
+
+```mermaid
+flowchart LR
+    Z[zones.json] --> S[SDF 静态赛场]
+    G[预览几何] --> S
+    G --> U[URDF]
+    T[真实 map 到 base_link TF] --> M[只读镜像节点]
+    M -->|SetEntityPose| W[独立 Gazebo mirror]
+    S --> W
+    T --> R[RViz2]
+    T --> E[已有网页独立通道]
+```
+
+镜像仅取真实 ROS2 图中 0.5s 内的 map 到 base_link TF；以平面 x/y/yaw 设置模型位姿，过期或异常则保留上次显示并告警。镜像世界不生成假障碍，不发布 /scan、/odom、/tf 或 /clock，不下发电机命令。REAL 镜像是**只读三维显示**，不提供虚拟雷达或物理控制，且禁止在专用 SIM 域 84 中启动。后续须验证 Fortress 实体服务、统一模型尺寸、实车 TF 来源及动态仿真数据隔离。
+
+### 全向 SIM 数据链（代码候选）
+
+Fortress VelocityControl 直接接收车体速度，不伪装真实麦轮滚子动力学；OdometryPublisher 读取 worldPose，GPU lidar 从虚拟场景产生 360° 扫描。仿真激光高度 0.092m 是工程假设（低于 0.10m 模拟障碍柱顶），不可写入实车外参。SDF 碰撞包络为 0.266×0.25×0.085m，质量暂设 2kg，仅仿真用；URDF 外观与 SDF 共用车体几何。包络长度取 max(底板长度, 2×(前后半轴距+轮半径))，宽度取 max(底板宽度, 2×左右半轮距+轮宽)。Nav2 足迹使用同一外包尺寸，另加 10mm footprint_padding；不是实车测量数据。
+
+```mermaid
+flowchart LR
+  C[SIM 命令 /car_gz/cmd_vel] --> G[限速与超时门]
+  G --> B[单向 ROS 到 Gazebo bridge]
+  B --> V[VelocityControl / SIM 车体]
+  V --> O[仿真 worldPose]
+  L[GPU lidar 虚拟射线] --> I[单向 Gazebo 到 ROS bridge]
+  O --> I
+  I --> A[SIM adapter]
+  A --> T[odom / TF / scan / joint_states]
+  T --> R[RViz2]
+  T --> D[现有雷达锁路及 Dijkstra]
+```
+
+单独 ROS_DOMAIN_ID=84、ROS_LOCALHOST_ONLY=1、car_sim_* Ignition partition；真实/网页/TEST 不进入该域。SIM 仿真时钟通过 world clock 单向桥接。SIM 的 map=world=odom；odom→base_link 取仿真位姿，base_link→laser_frame 由 SIM URDF 的 robot_state_publisher 唯一发布。轮位姿根据理想 X 型麦轮逆运动学积分，仅 RViz 关节动画；Gazebo 轮视觉固定。令 L=0.093、W=0.11、r=0.04，车体速度 (vx,vy,ω)，a=(L+W)ω，则四轮角速度为 (vx−vy−a, vx+vy+a, vx+vy−a, vx−vy+a)/r。非实测轮方向。指令按二维速度范数 0.20m/s、角速度 0.50rad/s 限制；0.30s 指令过期或任一仿真数据超过 0.50s 返回零。VelocityControl 自身会保持最后指令，故 launch 监督任一子进程退出即关闭本次仿真，不作为硬件急停。
+
+现有道路锁定/拓扑算法可以在独立 SIM 域使用仿真 scan/TF，单段路径执行见下节；当前不改动真实导航配置、速度桥或避障代码。依据：[Fortress VelocityControl](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1VelocityControl.html)、[OdometryPublisher](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1OdometryPublisher.html)、[GPU lidar](https://gazebosim.org/docs/fortress/sensors/)。
+
+### 锁路到 Nav2 执行（SIM 候选）
+
+原有 lock_obstacles.py 与 road_topology.py 不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对原始锁路心跳与派生道路/路径状态、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。SIM 时钟回退会锁存故障，必须重启导航以丢弃旧锁。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
+
+```mermaid
+flowchart LR
+  S[Gazebo scan + TF] --> L[现有 lock_obstacles]
+  L --> D[现有 Dijkstra]
+  D --> G[SIM route gate / 手动触发]
+  G -->|FollowPath| N[Nav2 DWB]
+  N -->|nav_cmd_vel| G
+  G -->|nav_checked_cmd| A[SIM adapter]
+  A --> W[Gazebo]
+  W --> S
+```
+
+DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前只执行单段锁路路线，不自动推进两批比赛任务；碰撞、安全净空、DWB 参数与实际运行仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
+
+### 联合启动与运行验收
+
+`bash/gazebo.sh` 管理独立 SIM 会话：自定位工作空间、检查依赖、拒绝重复实例及已占用的 ROS 域 84，生成独立临时世界并启动 `sim_full.launch.py`。后者组合已有 Gazebo 和 Nav2 launch，以及预设 RViz2 显示；不复制算法。启动检查 `check_sim.py` 必须实际收到递增的时钟、里程计、扫描及轮关节数据、有效 TF、地图与掩膜、双障碍锁定及一致路径、ACTIVE controller 和零速度，才输出 READY。正常 start 不发车；test 显式触发 SIM action，检查到站结果、仿真位姿误差≤0.06m、零驱动指令及静止里程计。启动失败或退出只清理本次管理的进程组，保留场景和日志；不会清理真实雷达、网页、STM32 或其他用户进程。独立 GitHub Actions 使用 Ubuntu 22.04/Humble、Fortress、Nav2 与无界面渲染执行 C3→C2 的运行级测试；它不替代实体车、桌面 RViz/Gazebo GUI 或全部场景的验收。
