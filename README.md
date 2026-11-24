@@ -69,7 +69,7 @@ https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操
 
 ## 跨电脑部署与路径约定
 
-car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入口、树莓派或其他队员机器），不要求用户名、Desktop 或 workplace 目录。ROS 2 Humble 使用系统 Python；x86_64 与 ARM64 各自构建，不复制 build/install/log。项目内资源默认从脚本位置发现，外部 SDK、ROS setup、雷达配置等由环境变量或显式参数覆盖。启动前拒绝混用 Conda/venv，Gazebo Fortress 与 Harmonic 不视为等价环境。参见 [跨机操作与验收](docs/ROADMAP_AND_ACCEPTANCE.md#跨电脑部署与路径验收) 与 [路径设计](docs/ARCHITECTURE_AND_ALGORITHMS.md#跨电脑路径设计)。本次不清理历史已跟踪构建产物，避免破坏已有驱动；后续单独审核并迁移。
+car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入口、树莓派或其他队员机器），不要求用户名、Desktop 或 workplace 目录。ROS 2 Humble 使用系统 Python；x86_64 与 ARM64 各自构建，不复制 build/install/log。项目内资源默认从脚本位置发现，外部 SDK、ROS setup、雷达配置等由环境变量或显式参数覆盖。启动前拒绝混用 Conda/venv，Gazebo Fortress 与 Harmonic 不视为等价环境。参见 [跨机操作与验收](docs/ROADMAP_AND_ACCEPTANCE.md#跨电脑部署与路径验收) 与 [路径设计](docs/ARCHITECTURE_AND_ALGORITHMS.md#跨电脑路径设计)。P4 已解除历史雷达生成文件跟踪（开发分支），更新前务必在旧工作副本备份，再按当前机器架构重新编译；不重写历史。详见[历史构建产物迁移](docs/ROADMAP_AND_ACCEPTANCE.md#历史构建产物迁移)。
 
 新增 `bash/deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：自动识别 x86_64/ARM64，PC 与 Pi5 共享明确的 12 包核心部署清单，不依赖 Gazebo/RViz2，sim 单独选择仿真包。只读 `audit_lidar_artifacts.py` 输出旧雷达构建文件清单；不自动清理。原生双架构 CI 独立于原离线及 Gazebo 运行 CI，详见操作文档。
 
@@ -78,3 +78,5 @@ car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入
 Gazebo 后端可通过 `CAR_GAZEBO_BACKEND=auto|fortress|harmonic` 选择，默认 auto。Humble 默认匹配 Fortress；Harmonic 要求对应 ROS 桥接包，不能和默认 Fortress 桥接包混装。详见[双后端操作与验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo-双后端选择)。
 
 2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。
+
+P4：提交 41faa65 仅解除已核对的 201 个历史雷达生成文件（93 build、83 install、25 log，其中 38 个 symlink，Git blob 合计 8,009,261 字节）的跟踪；当前树匹配项为零，源代码与地图保留，旧 Git 提交历史不重写。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 在 x86_64 与 AArch64 新目录中使用锁定 SDK V1.2.7 (ad8e30f9e9315d4bd7544df85571072fdbcd31ea) 重建 ROS 驱动，node/client 两个 ELF、动态库、包注册和 COLCON_IGNORE 恢复均 PASS；此前链接失败已修复。[备份离线 CI #45402945365](https://github.com/David-tiao/car/actions/runs/45402945365) PASS。清理后 [离线回归 #45403210364](https://github.com/David-tiao/car/actions/runs/45403210364)、[雷达重建 #45403210292](https://github.com/David-tiao/car/actions/runs/45403210292) 以实际结果为准。未接真实雷达、未访问 STM32、未清除任何用户机器文件。

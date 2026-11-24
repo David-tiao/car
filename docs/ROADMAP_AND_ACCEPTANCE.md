@@ -397,7 +397,7 @@ bash bash/repair_car_ws_lidar.sh build
 bash bash/lidar.sh doctor
 ```
 
-预期：仅重建雷达驱动 overlay，旧 overlay 备份保留，安装失败或校验失败时恢复旧 overlay。doctor 检查实际可执行文件及串口权限，不启动雷达。SDK 缺失时 build 拒绝下载；只有明确审查依赖后使用 --allow-sdk-build，仍仅写项目内目录。不卸载系统 SDK。历史已跟踪的 201 个雷达构建/安装/日志文件暂保留，新增 ignore 规则不影响已跟踪文件；另行审核清理。
+预期：仅重建雷达驱动 overlay，旧 overlay 备份保留，安装失败或校验失败时恢复旧 overlay。doctor 检查实际可执行文件及串口权限，不启动雷达。SDK 缺失时 build 拒绝下载；只有明确审查依赖后使用 --allow-sdk-build，仍仅写项目内目录。不卸载系统 SDK。P4 已解除历史 201 项跟踪，更新前按下节备份，重建后增加 verify 检查，不复制旧二进制。
 
 ### 旧 Nav2 配置
 
@@ -443,15 +443,39 @@ bash bash/deploy.sh test pi5
 
 PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 已通过固定场景实际运行验收，仍须检查匹配的桥接 ABI；不自动替换安装。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
 
-### 历史构建产物审计
+### 历史构建产物迁移
+
+**更新前必做，尤其已有本地雷达安装的队员。** P4 开发分支移除了 201 个历史跟踪项；普通 checkout/pull 可能删除这些原先受 Git 管理的文件。先停止自己管理的雷达、V6、oneclick 和编译进程；不要 kill 其他项目进程。检查本地未提交改动及独立 SDK、工作区外符号链接目标，分别备份；不要 reset --hard、clean -fdx 或强制 checkout。旧主分支仍未合并，fetch 不改变工作副本。
+
+从本机 car 仓库根目录执行以下命令（无需先 checkout 清理后的代码）：
 
 ```bash
-python3 bash/audit_lidar_artifacts.py --list
+git status --short
+git fetch origin fix/portable-workspace-20261124
+BACKUP_PARENT="${XDG_STATE_HOME:-$HOME/.local/state}/car-lidar-backups"
+mkdir -p "$BACKUP_PARENT"
+SESSION="$(mktemp -d "$BACKUP_PARENT/migration.XXXXXXXX")"
+git show 636527cf873c80eb5440d91e4d68806dd6c8ccfd:algorithm/car_ws/bash/backup_lidar_artifacts.py > "$SESSION/backup_tool.py"
+python3 "$SESSION/backup_tool.py" backup --repo "$(git rev-parse --show-toplevel)" --output "$SESSION/backup"
+python3 "$SESSION/backup_tool.py" verify --backup "$SESSION/backup"
+printf 'Backup: %s\n' "$SESSION/backup"
 ```
 
-预期：列出明确匹配旧 build_lidar_repair、install_oneclick_lidar 及对应备份、log_lidar_repair 的 Git 跟踪项、符号链接和缺失项计数。仅访问 Git 索引及文件存在性，不执行 rm/git rm，也不检查其他源码目录。当前基线有 201 个已跟踪历史项；将来解除跟踪前，必须先通知队员核验工作副本、备份旧 overlay 及重要本地文件，在新位置重新构建，避免正常 git pull 删除仍被依赖的跟踪文件。旧提交历史保留，不重写历史。
+必须两次出现 PASS BACKUP VERIFY，查看 manifest.json 中 entries（旧目录、普通文件 SHA256、权限、symlink 目标、原 HEAD），确认本地重要文件都已另行备份。备份仅覆盖明确匹配的历史 repair/build/install/log 目录，外部链接目标、其他工作区及本地源代码/索引改动须独立保存。发现工作副本变化或失败不继续更新。归档保留原路径与链接文字，仅用于人工检查/恢复，禁止直接覆盖新 overlay；不要把旧安装当成跨机器可运行文件。若目标在旧 checkout 中不存在，空归档只说明无对应目录，不代表其他本地数据已备份。确认本地改动及备份后，由用户选择更新已审核的开发分支或将来合并后的 main，禁止自动强制切换。Git 历史仍保留旧提交；本轮不是历史清除或 pack 体积回收。
 
-双架构工作流 `.github/workflows/native_deploy.yml` 在原生 Ubuntu 22.04 x64/ARM64 容器环境中安装仅核心包依赖、将 Git 源码解包到临时新物理路径、在另一 cwd 执行 doctor/build/verify/test。CI 结果以对应提交记录为准；不等同 Pi5 真机、雷达、Gazebo GUI 或实车控制验收。
+更新到清理后的版本，进入工作区：
+
+```bash
+cd algorithm/car_ws
+python3 bash/audit_lidar_artifacts.py --expect-empty
+bash bash/repair_car_ws_lidar.sh doctor
+bash bash/repair_car_ws_lidar.sh build
+bash bash/repair_car_ws_lidar.sh verify
+```
+
+预期：TRACKED=0，SDK 路径可用，原生构建完成、node/client ELF 和 ldd PASS，COLCON_IGNORE 恢复。若已有 SDK 配置在非默认目录，显式设置 CAR_YDLIDAR_SDK_DIR 或 CAR_YDLIDAR_SDK_PREFIX；默认 build 不下载，不需要为旧目录修改机器的全局 SDK。缺少 SDK 时，审核依赖后才允许 --allow-sdk-build，固定上游 V1.2.7 提交；其他已有 SDK 版本由用户负责配对，CI 仅验证固定版本。新生成 overlay/build/log 被 .gitignore 排除；不要 git add -f。实车前单独执行 bash bash/lidar.sh doctor，要求实际串口可访问且未被占用；实际 /scan、TF 与真实设备验收仍需现场，不属于本轮软件重建。
+
+P4：提交 41faa65 仅解除已核对的 201 个历史雷达生成文件（93 build、83 install、25 log，其中 38 个 symlink，Git blob 合计 8,009,261 字节）的跟踪；当前树匹配项为零，源代码与地图保留，旧 Git 提交历史不重写。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 在 x86_64 与 AArch64 新目录中使用锁定 SDK V1.2.7 (ad8e30f9e9315d4bd7544df85571072fdbcd31ea) 重建 ROS 驱动，node/client 两个 ELF、动态库、包注册和 COLCON_IGNORE 恢复均 PASS；此前链接失败已修复。[备份离线 CI #45402945365](https://github.com/David-tiao/car/actions/runs/45402945365) PASS。清理后 [离线回归 #45403210364](https://github.com/David-tiao/car/actions/runs/45403210364)、[雷达重建 #45403210292](https://github.com/David-tiao/car/actions/runs/45403210292) 以实际结果为准。未接真实雷达、未访问 STM32、未清除任何用户机器文件。
 
 ### P2 原生验收与接缝回归
 

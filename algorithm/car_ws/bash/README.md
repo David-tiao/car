@@ -24,3 +24,5 @@
 `CAR_GAZEBO_BACKEND=auto|fortress|harmonic`（默认 auto）：按已加载 ROS overlay 的实际桥接库 ABI 选择、检查 Gazebo major；不匹配即拒绝，无安装/替换行为。Harmonic 需要单独配对 Humble bridge，详见操作文档及 [双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228)。
 
 2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。
+
+P4：更新旧 checkout 前使用 [迁移备份步骤](../../../docs/ROADMAP_AND_ACCEPTANCE.md#历史构建产物迁移)。更新后 `python3 audit_lidar_artifacts.py --expect-empty` 应报告 TRACKED=0；`bash repair_car_ws_lidar.sh doctor`、`build`、`verify` 依次执行，verify 只验证包注册/ELF/动态库，不打开串口。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 双架构 PASS。
