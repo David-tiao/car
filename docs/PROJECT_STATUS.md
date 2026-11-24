@@ -80,7 +80,7 @@
 **P1 / 工程效率和质量**
 
 6. 2026-11-21 合并后旧分支的远程删除未通过 GitHub 工具实施，只完成代码与提交历史合并；用 `git branch -r` / GitHub 分支页确认。
-7. 根 `README.md` 当前存在 `<<<<<<< HEAD` 冲突标记，属于文档卫生问题，建议另开小修复提交；不要由此推断代码文件仍在 Git rebase。
+7. 根 README 历史遗留单行冲突标记已清理；不据此推断代码文件仍处于 Git rebase。
 8. 早期文档混有历史分支、V5 流程、旧 Shift/障碍 FSM；查“当前怎么操作”应以现行源码和本目录的快照为准。
 9. 网页对机构的姿态是演示状态，必须继续防止将 MOCK 数值或 PC ROS2 软件回环误表示为实测电机/里程计。
 
@@ -97,14 +97,8 @@
 
 ## Gazebo 建模与导航
 
-独立 `car_gazebo` 代码候选：预览 URDF、静态 SDF 场地、只读 REAL 位姿镜像、SIM 全向速度/虚拟雷达/odom/TF、复用已有锁路及 Nav2 单段 FollowPath。SIM 与网页及真实控制图分离。0.4.0 增加独立 Gazebo/RViz2 一键启动、运行就绪检查、server-only 路径测试、日志和进程隔离，并修正临时碰撞包络。提交 56b503a 的 [离线 CI](https://github.com/David-tiao/car/actions/runs/45335849607) 通过；[运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586)：依赖安装、colcon build/test 通过；路径就绪 FAIL，雷达锁路 CONFLICT，未执行路径运动。GUI 实际联动、真实镜像未验收。尚需 CAD、机械参数与传感器外参实测、仿真障碍锁定、连续跟踪/停令/净空验收；整车比赛控制链不因本项目变更而被宣称完成。
+当前已验证功能基线：`522b563`（PR #18 开发分支）。[运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) 真实 Humble/Fortress 依赖、colcon build/test、GPU lidar/odom/TF、两障碍锁路、Dijkstra、Nav2 FollowPath、C3→C2 最终误差 3.81cm、零驱动和静止里程计全部 PASS。原先 CONFLICT、TF future extrapolation 导致就绪失败，已经通过全周接缝修复及有界非阻塞同时间戳 TF 队列处理，不绕过锁路或速度门。[双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 用独立场景验收 C3→A1 多道路边与 C3→C2，最新状态见实际 jobs。当前仍是理想全向运动模型，完整 CAD、连续净空与全部场景、桌面 GUI、Harmonic 后端及真实位姿镜像未验收。
 
-## 跨电脑部署适配（开发中）
+## 跨电脑部署适配
 
-本轮以 main@d7c49a0 为基线，统一主要 ROS 启动入口的自动路径发现与覆盖，修复雷达修复脚本、旧安装脚本和旧 Nav2 行为树绝对路径，增加独立离线移植回归。未调整 STM32/OpenMV 逻辑、传感器标定、Gazebo 版本或运动门控。新增 ignore 规则阻止新的历史类型产物，旧已跟踪文件及本地用户修改未清除。Pi5 ARM64 构建及实际运行仍 NOT_RUN；Gazebo 雷达锁路 CONFLICT 仍待排查。CI 结果以对应 PR 工作流实际结果为准。
-
-P2：新增原生 PC/Pi5 部署配置、显式包集合、CMake 缓存路径/ABI 检查、本地包注册及 ELF 架构验证、原生双架构 CI 和只读雷达历史产物审计。尚不解除旧文件跟踪；需要队员本地备份与重建后单独审核。上轮 906a9c5 的 [离线全量 CI](https://github.com/David-tiao/car/actions/runs/45345136456) 已通过；本轮以新提交对应 CI 结果为准。Pi5 实机、Harmonic 后端及 Gazebo 锁路运动仍待验收。
-
-P2 原生验收：[双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) x86_64/ARM64 两组均 PASS（12 包、ELF、2 测试及静态 probe）。P6 首个问题：全周扫描接缝可能导致同一障碍重复聚类；已增加解析回归、修复及冲突证据日志。新运行级 CI 尚待确认；此前运行仍为 CONFLICT/未发起 FollowPath。历史产物解除跟踪、Harmonic 及实机仍待验收。
-
-P6 时间同步：[双架构 CI #45346142888](https://github.com/David-tiao/car/actions/runs/45346142888)、[离线 CI #45346142980](https://github.com/David-tiao/car/actions/runs/45346142980) 均 PASS；[运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) FAIL，锁路节点连续报告 scan 时间领先可用 TF 约 1.8–2.3s，未进入 FollowPath。新增 16 帧/0.5s FIFO 非阻塞轮询及真实时间戳变换健康字段，SIM 门控与验收要求近期变换证据。新运行级验证待确认；不宣称 Gazebo 已可运动。历史雷达 Git 产物未解除跟踪，Harmonic 与 Pi5 实机仍待验收。
+主要入口自动定位工作区并可显式覆盖 ROS/SDK/雷达配置；独立 PC/Pi5/SIM 部署配置，拒绝过期 CMake 路径/架构缓存，检查本地包前缀和原生 ELF。[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100) 两端均通过 12 包构建、7 ELF 校验、2 项软件测试及静态地图 probe；[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) 14 类、300 组软件回归和新增扫描/路径测试通过。不是 Pi5 真机、真实 YDLIDAR、STM32/OpenMV 联调。历史 201 个跟踪构建项仅只读审计，未解除跟踪；本地用户数据、系统 SDK 与 Gazebo 均未修改。

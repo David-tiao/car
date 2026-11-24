@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 项目汇总介绍
 
 algorithm   --- SLAM,路径规划算法/openmv算法
@@ -64,9 +63,9 @@ https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操
 
 ## Gazebo 三维建模与导航
 
-新增 [car_gazebo](algorithm/car_ws/src/car_gazebo/) 独立三维通道，不依赖网页。使用现有赛场几何生成 URDF（机器人模型）和 SDF（Gazebo 场景），区分静态预览、纯仿真 SIM 和真实位姿只读镜像 REAL。SIM 中的虚拟雷达和里程计进入独立 ROS2 图，复用道路锁定与 Dijkstra，用户确认后由 Nav2 FollowPath 执行单段路线；REAL 镜像只读取真实定位，不控制电机。
+新增 [car_gazebo](algorithm/car_ws/src/car_gazebo/) 独立三维通道，不依赖网页。使用现有赛场几何生成 URDF（机器人模型）和 SDF（Gazebo 场景），区分静态预览、纯仿真 SIM 和真实位姿只读镜像 REAL。SIM 中的虚拟雷达和里程计进入独立 ROS2 图，复用道路锁定与 Dijkstra，用户确认后由 Nav2 FollowPath 执行一条锁定路线（可包含多个道路边）；REAL 镜像只读取真实定位，不控制电机。
 
-统一启动入口为 [bash/gazebo.sh](algorithm/car_ws/bash/gazebo.sh)，提供环境检查、Gazebo + RViz2 联合启动、只读状态和独立 SIM 路径验收；运行日志保留在本地。现状：0.4.0 代码候选的离线 CI 已通过，ROS2 Humble/Fortress 依赖安装及 colcon 构建通过，但 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 路径验收 FAIL：雷达锁路 CONFLICT，未进入 FollowPath。作为未验收开发基线纳入主分支，不代表仿真运动闭环已完成。完整机械 CAD、真实传感器外参及实车镜像仍待验收。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。
+统一启动入口为 [bash/gazebo.sh](algorithm/car_ws/bash/gazebo.sh)，提供环境检查、Gazebo + RViz2 联合启动、只读状态和独立 SIM 路径验收；运行日志保留在本地。已验证基线：522b563 在 [运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) 中通过实际 Gazebo Fortress 无界面 C3→C2 运动，终点误差 0.0381m，驱动归零且里程计确认静止。[双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 新增独立 C3→A1 多路段及 C3→C2 重复验收，结果以对应 jobs 为准。完整机械 CAD、GUI 显示、真实传感器外参及实车镜像仍待验收。Harmonic 尚不属于已验证后端。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。
 
 ## 跨电脑部署与路径约定
 
@@ -74,8 +73,4 @@ car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入
 
 新增 `bash/deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：自动识别 x86_64/ARM64，PC 与 Pi5 共享明确的 12 包核心部署清单，不依赖 Gazebo/RViz2，sim 单独选择仿真包。只读 `audit_lidar_artifacts.py` 输出旧雷达构建文件清单；不自动清理。原生双架构 CI 独立于原离线及 Gazebo 运行 CI，详见操作文档。
 
-原生部署验收：[双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) 已在 x86_64 和 AArch64 新物理目录完成 12 个 ROS2 包构建、包前缀及 7 个关键 ELF 架构校验、两项软件测试和静态地图 probe。不是 Pi5 真机验收。另有雷达全周扫描接缝修复待运行验收，保持原两障碍锁定与真实第三目标冲突逻辑。
-
-### 当前雷达时间同步修复
-
-[双架构 CI #45346142888](https://github.com/David-tiao/car/actions/runs/45346142888) 与 [离线 CI #45346142980](https://github.com/David-tiao/car/actions/runs/45346142980) PASS；全周接缝修复的解析回归通过，但 [运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) 仍未达到运行验收，日志表明锁路节点收到的 TF 比扫描时间戳滞后约 2 秒（future extrapolation），未形成有效锁路。本轮新增有界非阻塞扫描等待队列、同时间戳 TF 处理和 SIM 新鲜证据门，运行验收以新提交 CI 为准。
+原生部署验收：[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100) 已在 x86_64 和 AArch64 新物理目录完成 12 个 ROS2 包构建、包前缀及 7 个关键 ELF 架构校验、两项软件测试和静态地图 probe。[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) 全量软件回归通过。不是 Pi5 真机验收。圆周扫描接缝与非阻塞同时间戳 TF 队列已纳入软件回归，真实第三目标仍触发冲突；不以弱化门控换取通过。

@@ -229,7 +229,7 @@ flowchart LR
 
 ### 锁路到 Nav2 执行（SIM 候选）
 
-原有 lock_obstacles.py 与 road_topology.py 不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对原始锁路心跳与派生道路/路径状态、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。SIM 时钟回退会锁存故障，必须重启导航以丢弃旧锁。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
+复用原有 lock_obstacles.py 与 road_topology.py；前者已修复圆周接缝和扫描/TF 同步，后者拓扑规划算法不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对原始锁路心跳与派生道路/路径状态、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。SIM 时钟回退会锁存故障，必须重启导航以丢弃旧锁。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
 
 ```mermaid
 flowchart LR
@@ -243,11 +243,11 @@ flowchart LR
   W --> S
 ```
 
-DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前只执行单段锁路路线，不自动推进两批比赛任务；碰撞、安全净空、DWB 参数与实际运行仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
+DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前每次显式执行一条锁路路线（可含多道路边），不自动推进两批比赛任务；连续安全净空、全部场景和实车标定仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
 
 ### 联合启动与运行验收
 
-`bash/gazebo.sh` 管理独立 SIM 会话：自定位工作空间、检查依赖、拒绝重复实例及已占用的 ROS 域 84，生成独立临时世界并启动 `sim_full.launch.py`。后者组合已有 Gazebo 和 Nav2 launch，以及预设 RViz2 显示；不复制算法。启动检查 `check_sim.py` 必须实际收到递增的时钟、里程计、扫描及轮关节数据、有效 TF、地图与掩膜、双障碍锁定及一致路径、ACTIVE controller 和零速度，才输出 READY。正常 start 不发车；test 显式触发 SIM action，检查到站结果、仿真位姿误差≤0.06m、零驱动指令及静止里程计。启动失败或退出只清理本次管理的进程组，保留场景和日志；不会清理真实雷达、网页、STM32 或其他用户进程。独立 GitHub Actions 使用 Ubuntu 22.04/Humble、Fortress、Nav2 与无界面渲染执行 C3→C2 的运行级测试；它不替代实体车、桌面 RViz/Gazebo GUI 或全部场景的验收。
+`bash/gazebo.sh` 管理独立 SIM 会话：自定位工作空间、检查依赖、拒绝重复实例及已占用的 ROS 域 84，生成独立临时世界并启动 `sim_full.launch.py`。后者组合已有 Gazebo 和 Nav2 launch，以及预设 RViz2 显示；不复制算法。启动检查 `check_sim.py` 必须实际收到递增的时钟、里程计、扫描及轮关节数据、有效 TF、地图与掩膜、双障碍锁定及一致路径、ACTIVE controller 和零速度，才输出 READY。正常 start 不发车；test 显式触发 SIM action，检查到站结果、仿真位姿误差≤0.06m、零驱动指令及静止里程计。启动失败或退出只清理本次管理的进程组，保留场景和日志；不会清理真实雷达、网页、STM32 或其他用户进程。独立 GitHub Actions 使用 Ubuntu 22.04/Humble、Fortress、Nav2 与无界面渲染执行 C3→C2、C3→A1 两个独立运行用例；它不替代实体车、桌面 RViz/Gazebo GUI 或全部场景的验收。
 
 ## 跨电脑路径设计
 
@@ -266,3 +266,5 @@ DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprin
 旧实现单线程 executor 的扫描回调内 lookup_transform(timeout=0.1s) 同步等待，而 TransformListener 的 TF 回调也依赖该 executor；在 10 Hz 扫描时可能持续阻塞并形成排队。[运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) 实测重复 future extrapolation（例如扫描 t=43.7s，TF 最新 t=41.922s），这是本次运行失败的直接现象，回调阻塞是待运行验证的机制解释。
 
 新实现：/scan → 严格递增非零时间戳及基础元数据校验 → 16 帧 FIFO → 20 ms steady timer 非阻塞查询 map←laser_frame(scan stamp) → 仅成功时消费 → 地图过滤/原聚类/轨迹确认。每 tick 最多处理 4 帧；等 TF 不超过 0.5 s wall，溢出丢弃最旧，重复或乱序不累计 hits。没有 TF 时让出 executor，不退化到 Time(0)，不使用虚构位姿；冲突仍保持锁路冻结并停止确认。状态新增 scan_tf_ready（最后有效变换处理距今≤0.5 s）、scan_tf_stamp_ns、scan_tf_processed、scan_queue 计数。SIM gate 除原双障碍和路径契约外要求真 scan_tf_ready、合法整数 stamp、相对于 /clock 的差在 [-0.1,1.5] s（包含 1 Hz 锁路心跳间隔），完成 action 时再次核对契约。原锁路数量、匹配参数和运动上限不改；实车控制仍禁用。
+
+实际运行证据：[运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) 对 522b563 输出 PASS READY、LOCKED ROUTE ['C3','C2']、PASS ROUTE（0.0381m、zero drive、stationary odom）。相同代码通过 [双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100) 和 [离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143)。这证明固定场景中的完整数据与控制链已经闭环，不证明所有路径、整个连续轨迹无碰撞或实体车可用；多路段的实际结果以 [双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 为准。

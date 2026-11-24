@@ -82,7 +82,7 @@
 在已拉取最新代码、没有进行中的 rebase 的 Ubuntu 工作区，先检查状态：
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 git status --short
 git fetch origin --prune
 git rev-parse origin/main
@@ -94,7 +94,7 @@ git log -1 --oneline origin/main
 完整软件离线验收（不需要物理 STM32/OpenMV/Pi）：
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 bash algorithm/car_ws/bash/test_all_offline.sh
 # 快速子集：
 bash algorithm/car_ws/bash/test_all_offline.sh --quick
@@ -105,7 +105,7 @@ bash algorithm/car_ws/bash/test_all_offline.sh --quick
 模块检查（用于定位问题，而非替代整套 CI）：
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 bash algorithm/car_ws/bash/web.sh doctor
 bash algorithm/car_ws/bash/test_keyboard_mapping.sh
 node sim2real/tests/test_keyboard_mechanism_preview.js
@@ -119,7 +119,7 @@ python3 -m unittest discover -s algorithm/openmv/tests \
 ## 3. 本机软件回环的验收
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 python3 sim2real/server.py --host 127.0.0.1 --port 8092
 # 浏览器访问 http://127.0.0.1:8092/keyboard
 ~~~
@@ -248,11 +248,11 @@ ros2 run tf2_ros tf2_echo map base_link
 ros2 run car_gazebo mirror_pose.py --ros-args -p enable_real_mirror:=true -p use_sim_time:=false
 ```
 
-成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。Gazebo 运行、服务调用、URDF/RViz 显示和实车镜像均尚未验收。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
+成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。本段 REAL 镜像服务调用、桌面 URDF/RViz 显示与实车镜像尚未验收；独立 SIM 的无界面运动已通过下文运行 CI。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
 
-本次离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。
+初始历史离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。
 
-### SIM 全向运动与虚拟雷达（手动测试，运行待验收）
+### SIM 全向运动与虚拟雷达（手动诊断）
 
 只在独立终端使用仿真域；先确认域 84 未被真实硬件/网页或其他实验占用。Ubuntu 22.04 / Humble / Fortress，已安装 robot_state_publisher、ros_gz_bridge、RViz2、colcon，并完成 car_gazebo、car_navigation 构建。每个 SIM 终端从仓库根目录进入 algorithm/car_ws：
 
@@ -298,9 +298,9 @@ python3 maps/competition_v1/topology_stage6/road_topology.py --start C3 --goal A
 rviz2 --ros-args -p use_sim_time:=true
 ```
 
-只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本采用原有 CLI，未变更源码；SIM TF/消息时间兼容性需在真实 ROS2 环境验证。手动模式下路径只是预览；使用下节 Nav2 专用模式才可执行，不能同时启动两套 map/lock/topology。不要将本节命令用于 REAL 域。
+只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本保留原有 CLI，已修复全周接缝及同时间戳 TF 等待；固定场景中 SIM TF/消息时间兼容性已通过实际运行 CI。手动模式下路径只是预览；使用下节 Nav2 专用模式才可执行，不能同时启动两套 map/lock/topology。不要将本节命令用于 REAL 域。
 
-### SIM Nav2 单段锁路执行（分步诊断）
+### SIM Nav2 锁路执行（分步诊断）
 
 已安装 ROS2 Humble 的 Nav2 controller、DWB、lifecycle manager 与前述 Gazebo 依赖，重新构建 car_gazebo、car_navigation；仅在域84运行。为使真实仿真起点与拓扑 C3 对应，使用 --start 2.05 2.05；启动 Nav2 速度源（手动 cmd_vel 不再被 adapter 接收）：
 
@@ -481,4 +481,18 @@ cd algorithm/car_ws
 bash bash/gazebo.sh test C2
 ```
 
-预期先 PASS READY 和 LOCKED ROUTE，再显式 SIM action、实际位移、最终误差与零驱动 PASS ROUTE；失败输出 LOCK DIAGNOSTIC / ROAD DIAGNOSTIC，包含 scan_tf_processed、scan_queue 的 pending/expired/overflow/rejected、状态和候选证据。查看此次 run 目录 launch.log/acceptance.log；不修改实车系统。新运行结果尚待 CI。
+预期先 PASS READY 和 LOCKED ROUTE，再显式 SIM action、实际位移、最终误差与零驱动 PASS ROUTE；失败输出 LOCK DIAGNOSTIC / ROAD DIAGNOSTIC，包含 scan_tf_processed、scan_queue 的 pending/expired/overflow/rejected、状态和候选证据。查看此次 run 目录 launch.log/acceptance.log；不修改实车系统。运行结果：[运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112)（522b563）已通过；PASS READY、LOCKED ROUTE ['C3','C2']，PASS ROUTE 最终误差 0.0381m、驱动归零、里程计静止。[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100)、[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) 也全部 PASS。
+
+### 交付验收：独立单路段及多路段
+
+代码不改变当前用户的 workplace 或已有 Gazebo；在具备已验证 Fortress/Humble 依赖的干净环境中，从 car 根目录运行：
+
+```bash
+cd algorithm/car_ws
+bash bash/deploy.sh doctor sim
+bash bash/deploy.sh build sim
+bash bash/gazebo.sh test C2
+bash bash/gazebo.sh test A1
+```
+
+每次独立测试须完成旧实例退出，生成新 SDF/URDF、获取两个真实模拟障碍锁定、执行 FollowPath、测得终点误差不超过 0.06m、零驱动及静止里程计。无桌面需要 Xvfb/Mesa，详见上文。[双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 分别保存两个目标的日志制品，结果以实际 job 为准。已安装 Harmonic 不等于 Fortress；不允许自动换装。GUI 联动和实车仍需现场验收。

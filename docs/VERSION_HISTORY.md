@@ -90,7 +90,7 @@
 ## 4. 如何查询版本而不误用旧分支
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 git fetch origin --prune
 git log --first-parent --oneline -20 origin/main
 git rev-parse origin/main
@@ -114,3 +114,5 @@ git branch -r
 | 跨电脑部署 P2（开发分支） | PC/Pi5/SIM 原生部署配置，缓存与 ELF 架构检查，x64/ARM64 CI，历史产物只读审计 | 新 CI 待核验；Pi5 实机 NOT_RUN；不解除历史产物跟踪 |
 | 跨电脑 P2/P6 接缝修复（开发分支） | x86_64/ARM64 原生构建验收；全周扫描首尾聚类与冲突诊断 | [双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) 双平台 PASS；新接缝与 Gazebo 回归待确认，实机 NOT_RUN |
 | P6 TF 同步（开发分支） | 有界 FIFO、非阻塞同时间戳 TF、扫描健康诊断、SIM 动作前/中/结束校验 | 上轮双架构与离线 PASS；Gazebo TF future extrapolation FAIL；新 CI 待确认 |
+| 522b563（已验证软件基线） | TF 同步、锁路证据门和实际 C3→C2 路径闭环 | [运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) PASS，0.0381m、零驱动、静止里程计；[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100)、[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) PASS；非实车验收 |
+| 5846bdc（运行回归扩展） | CI 独立 C3→C2 和 C3→A1 场景 | [双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320)，以各 job 结果为准 |
