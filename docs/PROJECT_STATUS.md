@@ -106,3 +106,5 @@
 P2：新增原生 PC/Pi5 部署配置、显式包集合、CMake 缓存路径/ABI 检查、本地包注册及 ELF 架构验证、原生双架构 CI 和只读雷达历史产物审计。尚不解除旧文件跟踪；需要队员本地备份与重建后单独审核。上轮 906a9c5 的 [离线全量 CI](https://github.com/David-tiao/car/actions/runs/45345136456) 已通过；本轮以新提交对应 CI 结果为准。Pi5 实机、Harmonic 后端及 Gazebo 锁路运动仍待验收。
 
 P2 原生验收：[双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) x86_64/ARM64 两组均 PASS（12 包、ELF、2 测试及静态 probe）。P6 首个问题：全周扫描接缝可能导致同一障碍重复聚类；已增加解析回归、修复及冲突证据日志。新运行级 CI 尚待确认；此前运行仍为 CONFLICT/未发起 FollowPath。历史产物解除跟踪、Harmonic 及实机仍待验收。
+
+P6 时间同步：[双架构 CI #45346142888](https://github.com/David-tiao/car/actions/runs/45346142888)、[离线 CI #45346142980](https://github.com/David-tiao/car/actions/runs/45346142980) 均 PASS；[运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) FAIL，锁路节点连续报告 scan 时间领先可用 TF 约 1.8–2.3s，未进入 FollowPath。新增 16 帧/0.5s FIFO 非阻塞轮询及真实时间戳变换健康字段，SIM 门控与验收要求近期变换证据。新运行级验证待确认；不宣称 Gazebo 已可运动。历史雷达 Git 产物未解除跟踪，Harmonic 与 Pi5 实机仍待验收。

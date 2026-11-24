@@ -260,3 +260,9 @@ DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprin
 ### 雷达全周扫描接缝
 
 原聚类沿 ranges 顺序分组，±π 接缝可将同一紧凑目标拆成两段；C3 仿真用例中 (1.5,2.05) 相对雷达恰好位于后方。修复先保留连续有效点段，只有全周扫描（步长不超过 0.1 rad，总跨度与 2π 差不超过 1.01 个角步长）、首尾读数有效且端点距离不超过原邻接阈值时才连接首尾。包含重复首尾角度的扫描去掉重复采样后再判断最少点数和包围盒对角线，不把重复射线视作独立证据。部分视场、无效端点、大跨度目标不合并为有效小目标。原匹配半径、确认次数、封路规则、速度门均不改；冲突新增扫描元数据、地图候选和确认轨迹日志用于追溯。解析圆柱射线用例验证假设，真实 Gazebo 原因仍需通过运行日志确认，真实雷达也需静止标定复测。
+
+### 扫描与 TF 同步（锁路节点）
+
+旧实现单线程 executor 的扫描回调内 lookup_transform(timeout=0.1s) 同步等待，而 TransformListener 的 TF 回调也依赖该 executor；在 10 Hz 扫描时可能持续阻塞并形成排队。[运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) 实测重复 future extrapolation（例如扫描 t=43.7s，TF 最新 t=41.922s），这是本次运行失败的直接现象，回调阻塞是待运行验证的机制解释。
+
+新实现：/scan → 严格递增非零时间戳及基础元数据校验 → 16 帧 FIFO → 20 ms steady timer 非阻塞查询 map←laser_frame(scan stamp) → 仅成功时消费 → 地图过滤/原聚类/轨迹确认。每 tick 最多处理 4 帧；等 TF 不超过 0.5 s wall，溢出丢弃最旧，重复或乱序不累计 hits。没有 TF 时让出 executor，不退化到 Time(0)，不使用虚构位姿；冲突仍保持锁路冻结并停止确认。状态新增 scan_tf_ready（最后有效变换处理距今≤0.5 s）、scan_tf_stamp_ns、scan_tf_processed、scan_queue 计数。SIM gate 除原双障碍和路径契约外要求真 scan_tf_ready、合法整数 stamp、相对于 /clock 的差在 [-0.1,1.5] s（包含 1 Hz 锁路心跳间隔），完成 action 时再次核对契约。原锁路数量、匹配参数和运动上限不改；实车控制仍禁用。

@@ -75,3 +75,7 @@ car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入
 新增 `bash/deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：自动识别 x86_64/ARM64，PC 与 Pi5 共享明确的 12 包核心部署清单，不依赖 Gazebo/RViz2，sim 单独选择仿真包。只读 `audit_lidar_artifacts.py` 输出旧雷达构建文件清单；不自动清理。原生双架构 CI 独立于原离线及 Gazebo 运行 CI，详见操作文档。
 
 原生部署验收：[双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) 已在 x86_64 和 AArch64 新物理目录完成 12 个 ROS2 包构建、包前缀及 7 个关键 ELF 架构校验、两项软件测试和静态地图 probe。不是 Pi5 真机验收。另有雷达全周扫描接缝修复待运行验收，保持原两障碍锁定与真实第三目标冲突逻辑。
+
+### 当前雷达时间同步修复
+
+[双架构 CI #45346142888](https://github.com/David-tiao/car/actions/runs/45346142888) 与 [离线 CI #45346142980](https://github.com/David-tiao/car/actions/runs/45346142980) PASS；全周接缝修复的解析回归通过，但 [运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) 仍未达到运行验收，日志表明锁路节点收到的 TF 比扫描时间戳滞后约 2 秒（future extrapolation），未形成有效锁路。本轮新增有界非阻塞扫描等待队列、同时间戳 TF 处理和 SIM 新鲜证据门，运行验收以新提交 CI 为准。

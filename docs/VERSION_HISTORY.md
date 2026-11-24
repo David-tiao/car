@@ -113,3 +113,4 @@ git branch -r
 | 跨电脑部署 P1（开发分支） | 自动定位、显式 ROS/SDK 配置、保守行为树参数生成、移植回归及新增忽略规则 | 路径离线 CI 待确认；ARM64/实机待验收 |
 | 跨电脑部署 P2（开发分支） | PC/Pi5/SIM 原生部署配置，缓存与 ELF 架构检查，x64/ARM64 CI，历史产物只读审计 | 新 CI 待核验；Pi5 实机 NOT_RUN；不解除历史产物跟踪 |
 | 跨电脑 P2/P6 接缝修复（开发分支） | x86_64/ARM64 原生构建验收；全周扫描首尾聚类与冲突诊断 | [双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) 双平台 PASS；新接缝与 Gazebo 回归待确认，实机 NOT_RUN |
+| P6 TF 同步（开发分支） | 有界 FIFO、非阻塞同时间戳 TF、扫描健康诊断、SIM 动作前/中/结束校验 | 上轮双架构与离线 PASS；Gazebo TF future extrapolation FAIL；新 CI 待确认 |

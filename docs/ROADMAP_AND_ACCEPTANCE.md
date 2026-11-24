@@ -464,3 +464,21 @@ python3 algorithm/car_ws/maps/competition_v1/simple_lock_stage/test_fixed_route.
 ````
 
 预期：全周接缝两障碍解析用例锁定 B2-B3 与 B3-C3，真第三目标冲突、部分视场/无效端点不误拼、重复角不重复计数、跨接缝大跨度拒绝。实际 Gazebo CI 另行运行；若仍冲突，查看 CONFLICT evidence 日志；不绕过门控、不增加预期障碍数量。
+
+### 锁路 TF 等待与诊断
+
+[双架构 CI #45346142888](https://github.com/David-tiao/car/actions/runs/45346142888)、[离线 CI #45346142980](https://github.com/David-tiao/car/actions/runs/45346142980) 均通过，重复角去重验证通过。[运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) 实际 ROS2 构建通过，但 READINESS failed: confirmed live locked path；反复报告 future extrapolation，未进入 FollowPath。改用有界异步轮询，不加大同步等待或使用最新 TF 替代。
+
+```bash
+python3 algorithm/car_ws/maps/competition_v1/simple_lock_stage/test_fixed_route.py -v
+python3 algorithm/car_ws/src/car_gazebo/tests/test_scene.py -v
+```
+
+预期：扫描排队等待、严格顺序、重复帧拒绝、过期及溢出丢弃；SIM 无近期同时间戳变换证据时拒绝执行。实际 Fortress/Humble 环境构建后执行：
+
+```bash
+cd algorithm/car_ws
+bash bash/gazebo.sh test C2
+```
+
+预期先 PASS READY 和 LOCKED ROUTE，再显式 SIM action、实际位移、最终误差与零驱动 PASS ROUTE；失败输出 LOCK DIAGNOSTIC / ROAD DIAGNOSTIC，包含 scan_tf_processed、scan_queue 的 pending/expired/overflow/rejected、状态和候选证据。查看此次 run 目录 launch.log/acceptance.log；不修改实车系统。新运行结果尚待 CI。
