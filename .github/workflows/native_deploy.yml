@@ -1,0 +1,61 @@
+name: Native PC and ARM64 core deployment
+
+on:
+  pull_request:
+    paths:
+      - "algorithm/car_ws/src/car_*/**"
+      - "algorithm/car_ws/bash/**"
+      - "algorithm/car_ws/maps/competition_v1/**"
+      - ".github/workflows/native_deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-22.04
+            profile: pc
+            arch: x86_64
+          - runner: ubuntu-22.04-arm
+            profile: pi5
+            arch: aarch64
+    runs-on: ${{ matrix.runner }}
+    container: ros:humble-ros-base-jammy
+    timeout-minutes: 25
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ROS_DOMAIN_ID: "85"
+      ROS_LOCALHOST_ONLY: "1"
+      CAR_PROFILE: ${{ matrix.profile }}
+      EXPECTED_ARCH: ${{ matrix.arch }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native architecture and dependencies
+        run: |
+          test "$(uname -m)" = "$EXPECTED_ARCH"
+          apt-get update
+          apt-get install -y --no-install-recommends python3-colcon-common-extensions python3-rosdep build-essential
+          source /opt/ros/humble/setup.bash
+          rosdep update --rosdistro humble
+          mapfile -t paths < <(bash algorithm/car_ws/bash/deploy.sh paths "$CAR_PROFILE")
+          test "${#paths[@]}" -eq 12
+          rosdep install --from-paths "${paths[@]}" --ignore-src --rosdistro humble -y
+      - name: Build and test relocated native workspace
+        run: |
+          root="$(mktemp -d "$RUNNER_TEMP/car-native-XXXXXXXX")"
+          git archive HEAD algorithm/car_ws/src algorithm/car_ws/bash algorithm/car_ws/maps/competition_v1 | tar -x -C "$root"
+          echo "Native workspace: $root"
+          entry="$root/algorithm/car_ws/bash/deploy.sh"
+          cd /tmp
+          bash "$entry" doctor "$CAR_PROFILE"
+          bash "$entry" build "$CAR_PROFILE"
+          bash "$entry" verify "$CAR_PROFILE"
+          bash "$entry" test "$CAR_PROFILE"

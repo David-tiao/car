@@ -173,6 +173,50 @@ class PortabilityTest(unittest.TestCase):
         out = self.run_cmd("bash", checkout_link / "bash/web.sh", "doctor")
         self.assertIn("[PASS] Standalone Sim2Real", out)
 
+    def test_deploy_plan_without_ros_and_arch_guard(self):
+        packages = ("car_interfaces", "car_stm32_bridge", "car_debug", "car_bringup",
+                    "car_serial_link", "car_vision", "car_mechanism", "car_mission",
+                    "car_navigation", "car_web_sim", "car_web_real", "car_web_test", "car_gazebo")
+        for name in packages:
+            p = self.ws / "src" / name
+            p.mkdir()
+            (p / "package.xml").touch()
+            (p / "CMakeLists.txt").touch()
+        script = self.link / "bash/deploy.sh"
+        for profile in ("pc", "pi5"):
+            out = self.run_cmd("bash", script, "paths", profile)
+            self.assertEqual(len(out.splitlines()), 12)
+            self.assertNotIn("car_gazebo", out)
+            self.assertIn(str(self.ws / "src/car_navigation"), out)
+        out = self.run_cmd("bash", script, "paths", "sim")
+        self.assertEqual(len(out.splitlines()), 2)
+        self.assertIn("car_gazebo", out)
+        self.fake("uname", "echo x86_64")
+        out = self.run_cmd("bash", script, "build", "pi5", ok=False)
+        self.assertIn("does not match native architecture", out)
+        self.fake("uname", "echo aarch64")
+        out = self.run_cmd("bash", script, "build", "pc", ok=False)
+        self.assertIn("does not match native architecture", out)
+        self.assertFalse((self.ws / "build").exists())
+
+    def test_artifact_audit_is_read_only(self):
+        repo = self.root / "git audit"
+        repo.mkdir()
+        self.run_cmd("git", "-C", repo, "init", "-q")
+        target = repo / "algorithm/car_ws/install_oneclick_lidar/old_link"
+        target.parent.mkdir(parents=True)
+        target.symlink_to(self.root / "not present")
+        source = repo / "algorithm/car_ws/src/source.cpp"
+        source.parent.mkdir(parents=True)
+        source.write_text("int main() {}")
+        self.run_cmd("git", "-C", repo, "add", ".")
+        before = self.run_cmd("git", "-C", repo, "status", "--porcelain")
+        out = self.run_cmd(sys.executable, self.link / "bash/audit_lidar_artifacts.py",
+                           "--repo", repo, "--list")
+        self.assertIn("TRACKED=1 SYMLINKS=1 MISSING_OR_BROKEN=1", out)
+        self.assertNotIn("source.cpp", out)
+        self.assertEqual(before, self.run_cmd("git", "-C", repo, "status", "--porcelain"))
+
     def test_shell_syntax(self):
         scripts = sorted((WS / "bash").glob("*.sh")) + [WS / "bash/lib/common.sh"]
         for path in scripts:
