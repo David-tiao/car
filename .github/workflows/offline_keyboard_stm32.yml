@@ -34,6 +34,9 @@ jobs:
       - name: Portable workspace and SDK paths (relocated fixture, no hardware)
         run: python3 algorithm/car_ws/bash/test_portability.py -v
 
+      - name: Verified lidar artifact backup and migration regression
+        run: python3 algorithm/car_ws/bash/test_lidar_artifact_migration.py -v
+
       - name: Full 14-category software-only acceptance (300 seeded competition cases)
         run: bash algorithm/car_ws/bash/test_all_offline.sh
 
