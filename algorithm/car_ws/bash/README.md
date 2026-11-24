@@ -18,3 +18,5 @@
 
 - `bash deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：原生部署、指定包集合及构建验证（不自动安装依赖或启动硬件）。默认自动选择本机 pc/pi5；sim 需要 Fortress。
 - `python3 audit_lidar_artifacts.py --list`：只读列出旧雷达 Git 跟踪产物，不删除、不修改索引。参见跨电脑部署与路径验收章节。
+
+固定场景运行验收（99fcf34）：`bash gazebo.sh test C2` 与 `bash gazebo.sh test A1` 均实际通过，分别 1/1、4/4 路段，误差 0.0387m、0.0374m，零驱动与静止里程计。[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287)。前提 Fortress/Humble；GUI 与真实镜像尚待现场验证。

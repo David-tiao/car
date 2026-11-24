@@ -229,7 +229,7 @@ flowchart LR
 
 ### 锁路到 Nav2 执行（SIM 候选）
 
-复用原有 lock_obstacles.py 与 road_topology.py；前者已修复圆周接缝和扫描/TF 同步，后者拓扑规划算法不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对原始锁路心跳与派生道路/路径状态、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。SIM 时钟回退会锁存故障，必须重启导航以丢弃旧锁。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
+复用原有 lock_obstacles.py 与 road_topology.py；前者已修复圆周接缝和扫描/TF 同步，后者拓扑规划算法不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后，对冻结路线逐边生成按 0.025m 最大间距插值的路径，依次发送 FollowPath action；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对原始锁路心跳与派生道路/路径状态、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。SIM 时钟回退会锁存故障，必须重启导航以丢弃旧锁。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
 
 ```mermaid
 flowchart LR
@@ -243,7 +243,7 @@ flowchart LR
   W --> S
 ```
 
-DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前每次显式执行一条锁路路线（可含多道路边），不自动推进两批比赛任务；连续安全净空、全部场景和实车标定仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
+DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前每次显式执行一条锁路路线（逐边执行，交叉节点停稳后续行），不自动推进两批比赛任务；连续安全净空、全部场景和实车标定仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
 
 ### 联合启动与运行验收
 
@@ -267,4 +267,10 @@ DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprin
 
 新实现：/scan → 严格递增非零时间戳及基础元数据校验 → 16 帧 FIFO → 20 ms steady timer 非阻塞查询 map←laser_frame(scan stamp) → 仅成功时消费 → 地图过滤/原聚类/轨迹确认。每 tick 最多处理 4 帧；等 TF 不超过 0.5 s wall，溢出丢弃最旧，重复或乱序不累计 hits。没有 TF 时让出 executor，不退化到 Time(0)，不使用虚构位姿；冲突仍保持锁路冻结并停止确认。状态新增 scan_tf_ready（最后有效变换处理距今≤0.5 s）、scan_tf_stamp_ns、scan_tf_processed、scan_queue 计数。SIM gate 除原双障碍和路径契约外要求真 scan_tf_ready、合法整数 stamp、相对于 /clock 的差在 [-0.1,1.5] s（包含 1 Hz 锁路心跳间隔），完成 action 时再次核对契约。原锁路数量、匹配参数和运动上限不改；实车控制仍禁用。
 
-实际运行证据：[运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) 对 522b563 输出 PASS READY、LOCKED ROUTE ['C3','C2']、PASS ROUTE（0.0381m、zero drive、stationary odom）。相同代码通过 [双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100) 和 [离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143)。这证明固定场景中的完整数据与控制链已经闭环，不证明所有路径、整个连续轨迹无碰撞或实体车可用；多路段的实际结果以 [双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 为准。
+### 多道路边逐段执行与二维节点判据
+
+整条路线一次交给 DWB 时，[45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 的 A1 用例发生 791 条候选均无效；改为逐边后，[45358957899](https://github.com/David-tiao/car/actions/runs/45358957899) 第二边在 B2 附近 3.7cm 位置误差时发生 progress checker 中止。现有九站道路节点只定义 x,y，不要求指定 yaw。新独立 road_node_checker 使用 Humble SimpleGoalChecker 的 xy_goal_tolerance=0.04m、yaw_goal_tolerance=π、stateful=false；原 goal_checker 的 0.04m/0.12rad 保留用于明确朝向的任务。仅 SIM 配置变更，不是实车姿态标定。失败原因日志包含 pose、target、yaw、speed，不把失败 action 转成成功。
+
+显式触发 → 验证冻结全路径 → REQUESTED → FOLLOWING → SETTLING：每边必须 Nav2 SUCCEEDED、该边终点误差≤0.06m、持续零令至少0.15s、收到结果后的新 odom（线速度≤0.025m/s、角速度≤0.05rad/s），3s 内满足才累加 completed_segments 并发送下一边；全路线仍受 120s 上限与连续 lock/TF/scan/odom/clock 门约束。状态变更或超时阻断速度并取消活动 action，不自动绕路。验收额外要求 completed_segments=total_segments=锁路节点数−1。
+
+99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。 这证明固定场景的实际闭环，不证明整个连续轨迹净空、所有障碍布局、桌面 GUI 或实车安全。

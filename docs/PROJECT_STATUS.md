@@ -97,8 +97,8 @@
 
 ## Gazebo 建模与导航
 
-当前已验证功能基线：`522b563`（PR #18 开发分支）。[运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) 真实 Humble/Fortress 依赖、colcon build/test、GPU lidar/odom/TF、两障碍锁路、Dijkstra、Nav2 FollowPath、C3→C2 最终误差 3.81cm、零驱动和静止里程计全部 PASS。原先 CONFLICT、TF future extrapolation 导致就绪失败，已经通过全周接缝修复及有界非阻塞同时间戳 TF 队列处理，不绕过锁路或速度门。[双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 用独立场景验收 C3→A1 多道路边与 C3→C2，最新状态见实际 jobs。当前仍是理想全向运动模型，完整 CAD、连续净空与全部场景、桌面 GUI、Harmonic 后端及真实位姿镜像未验收。
+99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。 已解决固定场景的扫描接缝、TF 阻塞等待、整条路径转弯失败及二维节点朝向检查问题。逐边 FollowPath，实际动作成功后验证节点位置和静止里程计，再发下一边；保留原带朝向检查器。当前仍是理想全向运动模型，完整 CAD、连续净空与全部场景、桌面 GUI、Harmonic 后端及真实位姿镜像未验收。
 
 ## 跨电脑部署适配
 
-主要入口自动定位工作区并可显式覆盖 ROS/SDK/雷达配置；独立 PC/Pi5/SIM 部署配置，拒绝过期 CMake 路径/架构缓存，检查本地包前缀和原生 ELF。[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100) 两端均通过 12 包构建、7 ELF 校验、2 项软件测试及静态地图 probe；[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) 14 类、300 组软件回归和新增扫描/路径测试通过。不是 Pi5 真机、真实 YDLIDAR、STM32/OpenMV 联调。历史 201 个跟踪构建项仅只读审计，未解除跟踪；本地用户数据、系统 SDK 与 Gazebo 均未修改。
+主要入口自动定位工作区并可显式覆盖 ROS/SDK/雷达配置；独立 PC/Pi5/SIM 部署配置，拒绝过期 CMake 路径/架构缓存，检查本地包前缀和原生 ELF。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) 两端均通过 12 包构建、7 ELF 校验、2 项软件测试及静态地图 probe；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) 14 类、300 组软件回归及新增扫描/路径测试通过。不是 Pi5 真机、真实 YDLIDAR、STM32/OpenMV 联调。历史 201 个跟踪构建项仅只读审计，未解除跟踪；本地用户数据、系统 SDK 与 Gazebo 均未修改。

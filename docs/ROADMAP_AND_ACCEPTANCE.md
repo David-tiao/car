@@ -495,4 +495,8 @@ bash bash/gazebo.sh test C2
 bash bash/gazebo.sh test A1
 ```
 
-每次独立测试须完成旧实例退出，生成新 SDF/URDF、获取两个真实模拟障碍锁定、执行 FollowPath、测得终点误差不超过 0.06m、零驱动及静止里程计。无桌面需要 Xvfb/Mesa，详见上文。[双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320) 分别保存两个目标的日志制品，结果以实际 job 为准。已安装 Harmonic 不等于 Fortress；不允许自动换装。GUI 联动和实车仍需现场验收。
+每次独立测试须完成旧实例退出，生成新 SDF/URDF、获取两个真实模拟障碍锁定、执行 FollowPath、测得终点误差不超过 0.06m、零驱动及静止里程计。无桌面需要 Xvfb/Mesa，详见上文。[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两个 job 已全部 PASS，分别保存两个目标日志制品。
+
+99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。
+
+每段采用独立 road_node_checker（二维节点无朝向约束，Nav2 位置 4cm 不变）；只有实际 Action 成功、位置≤6cm、至少0.15s零令及结果后的新里程计确认停止，才累计通过路段。失败日志含当前路段位置、朝向、速度。已安装 Harmonic 不等于 Fortress；不允许自动换装。GUI 联动和实车仍需现场验收。
