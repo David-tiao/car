@@ -13,6 +13,39 @@ R, LX, LY = 0.04, 0.093, 0.11
 # The remaining geometry is a PREVIEW assumption, not measured mechanical CAD.
 BODY = (0.24, 0.18, 0.05)
 WHEEL_WIDTH = 0.03
+BODY_Z = 0.060
+LASER_Z = 0.092
+SIM_DOMAIN = "84"
+SIM_PREFIX = "/car_gz"
+SIM_MODEL = "car_sim_model"
+SIM_MAX_LINEAR = 0.20
+SIM_MAX_ANGULAR = 0.50
+SIM_CMD_TTL = 0.30
+SIM_DATA_TTL = 0.50
+
+def limited_twist(vx, vy, wz):
+    if not all(math.isfinite(v) for v in (vx, vy, wz)):
+        return (0., 0., 0.)
+    magnitude = math.hypot(vx, vy)
+    scale = min(1., SIM_MAX_LINEAR / magnitude) if magnitude else 1.
+    return (vx * scale, vy * scale,
+            max(-SIM_MAX_ANGULAR, min(SIM_MAX_ANGULAR, wz)))
+
+
+def guarded_twist(command, command_age, odom_age, scan_age, clock_age):
+    if (not 0 <= command_age <= SIM_CMD_TTL or
+            any(not 0 <= age <= SIM_DATA_TTL for age in
+                (odom_age, scan_age, clock_age))):
+        return (0., 0., 0.)
+    return limited_twist(*command)
+
+
+def wheel_rates(vx, vy, wz):
+    """Ideal X-pattern mecanum, visualization only."""
+    a = (LX + LY) * wz
+    return ((vx - vy - a)/R, (vx + vy + a)/R,
+            (vx + vy - a)/R, (vx - vy + a)/R)
+
 WHEELS = (("fl", LX, LY), ("fr", LX, -LY),
           ("rl", -LX, LY), ("rr", -LX, -LY))
 GRAY = "0.45 0.45 0.45 1"
@@ -68,17 +101,21 @@ def urdf_joint(robot, name, parent, child, xyz, kind="fixed"):
         sub(j, "axis", xyz="0 1 0")
 
 
-def robot_description():
-    robot = ET.Element("robot", {"name": "car_preview"})
+def robot_description(sim=False):
+    robot = ET.Element("robot", {"name": "car_sim" if sim else "car_preview"})
     chassis = sub(robot, "link", name="base_link")
-    urdf_part(chassis, "box", BODY, (0, 0, 0.075), (0, 0, 0), BODY_COLOR)
+    urdf_part(chassis, "box", BODY, (0, 0, BODY_Z), (0, 0, 0), BODY_COLOR)
     for suffix, x, y in WHEELS:
         link = sub(robot, "link", name="wheel_" + suffix + "_link")
         urdf_part(link, "cylinder", (R, WHEEL_WIDTH), (0, 0, 0),
                   (math.pi / 2, 0, 0), BLACK)
         urdf_joint(robot, "wheel_" + suffix + "_joint", "base_link",
                    link.get("name"), (x, y, R), "continuous")
-    # No fictitious real laser_frame, camera extrinsic or arm joint.
+    if sim:
+        laser = sub(robot, "link", name="laser_frame")
+        urdf_joint(robot, "laser_joint", "base_link", laser.get("name"),
+                   (0, 0, LASER_Z))
+    # The real preview has no fictitious laser extrinsic or arm joint.
     return robot
 
 
@@ -115,7 +152,7 @@ def point_rect_distance(x, y, rect):
 
 
 def validate(zones, obstacles, mode):
-    if mode not in ("preview", "mirror"):
+    if mode not in ("preview", "mirror", "sim"):
         raise ValueError("unknown mode")
     if tuple(zones["field_size"]) != (2.4, 2.4):
         raise ValueError("unexpected competition field size")
@@ -145,14 +182,90 @@ def validate(zones, obstacles, mode):
             raise ValueError("obstacles overlap")
 
 
-def world_description(zones, obstacles=(), mode="preview"):
+def sim_model(world, start):
+    # Model-level velocity control is an omnidirectional approximation.
+    # Wheel visuals are fixed; mass and collision envelope are provisional.
+    model = sub(world, "model", name=SIM_MODEL)
+    sub(model, "pose", vec((*start, 0.001, 0, 0, 0)))
+    link = sub(model, "link", name="base_link")
+    inertial = sub(link, "inertial")
+    sub(inertial, "pose", "0 0 0.04 0 0 0")
+    mass = 2.0
+    dims = (BODY[0], 2*LY + WHEEL_WIDTH, 0.08)
+    sub(inertial, "mass", mass)
+    inertia = sub(inertial, "inertia")
+    for axis, moment in zip(("ixx", "iyy", "izz"),
+                            (mass*(dims[1]**2+dims[2]**2)/12,
+                             mass*(dims[0]**2+dims[2]**2)/12,
+                             mass*(dims[0]**2+dims[1]**2)/12)):
+        sub(inertia, axis, moment)
+    for axis in ("ixy", "ixz", "iyz"):
+        sub(inertia, axis, 0)
+    envelope = sub(link, "collision", name="provisional_envelope")
+    sub(envelope, "pose", "0 0 0.04 0 0 0")
+    geometry(envelope, "box", dims)
+    sdf_part(link, "chassis", "box", BODY, (0, 0, BODY_Z, 0, 0, 0), BODY_COLOR, False)
+    for suffix, x, y in WHEELS:
+        sdf_part(link, "wheel_" + suffix, "cylinder", (R, WHEEL_WIDTH),
+                 (x, y, R, math.pi/2, 0, 0), BLACK, False)
+    lidar = sub(link, "sensor", name="gpu_lidar", type="gpu_lidar")
+    sub(lidar, "pose", vec((0, 0, LASER_Z, 0, 0, 0)))
+    sub(lidar, "topic", SIM_PREFIX + "/scan_raw")
+    sub(lidar, "ignition_frame_id", "laser_frame")
+    sub(lidar, "always_on", "true")
+    sub(lidar, "update_rate", 10)
+    ray = sub(lidar, "ray")
+    horizontal = sub(sub(ray, "scan"), "horizontal")
+    sub(horizontal, "samples", 720)
+    sub(horizontal, "resolution", 1)
+    sub(horizontal, "min_angle", -math.pi)
+    sub(horizontal, "max_angle", math.pi)
+    ranges = sub(ray, "range")
+    sub(ranges, "min", 0.05)
+    sub(ranges, "max", 4.0)
+    sub(ranges, "resolution", 0.005)
+    drive = sub(model, "plugin", filename="libignition-gazebo-velocity-control-system.so",
+                name="ignition::gazebo::systems::VelocityControl")
+    sub(drive, "topic", SIM_PREFIX + "/drive_cmd")
+    sub(drive, "initial_linear", "0 0 0")
+    sub(drive, "initial_angular", "0 0 0")
+    odom = sub(model, "plugin", filename="libignition-gazebo-odometry-publisher-system.so",
+               name="ignition::gazebo::systems::OdometryPublisher")
+    for k, v in (("odom_frame", "odom"), ("robot_base_frame", "base_link"),
+                 ("odom_topic", SIM_PREFIX + "/odom_raw"),
+                 ("tf_topic", SIM_PREFIX + "/unused_gz_tf"),
+                 ("odom_publish_frequency", 30), ("dimensions", 2)):
+        sub(odom, k, v)
+    return model
+
+
+def world_description(zones, obstacles=(), mode="preview", start=(2.25, 2.25)):
     validate(zones, obstacles, mode)
+    if mode == "sim":
+        x, y = start
+        hx, hy = BODY[0]/2, LY + WHEEL_WIDTH/2
+        if not (hx <= x <= 2.4-hx and hy <= y <= 2.4-hy):
+            raise ValueError("SIM start outside field")
+        footprint = (x-hx, y-hy, x+hx, y+hy)
+        if any(not (footprint[2] <= a or footprint[0] >= c or
+                    footprint[3] <= b or footprint[1] >= d)
+               for a, b, c, d in zones["yellow"] + zones["work"]):
+            raise ValueError("SIM start overlaps forbidden zone")
+        cx, cy = zones["raw_disk"]["center"]
+        if point_rect_distance(cx, cy, footprint) <= zones["raw_disk"]["radius"]:
+            raise ValueError("SIM start overlaps raw disk")
+        if any(point_rect_distance(a, b, footprint) <= 0.025 for a,b in obstacles):
+            raise ValueError("SIM start overlaps obstacle")
     sdf = ET.Element("sdf", {"version": "1.8"})
     world = sub(sdf, "world", name="car_" + mode)
     for filename, name in (("physics", "Physics"), ("user-commands", "UserCommands"),
                            ("scene-broadcaster", "SceneBroadcaster")):
         sub(world, "plugin", filename="ignition-gazebo-" + filename + "-system",
             name="ignition::gazebo::systems::" + name)
+    if mode == "sim":
+        sensors = sub(world, "plugin", filename="libignition-gazebo-sensors-system.so",
+                      name="ignition::gazebo::systems::Sensors")
+        sub(sensors, "render_engine", "ogre2")
     light = sub(world, "light", name="sun", type="directional")
     sub(light, "pose", "0 0 5 0 0 0")
     sub(light, "direction", "-0.3 0.2 -1")
@@ -171,11 +284,14 @@ def world_description(zones, obstacles=(), mode="preview"):
         link = static_model(world, "test_obstacle_" + str(i), (x, y, 0.05))
         sdf_part(link, "obstacle", "cylinder", (0.025, 0.10),
                  (0, 0, 0, 0, 0, 0), BLACK, True)
+    if mode == "sim":
+        sim_model(world, start)
+        return sdf
     # A static visual-only car: preview is NOT a dynamics simulation.
     # Mirror starts outside the field until a fresh real pose is available.
     xyz = (2.25, 2.25, 0.001) if mode == "preview" else (-0.4, -0.4, 0.001)
     car = static_model(world, "car_" + mode + "_model", xyz)
-    sdf_part(car, "chassis", "box", BODY, (0, 0, 0.075, 0, 0, 0), BODY_COLOR, False)
+    sdf_part(car, "chassis", "box", BODY, (0, 0, BODY_Z, 0, 0, 0), BODY_COLOR, False)
     for suffix, x, y in WHEELS:
         sdf_part(car, "wheel_" + suffix, "cylinder", (R, WHEEL_WIDTH),
                  (x, y, R, math.pi/2, 0, 0), BLACK, False)
@@ -191,14 +307,18 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--zones", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
-    p.add_argument("--mode", choices=("preview", "mirror"), default="preview")
+    p.add_argument("--mode", choices=("preview", "mirror", "sim"), default="preview")
+    p.add_argument("--start", type=float, nargs=2, default=(2.25, 2.25), help="SIM only; map x y, yaw=0")
     p.add_argument("--obstacle", type=float, nargs=2, action="append", default=[])
     args = p.parse_args()
     try:
         zones = json.loads(args.zones.read_text(encoding="utf-8"))
-        outputs = {"car_preview.urdf": xml_bytes(robot_description()),
+        if args.mode != "sim" and tuple(args.start) != (2.25, 2.25):
+            raise ValueError("--start is SIM only")
+        model_name = "car_sim.urdf" if args.mode == "sim" else "car_preview.urdf"
+        outputs = {model_name: xml_bytes(robot_description(args.mode == "sim")),
                    "car_" + args.mode + ".sdf":
-                       xml_bytes(world_description(zones, args.obstacle, args.mode))}
+                       xml_bytes(world_description(zones, args.obstacle, args.mode, args.start))}
         args.output.mkdir(parents=True, exist_ok=True)
         for name in outputs:
             if (args.output / name).exists():

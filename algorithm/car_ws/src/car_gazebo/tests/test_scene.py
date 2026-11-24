@@ -43,6 +43,43 @@ class SceneTest(unittest.TestCase):
             with self.subTest(obstacles=obstacles), self.assertRaises(ValueError):
                 scene.world_description(ZONES, obstacles)
 
+    def test_sim_plugins_and_frames(self):
+        world = scene.world_description(ZONES, [(1.2, 1.2)], mode="sim").find("world")
+        robot = world.find("model[@name='car_sim_model']")
+        self.assertIsNone(robot.find("static"))
+        self.assertIsNotNone(robot.find("link/inertial/inertia/izz"))
+        self.assertIsNotNone(robot.find("link/collision[@name='provisional_envelope']"))
+        self.assertEqual(robot.findtext("plugin/topic"), "/car_gz/drive_cmd")
+        self.assertEqual(robot.findtext("plugin/odom_topic"), "/car_gz/odom_raw")
+        sensor = robot.find("link/sensor")
+        self.assertEqual(sensor.get("type"), "gpu_lidar")
+        self.assertEqual(sensor.findtext("topic"), "/car_gz/scan_raw")
+        self.assertLess(scene.BODY_Z+scene.BODY[2]/2, scene.LASER_Z)
+        self.assertLess(scene.LASER_Z+0.001, .10)
+        urdf = scene.robot_description(sim=True)
+        self.assertEqual(urdf.find("joint[@name='laser_joint']/origin").get("xyz"), "0 0 0.092")
+        self.assertIsNone(scene.robot_description().find("link[@name='laser_frame']"))
+
+    def test_sim_start_rejects_collision(self):
+        for start in ((.6, .6), (0., 1.), (1.2, 2.25), (1.2, 1.2)):
+            with self.subTest(start=start), self.assertRaises(ValueError):
+                scene.world_description(ZONES, [(1.2, 1.2)], mode="sim", start=start)
+
+    def test_sim_body_velocity_and_watchdog(self):
+        self.assertEqual(scene.limited_twist(0., .1, -.2), (0., .1, -.2))
+        vx, vy, wz = scene.limited_twist(.3, .4, 2.)
+        self.assertAlmostEqual((vx*vx+vy*vy)**.5, .2)
+        self.assertEqual(wz, .5)
+        self.assertEqual(scene.limited_twist(float("nan"), .1, 0.), (0., 0., 0.))
+        cmd = (.1, -.1, .2)
+        self.assertEqual(scene.guarded_twist(cmd, .1, .1, .1, .1), cmd)
+        for ages in ((.31, 0., 0., 0.), (0., .51, 0., 0.), (0., 0., .51, 0.),
+                     (0., 0., 0., .51), (-1., 0., 0., 0.), (0., float("nan"), 0., 0.)):
+            self.assertEqual(scene.guarded_twist(cmd, *ages), (0., 0., 0.))
+        self.assertEqual(scene.wheel_rates(.04, 0., 0.), (1., 1., 1., 1.))
+        self.assertEqual(scene.wheel_rates(0., .04, 0.), (-1., 1., 1., -1.))
+        self.assertEqual(scene.wheel_rates(0., 0., 0.), (0., 0., 0., 0.))
+
     def test_mirror_has_no_synthetic_obstacles(self):
         w = scene.world_description(ZONES, mode="mirror").find("world")
         self.assertEqual(w.get("name"), "car_mirror")
