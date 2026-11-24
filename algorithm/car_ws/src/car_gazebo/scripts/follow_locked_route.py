@@ -56,6 +56,15 @@ def matching_lock(lock, route_key):
             tuple(sorted(set(roads))) == route_key[1])
 
 
+def fresh_lock_scan(lock, clock_stamp):
+    """A live lock heartbeat must contain recent exact-time transformed scan evidence."""
+    stamp = lock.get("scan_tf_stamp_ns") if isinstance(lock, dict) else None
+    return (isinstance(lock, dict) and lock.get("scan_tf_ready") is True
+            and type(stamp) is int and stamp > 0
+            and type(clock_stamp) is int and clock_stamp > 0
+            and -100_000_000 <= clock_stamp - stamp <= 1_500_000_000)
+
+
 def dense_path(points, spacing=.025):
     if len(points) < 2 or not math.isfinite(spacing) or spacing <= 0:
         raise ValueError("invalid interpolation")
@@ -184,6 +193,8 @@ def main():
             key = route_contract(self.status, self.points, self.nodes, self.edges)
             if not matching_lock(self.lock_status, key):
                 raise ValueError("original lidar lock disagrees with route")
+            if not fresh_lock_scan(self.lock_status, self.clock_stamp):
+                raise ValueError("no recent exact-time TF scan evidence")
             return key
 
         def start(self, request, response):
@@ -273,6 +284,7 @@ def main():
                 if self.run["stopping"]:
                     self.finish("STOPPED", self.last_reason)
                 elif (status == GoalStatus.STATUS_SUCCEEDED and self.xy is not None and
+                      self.live_contract() == self.run["key"] and
                       time.monotonic()-self.odom_wall <= .5 and
                       math.dist(self.xy, self.run["goal_xy"]) <= .06):
                     self.finish("SUCCEEDED", "Nav2 result and SIM final pose agree")

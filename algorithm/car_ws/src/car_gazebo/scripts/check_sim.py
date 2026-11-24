@@ -6,7 +6,7 @@ import math
 import os
 from pathlib import Path
 import time
-from follow_locked_route import load_topology, route_contract, matching_lock
+from follow_locked_route import load_topology, route_contract, matching_lock, fresh_lock_scan
 
 
 def main():
@@ -157,6 +157,7 @@ def main():
                 key = route_contract(self.state("road"), points, nodes, edges)
                 if (key[0][0] != args.start or key[0][-1] != args.goal or
                         not matching_lock(self.state("lock"), key) or
+                        not fresh_lock_scan(self.state("lock"), self.last_stamp.get("clock", 0)) or
                         any(not self.recent(n, 2.5) for n in ("road", "lock", "path"))):
                     raise ValueError("lock or route mismatch")
             except (KeyError, ValueError, TypeError):
@@ -194,6 +195,8 @@ def main():
     try:
         node = Check()
         if not node.wait_until(lambda: not node.problems(), args.ready_timeout):
+            print("LOCK DIAGNOSTIC:", node.state("lock"), flush=True)
+            print("ROAD DIAGNOSTIC:", node.state("road"), flush=True)
             raise RuntimeError("READINESS failed: " + ", ".join(node.problems()))
         print("PASS READY: clock/scan/odom/joints, TF, map/mask, live lock, route, zero drive", flush=True)
         print("LOCKED ROUTE:", node.state("road").get("route"), flush=True)

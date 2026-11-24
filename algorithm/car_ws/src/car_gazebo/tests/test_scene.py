@@ -119,6 +119,15 @@ class SceneTest(unittest.TestCase):
         for a,b in zip(dense, dense[1:]):
             self.assertLessEqual(((a[0]-b[0])**2+(a[1]-b[1])**2)**.5, .02500001)
 
+    def test_lock_scan_freshness(self):
+        good = {"scan_tf_ready": True, "scan_tf_stamp_ns": 2_000_000_000}
+        self.assertTrue(route_gate.fresh_lock_scan(good, 3_000_000_000))
+        self.assertFalse(route_gate.fresh_lock_scan(good, 3_500_000_001))
+        self.assertFalse(route_gate.fresh_lock_scan(good, 1_800_000_000))
+        self.assertFalse(route_gate.fresh_lock_scan(dict(good, scan_tf_ready=False), 2_000_000_000))
+        self.assertFalse(route_gate.fresh_lock_scan({}, 2_000_000_000))
+        self.assertFalse(route_gate.fresh_lock_scan(dict(good, scan_tf_stamp_ns=True), 2_000_000_000))
+
     def test_mirror_has_no_synthetic_obstacles(self):
         w = scene.world_description(ZONES, mode="mirror").find("world")
         self.assertEqual(w.get("name"), "car_mirror")

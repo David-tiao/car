@@ -4,12 +4,51 @@
 Do NOT use the old stage5 TEST TF for a moving robot. No motor commands.
 """
 import argparse
+from collections import deque
 import json
 import math
 import time
 from pathlib import Path
 
 from lock_core import ObstacleLock, laser_clusters
+
+
+class PendingScans:
+    """Bounded FIFO of distinct timestamped scans; never block the TF executor."""
+    def __init__(self, max_pending=16, max_wait=.5):
+        self.pending = deque()
+        self.max_pending, self.max_wait = max_pending, max_wait
+        self.last_stamp = 0
+        self.expired = self.overflow = self.rejected = 0
+
+    def push(self, stamp, msg, now):
+        if stamp <= self.last_stamp:
+            self.rejected += 1
+            return
+        self.last_stamp = stamp
+        if len(self.pending) >= self.max_pending:
+            self.pending.popleft()
+            self.overflow += 1
+        self.pending.append((stamp, msg, now))
+
+    def drain(self, now, lookup, consume, limit=4):
+        for _ in range(limit):
+            if not self.pending:
+                break
+            stamp, msg, arrived = self.pending[0]
+            if not 0 <= now - arrived <= self.max_wait:
+                self.pending.popleft()
+                self.expired += 1
+                continue
+            transform = lookup(msg)
+            if transform is None:
+                break  # yield to executor; TF subscriptions must be able to run
+            self.pending.popleft()
+            consume(stamp, msg, transform)
+
+    def counters(self):
+        return {"pending": len(self.pending), "expired": self.expired,
+                "overflow": self.overflow, "rejected": self.rejected}
 
 
 def static_map_free(grid, x, y):
@@ -48,7 +87,7 @@ def main():
     import rclpy
     from rclpy.node import Node
     from rclpy.time import Time
-    from rclpy.duration import Duration
+    from rclpy.clock import Clock, ClockType
     from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy, ReliabilityPolicy
     from sensor_msgs.msg import LaserScan
     from nav_msgs.msg import OccupancyGrid
@@ -73,7 +112,13 @@ def main():
             self.scan_sub = self.create_subscription(LaserScan, '/scan', self.on_scan,
                                                      qos_profile_sensor_data)
             self.map_sub = self.create_subscription(OccupancyGrid, '/map', self.on_map, latched)
-            self.timer = self.create_timer(1.0, self.publish)
+            self.steady = Clock(clock_type=ClockType.STEADY_TIME)
+            self.pending = PendingScans()
+            self.last_processed_wall = -math.inf
+            self.last_processed_stamp = 0
+            self.processed_count = 0
+            self.timer = self.create_timer(1.0, self.publish, clock=self.steady)
+            self.scan_timer = self.create_timer(.02, self.process_pending, clock=self.steady)
             self.last_warning = 0.
             self.saved = False
             self.get_logger().warning('仅限静止已知位姿的识别测试！移动底盘必须接入真实 TF。')
@@ -87,14 +132,35 @@ def main():
                 # If the third target disappears while still scanning, restart the
                 # test process before attempting a new lock.
                 return
+            stamp = Time.from_msg(msg.header.stamp).nanoseconds
+            if (stamp <= 0 or not msg.header.frame_id or not msg.ranges or
+                    not all(math.isfinite(v) for v in (msg.angle_min, msg.angle_increment,
+                                                       msg.range_min, msg.range_max)) or
+                    msg.angle_increment == 0 or not 0 <= msg.range_min < msg.range_max):
+                return
+            self.pending.push(stamp, msg, time.monotonic())
+
+        def lookup_scan(self, msg):
             try:
-                trans = self.buffer.lookup_transform('map', msg.header.frame_id,
-                    Time.from_msg(msg.header.stamp), timeout=Duration(seconds=.1))
+                # No timeout: this callback and the TransformListener share an executor.
+                # Exact nonzero scan stamp, never latest-time or fabricated TF.
+                return self.buffer.lookup_transform('map', msg.header.frame_id,
+                    Time.from_msg(msg.header.stamp))
             except Exception as exc:
                 now = time.monotonic()
                 if now - self.last_warning > 4:
-                    self.get_logger().warning(f'map -> {msg.header.frame_id} TF 无效: {exc}')
+                    self.get_logger().warning(f'等待同时间戳 TF: {exc}; queue={self.pending.counters()}')
                     self.last_warning = now
+                return None
+
+        def process_pending(self):
+            if self.grid is None or self.engine.conflict:
+                self.pending.pending.clear()
+                return
+            self.pending.drain(time.monotonic(), self.lookup_scan, self.process_scan)
+
+        def process_scan(self, stamp, msg, trans):
+            if self.engine.conflict:
                 return
             tr = trans.transform.translation
             q = trans.transform.rotation
@@ -125,6 +191,9 @@ def main():
                 if not static_map_free(self.grid, x, y):
                     continue
                 candidates.append((x, y))
+            self.last_processed_wall = time.monotonic()
+            self.last_processed_stamp = stamp
+            self.processed_count += 1
             previous = self.engine.state
             self.engine.observe(candidates)
             if self.engine.state != previous:
@@ -156,6 +225,11 @@ def main():
         def publish(self):
             data = self.engine.status()
             data['map_received'] = self.grid is not None
+            data['scan_tf_ready'] = (not self.engine.conflict and
+                                     time.monotonic() - self.last_processed_wall <= .5)
+            data['scan_tf_stamp_ns'] = self.last_processed_stamp
+            data['scan_tf_processed'] = self.processed_count
+            data['scan_queue'] = self.pending.counters()
             self.pub_status.publish(String(data=json.dumps(data, ensure_ascii=False)))
             if not data['locked']:
                 return

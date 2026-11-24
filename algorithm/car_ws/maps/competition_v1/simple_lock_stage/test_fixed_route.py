@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / 'topology_stage6'))
 
 from lock_core import ObstacleLock, laser_clusters, roads_at
-from lock_obstacles import static_map_free
+from lock_obstacles import static_map_free, PendingScans
 from road_topology import EDGES, canonical, shortest, plan_mission, validate_lock
 
 
@@ -168,6 +168,31 @@ class FixedRouteTests(unittest.TestCase):
         readings[-20:] = [.55] * 20
         # Each half is compact; their full circular span exceeds .14m.
         self.assertEqual(laser_clusters(readings, -math.pi, step), [])
+
+    def test_pending_scan_waits_without_blocking_and_preserves_order(self):
+        q = PendingScans()
+        consumed = []
+        available = {}
+        q.push(100, "first", 1.)
+        q.push(200, "second", 1.1)
+        q.push(100, "duplicate", 1.1)
+        available["second"] = "tf200"
+        q.drain(1.2, available.get, lambda *x: consumed.append(x))
+        self.assertEqual(consumed, [])
+        available["first"] = "tf100"
+        q.drain(1.3, available.get, lambda *x: consumed.append(x))
+        self.assertEqual(consumed, [(100, "first", "tf100"), (200, "second", "tf200")])
+        self.assertEqual(q.counters()["rejected"], 1)
+
+    def test_pending_scan_bounded_and_expired_not_reused(self):
+        q = PendingScans(max_pending=2, max_wait=.5)
+        q.push(1, "old", 1.)
+        q.push(2, "expire", 1.1)
+        q.push(3, "fresh", 1.5)
+        consumed = []
+        q.drain(1.7, lambda msg: "tf", lambda *x: consumed.append(x))
+        self.assertEqual(consumed, [(3, "fresh", "tf")])
+        self.assertEqual(q.counters(), {"pending": 0, "expired": 1, "overflow": 1, "rejected": 0})
 
     def test_clustering(self):
         # A tiny circular target over 3 adjacent angles around 1.0 m.
