@@ -35,7 +35,22 @@ jobs:
         run: python3 algorithm/car_ws/bash/test_portability.py -v
 
       - name: Verified lidar artifact backup and migration regression
-        run: python3 algorithm/car_ws/bash/test_lidar_artifact_migration.py -v
+        run: |
+          python3 algorithm/car_ws/bash/test_lidar_artifact_migration.py -v
+          python3 algorithm/car_ws/bash/audit_lidar_artifacts.py --expect-empty
+          for path in \
+            algorithm/car_ws/build_lidar_repair_20261119_184845_2086547/generated.o \
+            algorithm/car_ws/log_lidar_repair_20261119_184845_2086547/events.log \
+            algorithm/car_ws/install_oneclick_lidar/ydlidar_ros2_driver/lib/node \
+            algorithm/car_ws/install_oneclick_lidar.bak_20261119_190945_2102628/setup.bash \
+            algorithm/car_ws/install_oneclick_lidar.failed_20261119_185339_2090056/setup.bash \
+            algorithm/car_ws/build_oneclick_lidar/cache \
+            algorithm/car_ws/log_oneclick_lidar/events.log \
+            algorithm/car_ws/install_x3/setup.bash; do
+            git check-ignore --no-index -- "$path" || exit 1
+          done
+          git ls-files --error-unmatch algorithm/car_ws/src/ydlidar_ros2_driver/CMakeLists.txt algorithm/car_ws/config/x3.yaml
+          echo 'PASS: historical artifacts untracked and ignored; driver source/config retained'
 
       - name: Full 14-category software-only acceptance (300 seeded competition cases)
         run: bash algorithm/car_ws/bash/test_all_offline.sh

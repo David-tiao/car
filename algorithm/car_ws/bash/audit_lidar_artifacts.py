@@ -15,6 +15,7 @@ def main():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--repo", type=Path, default=ROOT)
     p.add_argument("--list", action="store_true")
+    p.add_argument("--expect-empty", action="store_true", help="fail if historical generated items are tracked")
     a = p.parse_args()
     root = a.repo.resolve(strict=True)
     def git(*args):
@@ -48,7 +49,11 @@ def main():
     for name, count in sorted(groups.items()):
         print(f"{name}: {count}")
     print(f"TRACKED={sum(groups.values())} SYMLINKS={links} MISSING_OR_BROKEN={missing}")
-    print("READ ONLY: no index/worktree changes; backup and local rebuild required before untracking.")
+    print("READ ONLY: no index/worktree changes.")
+    if a.expect_empty and groups:
+        p.exit(1, "FAIL: historical generated files remain tracked\n")
+    if a.expect_empty:
+        print("PASS: zero historical generated lidar items tracked")
     return 0
 
 
