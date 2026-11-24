@@ -413,3 +413,42 @@ python3 bash/render_nav2_params.py --output "$OUT/nav2_competition.yaml"
 ### 验收范围
 
 独立离线测试覆盖带空格的临时物理目录、符号链接、不同 cwd、显式 ROS/SDK 覆盖、nounset 恢复、环境拒绝、坏雷达符号链接及行为树配置生成；模拟 ROS 环境只用于验证路径逻辑，不代表真实 ROS2/雷达。还在实际 checkout 的符号链接外执行 web doctor 和 Bash 语法检查。真实 x86_64/ARM64 构建、串口、Gazebo 版本以及运行级路径执行独立验收，不能用路径测试替代。
+
+### 原生 PC/Pi5 部署及验证
+
+从任意路径进入自己的 car 仓库，先进入 algorithm/car_ws；不要求 workplace 或特定用户名。独立终端，不激活 Conda/venv。部署目标自动按 uname -m 选择，以下显式 pi5 只用于 ARM64 Ubuntu 22.04/Humble 树莓派5（PC 将 pi5 改为 pc）；不是跨编译器。
+
+```bash
+cd algorithm/car_ws
+bash bash/deploy.sh plan pi5
+bash bash/deploy.sh doctor pi5
+```
+
+预期：显示实际工作区、12 个核心包及依赖；doctor 仅检查已安装工具、系统 Python rclpy 和 ROS 依赖，不检查硬件或修改环境。缺少依赖按各 package.xml/rosdep 提示独立审核，不默认安装。已配置 rosdep 数据库的机器可预览依赖：
+
+```bash
+mapfile -t PKG_PATHS < <(bash bash/deploy.sh paths pi5)
+rosdep check --from-paths "${PKG_PATHS[@]}" --ignore-src --rosdistro humble
+```
+
+预期：输出已满足或缺失的依赖，不安装。新工作区或经核验保留旧产物后，显式构建和验证：
+
+```bash
+bash bash/deploy.sh build pi5
+bash bash/deploy.sh verify pi5
+bash bash/deploy.sh test pi5
+```
+
+预期：PASS BUILD、PASS VERIFY、PASS TEST（包注册路径属于本工作区，关键 ELF 机器类型正确、软件测试成功、静态地图 probe 返回有效样例）。默认 isolated install，保留现有启动脚本兼容性。旧 CMakeCache 的源码/构建路径或编译器架构异常时拒绝继续，不自动删除；在干净工作区重新构建。此流程不需要 RViz2/Gazebo，不含 YDLIDAR SDK 编译及串口设备测试，不启动机器人。Pi5 上按上节雷达 doctor/build 另行验证。
+
+PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 不自动替换，尚未提供兼容后端。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
+
+### 历史构建产物审计
+
+```bash
+python3 bash/audit_lidar_artifacts.py --list
+```
+
+预期：列出明确匹配旧 build_lidar_repair、install_oneclick_lidar 及对应备份、log_lidar_repair 的 Git 跟踪项、符号链接和缺失项计数。仅访问 Git 索引及文件存在性，不执行 rm/git rm，也不检查其他源码目录。当前基线有 201 个已跟踪历史项；将来解除跟踪前，必须先通知队员核验工作副本、备份旧 overlay 及重要本地文件，在新位置重新构建，避免正常 git pull 删除仍被依赖的跟踪文件。旧提交历史保留，不重写历史。
+
+双架构工作流 `.github/workflows/native_deploy.yml` 在原生 Ubuntu 22.04 x64/ARM64 容器环境中安装仅核心包依赖、将 Git 源码解包到临时新物理路径、在另一 cwd 执行 doctor/build/verify/test。CI 结果以对应提交记录为准；不等同 Pi5 真机、雷达、Gazebo GUI 或实车控制验收。

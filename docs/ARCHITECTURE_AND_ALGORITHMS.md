@@ -252,3 +252,7 @@ DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprin
 ## 跨电脑路径设计
 
 以脚本所在真实目录（Bash BASH_SOURCE + pwd -P，Python Path(__file__).resolve()）作为默认锚点，不依赖当前目录及用户名。命令行显式参数优先；支持的设备级环境覆盖列于操作文档；缺省时才从项目定位或采用标准系统安装位置。指定不存在的 SDK 不回退为另一版本。ROS2 节点的已安装资源仍通过 ament_index 查找。ROS setup 可覆盖且使用 Humble，临时关闭 nounset 处理 ROS setup 的变量探测，之后恢复调用者 shell 状态；不得在已激活 Conda/venv 中加载。V6、Gazebo、web/keyboard 等入口保留既有数据与运动边界。旧 Nav2 YAML 的比赛行为树路径在部署时解析为绝对路径写入独立生成文件，不改变行为树、DWB 或恢复策略。雷达重建普通安装避免依赖源树/构建目录的符号链接；SDK 缺失时不默认下载，显式允许才构建本地 SDK。ROS 构建产物依然可能含绝对路径、ABI 和架构相关内容，迁移必须重建，源码可移植不等于二进制可移植。
+
+### PC / Pi5 部署配置及构建边界
+
+部署入口 `bash/deploy.sh` 读取 uname -m 并限定原生 64 位架构；pc 对应 x86_64、pi5 对应 aarch64，两者复用同一组 12 个自有 ROS 包（接口、只读串口/遥测、视觉/机构/任务监视、导航及网页适配），sim 单独选 car_navigation、car_gazebo。通过 package.xml 获取已声明的 ROS 依赖，以显式 --base-paths 和 --packages-select 限制 colcon 发现范围，不扫描整个旧雷达工作区或实验包。构建时拒绝可识别的过期 CMake source/build 路径与错误架构的编译器 ABI 缓存；verify 检查每个包的本地 isolated install 前缀及代表性可执行文件的 64 位 ELF e_machine（x86_64=62、AArch64=183）。test 执行包内软件测试及静态地图路径 probe，不启动传感器或控制节点。Pi5 的 YDLIDAR SDK/驱动、实测 TF 和 STM32/OpenMV 设备通信独立验收。部署检查不是自动安装器，不能修改全局软件环境。ARM64 CI 使用实际 ARM64 runner，不等同 Raspberry Pi 5 实机验收；真实 colcon 构建路径含空格的兼容性仍未证实。

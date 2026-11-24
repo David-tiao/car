@@ -15,3 +15,6 @@
 **提示**：仅迁移脚本不等于雷达驱动已编译。移动 ROS 工作空间后，需通过 `bash lidar.sh doctor` 在线检查 `ydlidar_ros2_driver` 注册状态。
 
 **可移植部署**：从脚本真实目录自动定位工作区；不依赖 Desktop/workplace。可使用 CAR_WS、CAR_ROS_SETUP 等显式环境覆盖。运行 `python3 test_portability.py -v` 检查离线路径契约；`bash repair_car_ws_lidar.sh doctor` 只检查 SDK；`build` 使用现有 SDK，缺失时不会默认下载；`--allow-sdk-build` 是单独授权的本地 SDK 构建。操作及边界见 [跨电脑部署与路径验收](../../../docs/ROADMAP_AND_ACCEPTANCE.md#跨电脑部署与路径验收)。
+
+- `bash deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：原生部署、指定包集合及构建验证（不自动安装依赖或启动硬件）。默认自动选择本机 pc/pi5；sim 需要 Fortress。
+- `python3 audit_lidar_artifacts.py --list`：只读列出旧雷达 Git 跟踪产物，不删除、不修改索引。参见跨电脑部署与路径验收章节。

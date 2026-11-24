@@ -111,3 +111,4 @@ git branch -r
 | car_gazebo 0.4.0 | 碰撞包络与 Nav2 足迹对齐；独立 RViz2、一键启动、就绪门、运行级集成验收 | [离线 CI 通过](https://github.com/David-tiao/car/actions/runs/45335849607)；[运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) FAIL（构建 PASS，锁路 CONFLICT）；GUI/实车待验收 |
 
 | 跨电脑部署 P1（开发分支） | 自动定位、显式 ROS/SDK 配置、保守行为树参数生成、移植回归及新增忽略规则 | 路径离线 CI 待确认；ARM64/实机待验收 |
+| 跨电脑部署 P2（开发分支） | PC/Pi5/SIM 原生部署配置，缓存与 ELF 架构检查，x64/ARM64 CI，历史产物只读审计 | 新 CI 待核验；Pi5 实机 NOT_RUN；不解除历史产物跟踪 |

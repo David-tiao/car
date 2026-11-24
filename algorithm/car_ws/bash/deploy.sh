@@ -54,7 +54,7 @@ if [[ "$profile" == sim ]]; then
 fi
 # Check declared ROS dependencies, not all packages in the source tree.
 # External non-ROS dependencies still belong to rosdep / platform provisioning.
-mapfile -t deps < <(/usr/bin/python3 - "${paths[@]}" <<'PY'
+dep_text="$(/usr/bin/python3 - "${paths[@]}" <<'PY'
 import sys
 import pathlib
 import xml.etree.ElementTree as ET
@@ -64,7 +64,8 @@ tags = {"depend", "buildtool_depend", "build_depend", "build_export_depend", "ex
 deps = {e.text.strip() for r in roots for e in r if e.tag in tags and e.text}
 print("\n".join(sorted(deps - local)))
 PY
-)
+)"
+mapfile -t deps <<< "$dep_text"
 for dep in "${deps[@]}"; do
   [[ -n "$dep" ]] || continue
   ros2 pkg prefix "$dep" >/dev/null || { echo "ERROR: missing declared ROS package: $dep" >&2; exit 2; }
@@ -75,11 +76,20 @@ cd "$CAR_WS"
 # Reject old CMake caches from a moved workspace; do not delete or rewrite them.
 # A symlink to the SAME physical workspace is fine.
 if [[ "$mode" == build || "$mode" == test ]]; then
-  /usr/bin/python3 - "$CAR_WS" "${packages[@]}" <<'PY'
+  /usr/bin/python3 - "$CAR_WS" "$elf_machine" "${packages[@]}" <<'PY'
 from pathlib import Path
 import sys
 ws = Path(sys.argv[1]).resolve()
-for pkg in sys.argv[2:]:
+machine = int(sys.argv[2])
+for pkg in sys.argv[3:]:
+    # CMake compiler ABI files survive relocation/copy and reveal a stale CPU target.
+    for abi in (ws / "build" / pkg / "CMakeFiles").glob("*/CMakeDetermineCompilerABI_*.bin"):
+        with abi.open("rb") as stream:
+            header = stream.read(20)
+        if len(header) == 20 and header[:4] == b"\x7fELF":
+            order = {1: "little", 2: "big"}.get(header[5])
+            if order is None or header[4] != 2 or int.from_bytes(header[18:20], order) != machine:
+                raise SystemExit(f"ERROR: stale compiler architecture in {abi}; preserve old artifacts and rebuild in a clean workspace")
     cache = ws / "build" / pkg / "CMakeCache.txt"
     if not cache.is_file():
         continue
