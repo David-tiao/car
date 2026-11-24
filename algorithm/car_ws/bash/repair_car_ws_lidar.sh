@@ -15,6 +15,10 @@ LOG="$WS/log_lidar_repair_$STAMP"
 SDK_SRC="$WS/vendor/YDLidar-SDK"
 SDK_PREFIX="$WS/install_oneclick_sdk"
 BACKUP=""
+MODE="${1:-build}"
+[[ $# -le 1 && ( "$MODE" == build || "$MODE" == doctor || "$MODE" == --allow-sdk-build ) ]] || {
+  echo 'Usage: repair_car_ws_lidar.sh [doctor|build|--allow-sdk-build]' >&2; exit 2;
+}
 
 err() { echo "[ERROR] $*" >&2; exit 1; }
 [[ -f "$SRC/package.xml" ]] || err "缺少驱动源码：$SRC/package.xml"
@@ -55,7 +59,17 @@ else
     err "指定 SDK prefix 中找不到配置；可显式设置 CAR_YDLIDAR_SDK_DIR"
   fi
 fi
+if [[ "$MODE" == doctor ]]; then
+  [[ -n "$SDK_DIR" ]] || err "未找到 SDK 配置；指定 CAR_YDLIDAR_SDK_DIR 或 CAR_YDLIDAR_SDK_PREFIX"
+  printf '[PASS] workspace=%s\n[PASS] SDK=%s\n[INFO] 仅发现路径，未编译或启动硬件\n' "$WS" "$SDK_DIR"
+  exit 0
+fi
+
+# Lock before any workspace writes, including SDK build.
+exec 9>"$WS/bash/.lidar_build.lock"
+flock -n 9 || err '已有另一个雷达构建任务'
 if [[ -z "$SDK_DIR" ]]; then
+  [[ "$MODE" == --allow-sdk-build ]] || err "未找到 SDK；显式提供 SDK 路径或审核后使用 --allow-sdk-build"
   # 没有 SDK 安装时，优先使用 vendor 源码；没有源码才获取官方 SDK。
   if [[ ! -f "$SDK_SRC/CMakeLists.txt" ]]; then
     [[ ! -e "$SDK_SRC" ]] || err "SDK 源码目录已存在但不完整：$SDK_SRC（未覆盖）"
@@ -82,8 +96,6 @@ printf '[PASS] SDK 配置：%s\n' "$SDK_DIR"
 
 # 单独编译雷达驱动时，临时移开 COLCON_IGNORE。
 # 编译结束自动恢复，不影响主工作空间原来的包选择策略。
-exec 9>"$WS/bash/.lidar_build.lock"
-flock -n 9 || err '已有另一个雷达构建任务'
 
 IGNORE="$SRC/COLCON_IGNORE"
 SAVED=""
@@ -146,10 +158,23 @@ if ! (cd "$WS" && colcon --log-base "$LOG" build \
   exit 1
 fi
 
-[[ -r "$INSTALL/setup.bash" ]] || err "构建结束但缺少 $INSTALL/setup.bash"
-car_source_setup "$INSTALL/setup.bash"
-ros2 pkg prefix ydlidar_ros2_driver || err '包注册验证失败'
-ros2 pkg executables ydlidar_ros2_driver | grep -qE '^ydlidar_ros2_driver[[:space:]]+ydlidar_ros2_driver_node$' || err '缺少驱动节点可执行文件'
+validate_install() {
+  local prefix
+  [[ -r "$INSTALL/setup.bash" ]] || return 1
+  car_source_setup "$INSTALL/setup.bash" || return 1
+  prefix="$(ros2 pkg prefix ydlidar_ros2_driver)" || return 1
+  [[ "$(cd -- "$prefix" && pwd -P)" == "$(cd -- "$INSTALL/ydlidar_ros2_driver" && pwd -P)" ]] || return 1
+  [[ -x "$prefix/lib/ydlidar_ros2_driver/ydlidar_ros2_driver_node" ]]
+}
+if ! validate_install; then
+  echo '[ERROR] 新驱动注册或可执行文件验证失败' >&2
+  if [[ -n "$BACKUP" ]]; then
+    [[ ! -e "$INSTALL" ]] || mv -- "$INSTALL" "$WS/install_oneclick_lidar.failed_$STAMP"
+    mv -- "$BACKUP" "$INSTALL"
+    echo '[ROLLBACK] 已恢复原驱动安装目录'
+  fi
+  exit 1
+fi
 echo '[PASS] 驱动已在新 car_ws 环境注册，V6 可以找到 ydlidar_ros2_driver'
 echo "[LOG] $LOG"
 echo '[NEXT] bash bash/lidar.sh doctor'

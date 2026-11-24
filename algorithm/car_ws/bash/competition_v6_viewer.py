@@ -22,16 +22,16 @@ from datetime import datetime
 
 HOME = Path.home()
 HERE = Path(__file__).resolve().parent
-WS = HERE.parent
+WS = Path(os.environ.get('CAR_WS', str(HERE.parent))).expanduser().resolve()
 ROOT = WS / 'maps/competition_v1'
 MAP = ROOT / 'v6_static_preview'
-STATE = HOME / '.local/state/competition_v6_viewer'
+STATE = Path(os.environ.get('CAR_V6_STATE_DIR', str(Path(os.environ.get('XDG_STATE_HOME', str(HOME / '.local/state'))) / 'competition_v6_viewer'))).expanduser().resolve()
 LOGS = STATE / 'logs'
 RUN_FILE = STATE / 'runtime.json'
-ROS = Path('/opt/ros/humble/setup.bash')
+ROS = Path(os.environ.get('CAR_ROS_SETUP', '/opt/ros/humble/setup.bash')).expanduser().resolve()
 OVERLAY = WS / 'install/setup.bash' if (WS / 'install/setup.bash').is_file() else WS / 'install_oneclick_lidar/setup.bash'
 EXTRA_OVERLAY = WS / 'install_oneclick_lidar/setup.bash'
-CONFIG = WS / 'config/x3.yaml'
+CONFIG = Path(os.environ.get('CAR_LIDAR_CONFIG', str(WS / 'config/x3.yaml'))).expanduser().resolve()
 MISSION_CONFIG = ROOT / 'oneclick_stage/oneclick_config.json'
 RVIZ_TEMPLATE = HERE / 'preview.rviz'
 VISUAL = HERE / 'visual_overlay.py'
@@ -177,7 +177,10 @@ def env_command(*cmd):
     # 先加载 Humble，再加载当前 car_ws；单独雷达 overlay 可选。
     # 只组装命令，原有模块进程身份校验与安全停止逻辑不变。
     return ['bash', '-c',
-            'set -e; set +u; source "$1"; '
+            'set -e; set +u; '
+            'if [ -n "${CONDA_PREFIX:-}" ] || [ -n "${VIRTUAL_ENV:-}" ]; then '
+            'echo "Use a clean ROS terminal without Conda/venv" >&2; exit 2; fi; '
+            'source "$1"; [ "${ROS_DISTRO:-}" = humble ] || exit 2; '
             'if [ -f "$2" ]; then source "$2"; fi; '
             'if [ -f "$3" ] && [ "$3" != "$2" ]; then source "$3"; fi; '
             'shift 3; exec "$@"',

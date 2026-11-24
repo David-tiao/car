@@ -13,8 +13,8 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parents[1]
-ROS_SETUP = Path('/opt/ros/humble/setup.bash')
-WS_SETUP = ROOT.parent / 'algorithm/car_ws/install/setup.bash'
+ROS_SETUP = Path(os.environ.get('CAR_ROS_SETUP', '/opt/ros/humble/setup.bash')).expanduser().resolve()
+WS_SETUP = Path(os.environ.get('CAR_WS', str(ROOT.parent / 'algorithm/car_ws'))).expanduser().resolve() / 'install/setup.bash'
 BRIDGE = ROOT / 'bridges/ros2_keyboard_feedback_bridge.py'
 LOG_PATH = ROOT / 'data/web_modes/keyboard_autostart.log'
 _LOCK = threading.RLock()
@@ -54,7 +54,7 @@ def ensure_started(port, *, existing_feedback=False):
             return False
         _LAST_ATTEMPT = now
         if not ROS_SETUP.is_file():
-            _ERROR = 'ROS2 Humble not found at /opt/ros/humble/setup.bash'
+            _ERROR = f'ROS2 Humble not found at {ROS_SETUP}'
             return False
         if not BRIDGE.is_file():
             _ERROR = 'Missing ROS2 keyboard feedback bridge'
