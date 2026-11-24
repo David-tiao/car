@@ -128,6 +128,7 @@ def main():
             self.points = []
             self.xy = None
             self.odom_speed = None
+            self.odom_yaw = None
             self.completed_segments = 0
             self.total_segments = 0
             self.status_wall = self.path_wall = self.odom_wall = self.scan_wall = self.clock_wall = -math.inf
@@ -177,11 +178,13 @@ def main():
         def on_odom(self, msg):
             p = msg.pose.pose.position
             v, w = msg.twist.twist.linear, msg.twist.twist.angular
+            q = msg.pose.pose.orientation
             if (msg.header.frame_id == "odom" and msg.child_frame_id == "base_link" and
-                    all(math.isfinite(a) for a in (p.x, p.y, v.x, v.y, w.z)) and
+                    all(math.isfinite(a) for a in (p.x, p.y, v.x, v.y, w.z, q.x, q.y, q.z, q.w)) and
                     self.valid_stamp(msg.header.stamp)):
                 self.xy = (p.x, p.y)
                 self.odom_speed = (math.hypot(v.x, v.y), abs(w.z))
+                self.odom_yaw = math.atan2(2*(q.w*q.z + q.x*q.y), 1-2*(q.y*q.y + q.z*q.z))
                 self.odom_wall = time.monotonic()
 
         def on_scan(self, msg):
@@ -265,7 +268,8 @@ def main():
             goal = FollowPath.Goal()
             goal.path = path
             goal.controller_id = "FollowPath"
-            goal.goal_checker_id = "goal_checker"
+            # The existing road graph has only XY nodes, no requested heading.
+            goal.goal_checker_id = "road_node_checker"
             run["phase"], run["request_wall"] = "REQUESTED", time.monotonic()
             run["handle"] = None
             self.state, self.last_reason = "REQUESTED", ""
@@ -331,7 +335,7 @@ def main():
                 if (status != GoalStatus.STATUS_SUCCEEDED or self.xy is None or
                         self.live_contract() != self.run["key"] or
                         time.monotonic()-self.odom_wall > .5 or math.dist(self.xy, leg[-1]) > .06):
-                    self.finish("FAILED", f"Nav2 segment {self.run['index']+1} status={status}, pose={self.xy}, target={leg[-1]}")
+                    self.finish("FAILED", f"Nav2 segment {self.run['index']+1} status={status}, pose={self.xy}, target={leg[-1]}, yaw={self.odom_yaw}, speed={self.odom_speed}")
                     return
                 self.out.publish(Twist())
                 self.run["handle"] = None
@@ -354,7 +358,7 @@ def main():
                 return
             self.completed_segments += 1
             a, b = run["key"][0][run["index"]:run["index"]+2]
-            self.get_logger().info(f"SIM SEGMENT PASS: {a}->{b}, error={math.dist(self.xy, target):.4f} m, stationary")
+            self.get_logger().info(f"SIM SEGMENT PASS: {a}->{b}, error={math.dist(self.xy, target):.4f} m, yaw={self.odom_yaw}, stationary")
             if self.completed_segments == self.total_segments:
                 self.finish("SUCCEEDED", "all locked edges completed with stationary odometry")
                 return
