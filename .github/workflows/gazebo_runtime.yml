@@ -15,6 +15,11 @@ permissions:
 
 jobs:
   sim-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        goal: [C2, A1]
+    name: SIM C3 to ${{ matrix.goal }}
     runs-on: ubuntu-22.04
     container: ros:humble-ros-base-jammy
     timeout-minutes: 25
@@ -26,6 +31,7 @@ jobs:
       ROS_DOMAIN_ID: "84"
       ROS_LOCALHOST_ONLY: "1"
       LIBGL_ALWAYS_SOFTWARE: "1"
+      SIM_GOAL: ${{ matrix.goal }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Humble Fortress and Nav2 runtime
@@ -43,16 +49,16 @@ jobs:
           source install/setup.bash
           colcon test --packages-select car_gazebo
           colcon test-result --verbose
-      - name: Headless actual SIM route C3 to C2
+      - name: Headless actual SIM route C3 to ${{ matrix.goal }}
         run: |
           cd algorithm/car_ws
           export CAR_GAZEBO_RUN_DIR="$RUNNER_TEMP/car_gazebo"
-          xvfb-run -a -s "-screen 0 1280x720x24" bash bash/gazebo.sh test C2
+          xvfb-run -a -s "-screen 0 1280x720x24" bash bash/gazebo.sh test "$SIM_GOAL"
       - name: Upload run logs and generated scene
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gazebo-runtime-logs
+          name: gazebo-runtime-logs-${{ matrix.goal }}
           path: ${{ runner.temp }}/car_gazebo/
           if-no-files-found: warn
           retention-days: 14
