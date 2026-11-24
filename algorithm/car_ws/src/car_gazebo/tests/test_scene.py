@@ -8,7 +8,11 @@ P = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("scene", P / "scripts/generate_scene.py")
 scene = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(scene)
-ZONES = json.loads((P.parents[1] / "maps/competition_v1/zones.json").read_text())
+MAP_DIR = P.parents[1] / "maps/competition_v1"
+ZONES = json.loads((MAP_DIR / "zones.json").read_text())
+route_spec = importlib.util.spec_from_file_location("route_gate", P / "scripts/follow_locked_route.py")
+route_gate = importlib.util.module_from_spec(route_spec)
+route_spec.loader.exec_module(route_gate)
 
 
 class SceneTest(unittest.TestCase):
@@ -79,6 +83,28 @@ class SceneTest(unittest.TestCase):
         self.assertEqual(scene.wheel_rates(.04, 0., 0.), (1., 1., 1., 1.))
         self.assertEqual(scene.wheel_rates(0., .04, 0.), (-1., 1., 1., -1.))
         self.assertEqual(scene.wheel_rates(0., 0., 0.), (0., 0., 0., 0.))
+
+    def test_route_gate_checks_existing_topology(self):
+        nodes, edges = route_gate.load_topology(MAP_DIR / "topology_stage6/road_topology.py")
+        status = {"status": "LOCKED_READY", "ready": True, "frozen": True, "conflict": False,
+                  "source": "LIDAR_CONFIRMED", "route": ["C3", "C2", "C1", "B1", "A1"],
+                  "blocked": ["B2-B3", "B3-C3"]}
+        points = [nodes[n] for n in status["route"]]
+        self.assertEqual(route_gate.route_contract(status, points, nodes, edges)[0], tuple(status["route"]))
+        for change in ({"status": "CONFLICT_STOP"}, {"ready": False},
+                       {"source": "MANUAL_TEST"}, {"conflict": True},
+                       {"blocked": ["C2-C3"]}, {"route": ["C3", "A1"]},
+                       {"blocked": ["bogus"]}):
+            with self.subTest(change=change), self.assertRaises(ValueError):
+                route_gate.route_contract(dict(status, **change), points, nodes, edges)
+        with self.assertRaises(ValueError):
+            route_gate.route_contract(status, [(0, 0)]+points[1:], nodes, edges)
+        dense = route_gate.dense_path(points)
+        self.assertEqual(dense[0], points[0])
+        self.assertAlmostEqual(dense[-1][0], points[-1][0])
+        self.assertAlmostEqual(dense[-1][1], points[-1][1])
+        for a,b in zip(dense, dense[1:]):
+            self.assertLessEqual(((a[0]-b[0])**2+(a[1]-b[1])**2)**.5, .02500001)
 
     def test_mirror_has_no_synthetic_obstacles(self):
         w = scene.world_description(ZONES, mode="mirror").find("world")

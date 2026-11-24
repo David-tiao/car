@@ -29,6 +29,9 @@ def setup(context):
     gz = ExecuteProcess(cmd=["ign", "gazebo", "-r", str(world)], additional_env=env, output="screen")
     if mode == "view":
         return [gz]
+    command_source = LaunchConfiguration("command_source").perform(context)
+    if command_source not in ("manual", "nav2"):
+        raise RuntimeError("command_source must be manual or nav2")
     urdf = (world.parent / "car_sim.urdf").read_text(encoding="utf-8")
     if ET.fromstring(urdf).get("name") != "car_sim":
         raise RuntimeError("SIM URDF mismatch")
@@ -41,7 +44,7 @@ def setup(context):
              "--ros-args", "-r", "/world/car_sim/clock:=/clock"],
         additional_env=env, output="screen")
     adapter = Node(package="car_gazebo", executable="sim_adapter.py",
-                   parameters=[{"use_sim_time": True}], output="screen")
+                   parameters=[{"use_sim_time": True, "command_source": command_source}], output="screen")
     rsp = Node(package="robot_state_publisher", executable="robot_state_publisher",
                parameters=[{"use_sim_time": True, "robot_description": urdf}], output="screen")
     processes = [gz, bridge, adapter, rsp]
@@ -58,5 +61,6 @@ def generate_launch_description():
         DeclareLaunchArgument("world", description="Absolute generated SDF path"),
         DeclareLaunchArgument("partition", description="Unique Ignition Transport partition"),
         DeclareLaunchArgument("mode", default_value="view", description="view or isolated sim"),
+        DeclareLaunchArgument("command_source", default_value="manual"),
         OpaqueFunction(function=setup),
     ])

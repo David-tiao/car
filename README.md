@@ -68,3 +68,5 @@ https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操
 
 Gazebo 第二阶段（开发分支）：新增独立 SIM 全向速度、虚拟激光雷达、里程计和 TF；可使用现有地图及道路锁定算法进行仿真路径预览。真实控制、Nav2 FollowPath、完整机械模型尚未验收。操作及前提见 [运行与验收](docs/ROADMAP_AND_ACCEPTANCE.md)。
 
+Gazebo 第三阶段（开发分支）：新增独立 SIM Nav2 路径执行候选，复用雷达锁路、Dijkstra，要求显式启动并在冲突或数据过期时取消；未运行 Gazebo/ROS2 实机环境，不称已验收。详见 [专业架构](docs/ARCHITECTURE_AND_ALGORITHMS.md) 与 [操作验收](docs/ROADMAP_AND_ACCEPTANCE.md)。
+

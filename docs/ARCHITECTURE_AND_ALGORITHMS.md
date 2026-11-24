@@ -225,3 +225,21 @@ flowchart LR
 
 现有道路锁定/拓扑算法可以在独立 SIM 域使用仿真 scan/TF。路径仍为预览，尚未接入 Nav2 FollowPath；当前不改动真实导航配置、速度桥或避障代码。依据：[Fortress VelocityControl](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1VelocityControl.html)、[OdometryPublisher](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1OdometryPublisher.html)、[GPU lidar](https://gazebosim.org/docs/fortress/sensors/)。
 
+### 第三阶段：锁路到 Nav2 执行（SIM 候选）
+
+原有 lock_obstacles.py 与 road_topology.py 不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对锁路心跳、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
+
+```mermaid
+flowchart LR
+  S[Gazebo scan + TF] --> L[现有 lock_obstacles]
+  L --> D[现有 Dijkstra]
+  D --> G[SIM route gate / 手动触发]
+  G -->|FollowPath| N[Nav2 DWB]
+  N -->|nav_cmd_vel| G
+  G -->|nav_checked_cmd| A[SIM adapter]
+  A --> W[Gazebo]
+  W --> S
+```
+
+DWB 允许 vx/vy 正负，使用独立 1cm local costmap、矩形临时 footprint、规则掩膜 StaticLayer 和真实的仿真 LaserScan obstacle layer。原实车 Nav2 参数不变。SIM adapter 的 command_source 固定选择 manual 或 nav2：后者只消费 nav_checked_cmd，直接手动命令不会参与。当前只执行单段锁路路线，不自动推进两批比赛任务；碰撞、安全净空、DWB 参数与实际运行仍须验证。Humble 接口依据：[FollowPath action](https://api.nav2.org/actions/humble/followpath.html)。
+

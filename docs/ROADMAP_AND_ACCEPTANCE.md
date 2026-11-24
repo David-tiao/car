@@ -263,3 +263,45 @@ rviz2 --ros-args -p use_sim_time:=true
 
 只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本采用原有 CLI，未变更源码；SIM TF/消息时间兼容性需在真实 ROS2 环境验证。当前路径是预览，不自动驱动 Gazebo；Nav2 独立控制配置及 FollowPath 尚待开发。不要将本节命令用于 REAL 域。
 
+### SIM Nav2 单段锁路执行（第三阶段，待 ROS2/Gazebo 实跑）
+
+已安装 ROS2 Humble 的 Nav2 controller、DWB、lifecycle manager 与前述 Gazebo 依赖，重新构建 car_gazebo、car_navigation；仅在域84运行。为使真实仿真起点与拓扑 C3 对应，使用 --start 2.05 2.05；启动 Nav2 速度源（手动 cmd_vel 不再被 adapter 接收）：
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+colcon build --packages-select car_navigation car_gazebo
+source install/setup.bash
+export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --mode sim --start 2.05 2.05 --obstacle 1.2 1.5 --obstacle 1.5 2.05
+ros2 launch car_gazebo gazebo_view.launch.py mode:=sim command_source:=nav2 world:="$OUT/car_sim.sdf" partition:=car_sim_local
+```
+
+在另一 SIM 终端（同一工作空间与域）启动一次导航，不再重复执行上节 map/lock/topology 手动启动命令：
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
+ros2 launch car_gazebo sim_nav.launch.py map_dir:="$PWD/maps/competition_v1" start:=C3 goal:=A1
+```
+
+等待两个仿真障碍确认并冻结道路，观察 RViz2、/competition/road_status 与局部代价地图。另一个 SIM 终端执行：
+
+```bash
+ros2 topic echo /competition/road_status --once --qos-durability transient_local
+ros2 action info /follow_path
+ros2 service call /car_gz/follow_locked_route std_srvs/srv/Trigger '{}'
+ros2 topic echo /car_gz/route_status
+```
+
+预期：服务只有在真实仿真扫描锁定、路径一致、起点误差≤0.06m、controller ready 时受理；REQUESTED→FOLLOWING→SUCCEEDED（或 REJECTED/FAILED/STOPPED）；Gazebo 沿锁路路线运动。检查结束位姿与 A1=(0.35,0.35) 的误差。取消：
+
+```bash
+ros2 service call /car_gz/cancel_locked_route std_srvs/srv/Trigger '{}'
+```
+
+断开锁路/路径/仿真数据，或发生冲突，速度门应输出零并取消；未开始不得产生非零 nav_checked_cmd。此为仿真验收预期，不代表已经运行成功。原有网页与实体控制链不变。
+

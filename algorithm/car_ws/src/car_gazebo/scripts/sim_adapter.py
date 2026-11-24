@@ -26,6 +26,11 @@ class SimulationAdapter(Node):
             raise RuntimeError("SIM requires ROS_DOMAIN_ID=84 and ROS_LOCALHOST_ONLY=1")
         if not self.get_parameter("use_sim_time").value:
             raise RuntimeError("SIM requires use_sim_time:=true")
+        self.declare_parameter("command_source", "manual")
+        source = self.get_parameter("command_source").value
+        if source not in ("manual", "nav2"):
+            raise RuntimeError("command_source must be manual or nav2")
+        input_topic = SIM_PREFIX + ("/cmd_vel" if source == "manual" else "/nav_checked_cmd")
         self.command = (0., 0., 0.)
         self.command_wall = self.odom_wall = self.scan_wall = self.clock_wall = -math.inf
         self.clock_stamp = self.last_odom_stamp = self.last_scan_stamp = 0
@@ -46,10 +51,10 @@ class SimulationAdapter(Node):
         self.create_subscription(ClockMsg, "/clock", self.on_clock, qos_profile_sensor_data)
         self.create_subscription(Odometry, SIM_PREFIX + "/odom_raw", self.on_odom, qos_profile_sensor_data)
         self.create_subscription(LaserScan, SIM_PREFIX + "/scan_raw", self.on_scan, qos_profile_sensor_data)
-        self.create_subscription(Twist, SIM_PREFIX + "/cmd_vel", self.on_command, 1)
+        self.create_subscription(Twist, input_topic, self.on_command, 1)
         self.steady = Clock(clock_type=ClockType.STEADY_TIME)
         self.timer = self.create_timer(0.05, self.tick, clock=self.steady)
-        self.get_logger().info("SIM only: isolated /car_gz/cmd_vel, no STM32 or REAL writes")
+        self.get_logger().info("SIM only input: " + input_topic + "; no STM32 or REAL writes")
 
     def warn(self, message):
         now = time.monotonic()
