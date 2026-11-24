@@ -441,7 +441,7 @@ bash bash/deploy.sh test pi5
 
 预期：PASS BUILD、PASS VERIFY、PASS TEST（包注册路径属于本工作区，关键 ELF 机器类型正确、软件测试成功、静态地图 probe 返回有效样例）。默认 isolated install，保留现有启动脚本兼容性。旧 CMakeCache 的源码/构建路径或编译器架构异常时拒绝继续，不自动删除；在干净工作区重新构建。此流程不需要 RViz2/Gazebo，不含 YDLIDAR SDK 编译及串口设备测试，不启动机器人。Pi5 上按上节雷达 doctor/build 另行验证。
 
-PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 不自动替换，尚未提供兼容后端。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
+PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 已提供独立后端适配候选，须检查匹配的桥接 ABI；不自动替换安装。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
 
 ### 历史构建产物审计
 
@@ -500,3 +500,35 @@ bash bash/gazebo.sh test A1
 99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。
 
 每段采用独立 road_node_checker（二维节点无朝向约束，Nav2 位置 4cm 不变）；只有实际 Action 成功、位置≤6cm、至少0.15s零令及结果后的新里程计确认停止，才累计通过路段。失败日志含当前路段位置、朝向、速度。已安装 Harmonic 不等于 Fortress；不允许自动换装。GUI 联动和实车仍需现场验收。
+
+### Gazebo 双后端选择
+
+Ubuntu 22.04 / ROS2 Humble，先检查自己已安装的 Gazebo 和 bridge，不要求 workplace 或固定用户名。以下从 car 仓库根目录进入工作空间，使用已准备好的 ROS 终端，不使用 Conda/venv。
+
+```bash
+cd algorithm/car_ws
+dpkg -l | grep -E 'gz-harmonic|ignition-fortress|ros-humble-ros-gz'
+python3 src/car_gazebo/scripts/gazebo_backend.py --backend auto
+CAR_GAZEBO_BACKEND=harmonic bash bash/deploy.sh doctor sim
+```
+
+预期：auto 输出与当前 overlay 的 ros_gz_bridge ABI 匹配的 fortress 或 harmonic；显式请求不匹配、未安装 bridge、共享库缺失或 simulator major 缺失时报错，不启动仿真，不修改 apt。若本机只有 Harmonic 和 Classic，且没有 Humble 的 Harmonic bridge，先阅读[官方依赖配对说明](https://gazebosim.org/docs/harmonic/ros_installation/)。仅在已配置 OSRF 签名软件源的机器上，预览变更（不安装）：
+
+```bash
+apt-cache policy ros-humble-ros-gzharmonic
+apt-get -s install ros-humble-ros-gzharmonic
+```
+
+若显示移除其他项目依赖或包不可用，停止并使用独立环境，不在当前工作站直接替换 Fortress 或 Classic。实际安装须由用户审核授权。CI 在一次性 Humble 容器分别装默认 Fortress 或 OSRF Harmonic 桥，互不混装。已具备对应依赖时，运行：
+
+```bash
+export CAR_GAZEBO_BACKEND=harmonic
+bash bash/deploy.sh build sim
+bash bash/gazebo.sh doctor
+bash bash/gazebo.sh test C2
+bash bash/gazebo.sh test A1
+# 确认两个测试均退出后，可另行启动桌面显示
+bash bash/gazebo.sh start A1
+```
+
+Fortress 用户将环境变量改为 fortress，或 unset CAR_GAZEBO_BACKEND 自动选择。原手动生成场景与 launch 例子默认 Fortress；Harmonic 手动模式必须同时给 generator --backend harmonic 和 launch backend:=harmonic，不能混用旧生成文件。start 仅显示和检查就绪，不自动运动。test 使用同一套雷达锁路、Nav2、停车与误差门（≤0.06m）；默认输出目录和隔离策略不变。[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) 已通过。[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 分别执行 Fortress/C2、Fortress/A1、Harmonic/C2、Harmonic/A1；各自检查实际进程、传感器和运动，日志按后端/目标分开。当前不代表本地 GUI 或真实小车已验收。

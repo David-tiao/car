@@ -102,3 +102,5 @@
 ## 跨电脑部署适配
 
 主要入口自动定位工作区并可显式覆盖 ROS/SDK/雷达配置；独立 PC/Pi5/SIM 部署配置，拒绝过期 CMake 路径/架构缓存，检查本地包前缀和原生 ELF。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) 两端均通过 12 包构建、7 ELF 校验、2 项软件测试及静态地图 probe；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) 14 类、300 组软件回归及新增扫描/路径测试通过。不是 Pi5 真机、真实 YDLIDAR、STM32/OpenMV 联调。历史 201 个跟踪构建项仅只读审计，未解除跟踪；本地用户数据、系统 SDK 与 Gazebo 均未修改。
+
+P5：双后端适配候选 2c56861。统一选择、ABI 校验、场景及 bridge 类型转换，Fortress 保留原参数。[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS；[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 与 [双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 按实际结果更新验收结论。只读环境检查不变更系统包；本机 Harmonic 是否具备配套 Humble bridge 需 doctor 确认。GUI/REAL 镜像、实车与历史产物解除跟踪仍独立待验收。
