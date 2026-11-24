@@ -130,6 +130,16 @@ def main():
             if self.engine.state != previous:
                 self.get_logger().warning('障碍物状态: %s, %s' %
                                           (self.engine.state, self.engine.status()))
+                if self.engine.conflict:
+                    confirmed = [(round(t.x, 4), round(t.y, 4), t.hits)
+                                 for t in self.engine.tracks
+                                 if t.hits >= self.engine.required_hits and t.missed == 0]
+                    self.get_logger().warning(
+                        'CONFLICT evidence: scan_points=%d angle_min=%.6f increment=%.6f '
+                        'clusters=%d map_candidates=%s confirmed_tracks=%s' %
+                        (len(msg.ranges), msg.angle_min, msg.angle_increment,
+                         len(groups), [(round(x, 4), round(y, 4)) for x, y in candidates],
+                         confirmed))
             if self.engine.locked_obstacles is not None and args.snapshot and not self.saved:
                 try:
                     # Exclusive create: never overwrite a previous competition record.

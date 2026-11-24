@@ -28,6 +28,9 @@ jobs:
           python3 -m py_compile algorithm/car_ws/src/car_gazebo/scripts/*.py algorithm/car_ws/src/car_gazebo/launch/*.py
           python3 algorithm/car_ws/src/car_gazebo/tests/test_scene.py -v
 
+      - name: Circular lidar seam and fixed road lock regression
+        run: python3 algorithm/car_ws/maps/competition_v1/simple_lock_stage/test_fixed_route.py -v
+
       - name: Portable workspace and SDK paths (relocated fixture, no hardware)
         run: python3 algorithm/car_ws/bash/test_portability.py -v
 

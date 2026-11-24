@@ -40,19 +40,12 @@ def laser_clusters(ranges, angle_min, angle_increment, min_range=.10,
             or angle_increment == 0 or min_range <= 0 or max_range < min_range
             or max_neighbor_gap <= 0 or max_cluster_span <= 0 or min_cluster_points < 2):
         return []
-    groups = []
+    runs = []
     current = []
 
     def close():
-        if len(current) < min_cluster_points:
-            return
-        xs = [p[0] for p in current]
-        ys = [p[1] for p in current]
-        # Reject walls and large fixtures, rather than treating them as a 50-mm obstacle.
-        # O(N) bounding-box diagonal; avoids quadratic work for long walls.
-        span = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
-        if span <= max_cluster_span:
-            groups.append((sum(xs) / len(xs), sum(ys) / len(ys), len(current)))
+        if current:
+            runs.append(current)
 
     for i, r in enumerate(ranges):
         if not math.isfinite(r) or not min_range <= r <= max_range:
@@ -66,6 +59,30 @@ def laser_clusters(ranges, angle_min, angle_increment, min_range=.10,
             current = []
         current.append(p)
     close()
+
+    # A complete circular scan may split one object at its angular seam.
+    # Merge only adjacent valid endpoints of a one-revolution scan, BEFORE
+    # point-count and span filtering. A partial field of view is never joined.
+    step = abs(angle_increment)
+    sweep = max(0, len(ranges) - 1) * step
+    circular = 0 < step <= .1 and abs(sweep - math.tau) <= 1.01 * step
+    if (circular and len(runs) > 1
+            and min_range <= ranges[0] <= max_range
+            and min_range <= ranges[-1] <= max_range
+            and math.dist(runs[-1][-1], runs[0][0]) <= max_neighbor_gap):
+        runs[0] = runs[-1] + runs[0]
+        runs.pop()
+
+    groups = []
+    for run in runs:
+        if len(run) < min_cluster_points:
+            continue
+        xs = [p[0] for p in run]
+        ys = [p[1] for p in run]
+        # Reject walls and large fixtures after seam joining, not before.
+        span = math.hypot(max(xs) - min(xs), max(ys) - min(ys))
+        if span <= max_cluster_span:
+            groups.append((sum(xs) / len(xs), sum(ys) / len(ys), len(run)))
     return groups
 
 
