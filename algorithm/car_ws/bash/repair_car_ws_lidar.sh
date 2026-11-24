@@ -114,7 +114,8 @@ if [[ -z "$SDK_DIR" ]]; then
     mkdir -p "$WS/vendor"
     TEMP="$WS/vendor/.YDLidar-SDK-download-$STAMP"
     echo '[SDK] 本地无可用 SDK，尝试从官方 GitHub 获取源码'
-    git clone --depth 1 https://github.com/YDLIDAR/YDLidar-SDK.git "$TEMP" || err 'SDK 下载失败；未修改驱动安装目录'
+    git clone --depth 1 --branch V1.2.7 https://github.com/YDLIDAR/YDLidar-SDK.git "$TEMP" || err 'SDK 下载失败；未修改驱动安装目录'
+    [[ "$(git -C "$TEMP" rev-parse HEAD)" == ad8e30f9e9315d4bd7544df85571072fdbcd31ea ]] || err 'SDK 标签与已锁定提交不一致；保留下载目录，不继续构建'
     [[ -f "$TEMP/CMakeLists.txt" ]] || err '下载的 SDK 缺少 CMakeLists.txt'
     mv "$TEMP" "$SDK_SRC"
   fi
