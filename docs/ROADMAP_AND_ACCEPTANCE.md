@@ -214,3 +214,52 @@ ros2 run car_gazebo mirror_pose.py --ros-args -p enable_real_mirror:=true -p use
 成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。Gazebo 运行、服务调用、URDF/RViz 显示和实车镜像均尚未验收。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
 
 本次离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。
+
+### SIM 全向运动与虚拟雷达（第二阶段，运行待验收）
+
+只在独立终端使用仿真域；先确认域 84 未被真实硬件/网页或其他实验占用。Ubuntu 22.04 / Humble / Fortress，已安装 robot_state_publisher、ros_gz_bridge、RViz2、colcon，并完成 car_gazebo、car_navigation 构建。每个 SIM 终端从仓库根目录进入 algorithm/car_ws：
+
+```bash
+cd algorithm/car_ws
+source /opt/ros/humble/setup.bash
+source install/setup.bash
+export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
+OUT=$(mktemp -d)
+ros2 run car_gazebo generate_scene.py --zones "$PWD/maps/competition_v1/zones.json" --output "$OUT" --mode sim --obstacle 1.2 1.5 --obstacle 1.5 2.05
+ros2 launch car_gazebo gazebo_view.launch.py mode:=sim world:="$OUT/car_sim.sdf" partition:=car_sim_local
+```
+
+预期：Gazebo 中可见四轮车体与两个显式模拟障碍柱，启动时静止；/clock、/odom、/scan、/joint_states 和 TF 连续更新。不能同时启动 real 或 TEST 的桥接。若无激光帧、GPU 渲染失败、frame_id/时间戳不匹配，adapter 拒绝非零速度；检查终端日志，不删除校验。
+
+在另一个同样 source 和 export 的 SIM 终端（不启动任何硬件）：
+
+```bash
+ros2 topic echo /odom --once
+ros2 topic echo /scan --once --qos-reliability best_effort
+ros2 run tf2_ros tf2_echo map laser_frame
+ros2 topic pub --rate 10 /car_gz/cmd_vel geometry_msgs/msg/Twist '{linear: {y: -0.1}}'
+```
+
+预期：车体沿自身右侧横移，按 Ctrl+C 停止发布后 watchdog 输出零；持续时间应短，观察车体不离开场地。不要通过直接 Gazebo topic 绕过 watchdog。该检查只验证仿真全向运动，不验证真实麦轮物理接触或安全停机。
+
+复用现有地图和锁路算法时，另一个 SIM 终端运行 map publisher（只启动一个 /map publisher）；将规则掩膜话题 remap 至现行道路拓扑输入。确认真实雷达节点不在此域。
+
+```bash
+ros2 run car_navigation car_map_publisher --ros-args -p use_sim_time:=true -p map_yaml:="$PWD/maps/competition_v1/competition_navigation_map.yaml" -p mask_yaml:="$PWD/maps/competition_v1/competition_keepout_mask.yaml" -r /car/navigation/keepout_mask:=/keepout_filter_mask
+```
+
+另两个相同 SIM 域终端：
+
+```bash
+python3 maps/competition_v1/simple_lock_stage/lock_obstacles.py --expected 2
+python3 maps/competition_v1/topology_stage6/road_topology.py --start C3 --goal A1 --expected-obstacles 2
+```
+
+另开 RViz2（Fixed Frame=map，Display 添加 /map、/keepout_filter_mask、/scan、RobotModel、/competition/locked_road_path、/competition/locked_obstacle_markers）：
+
+```bash
+rviz2 --ros-args -p use_sim_time:=true
+```
+
+只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本采用原有 CLI，未变更源码；SIM TF/消息时间兼容性需在真实 ROS2 环境验证。当前路径是预览，不自动驱动 Gazebo；Nav2 独立控制配置及 FollowPath 尚待开发。不要将本节命令用于 REAL 域。
+

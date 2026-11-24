@@ -202,3 +202,26 @@ flowchart LR
 ```
 
 镜像仅取真实 ROS2 图中 0.5s 内的 map 到 base_link TF；以平面 x/y/yaw 设置模型位姿，过期或异常则保留上次显示并告警。镜像世界不生成假障碍，不发布 /scan、/odom、/tf 或 /clock，不下发电机命令。当前是**静态预览及镜像接口初版**，非麦轮动力学、虚拟雷达、Nav2 执行闭环或机械关节实测。后续须验证 Fortress 实体服务、统一模型尺寸、实车 TF 来源及动态仿真数据隔离。
+
+### 第二阶段：全向 SIM 数据链（代码候选）
+
+Fortress VelocityControl 直接接收车体速度，不伪装真实麦轮滚子动力学；OdometryPublisher 读取 worldPose，GPU lidar 从虚拟场景产生 360° 扫描。仿真激光高度 0.092m 是工程假设（低于 0.10m 模拟障碍柱顶），不可写入实车外参。SDF 碰撞包络为 0.24×0.25×0.08m，质量暂设 2kg，仅仿真用；URDF 外观与 SDF 共用车体几何。
+
+```mermaid
+flowchart LR
+  C[SIM 命令 /car_gz/cmd_vel] --> G[限速与超时门]
+  G --> B[单向 ROS 到 Gazebo bridge]
+  B --> V[VelocityControl / SIM 车体]
+  V --> O[仿真 worldPose]
+  L[GPU lidar 虚拟射线] --> I[单向 Gazebo 到 ROS bridge]
+  O --> I
+  I --> A[SIM adapter]
+  A --> T[odom / TF / scan / joint_states]
+  T --> R[RViz2]
+  T --> D[现有雷达锁路及 Dijkstra]
+```
+
+单独 ROS_DOMAIN_ID=84、ROS_LOCALHOST_ONLY=1、car_sim_* Ignition partition；真实/网页/TEST 不进入该域。SIM 仿真时钟通过 world clock 单向桥接。SIM 的 map=world=odom；odom→base_link 取仿真位姿，base_link→laser_frame 由 SIM URDF 的 robot_state_publisher 唯一发布。轮位姿根据理想 X 型麦轮逆运动学积分，仅 RViz 关节动画；Gazebo 轮视觉固定。令 L=0.093、W=0.11、r=0.04，车体速度 (vx,vy,ω)，a=(L+W)ω，则四轮角速度为 (vx−vy−a, vx+vy+a, vx+vy−a, vx−vy+a)/r。非实测轮方向。指令按二维速度范数 0.20m/s、角速度 0.50rad/s 限制；0.30s 指令过期或任一仿真数据超过 0.50s 返回零。VelocityControl 自身会保持最后指令，故 launch 监督任一子进程退出即关闭本次仿真，不作为硬件急停。
+
+现有道路锁定/拓扑算法可以在独立 SIM 域使用仿真 scan/TF。路径仍为预览，尚未接入 Nav2 FollowPath；当前不改动真实导航配置、速度桥或避障代码。依据：[Fortress VelocityControl](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1VelocityControl.html)、[OdometryPublisher](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1OdometryPublisher.html)、[GPU lidar](https://gazebosim.org/docs/fortress/sensors/)。
+
