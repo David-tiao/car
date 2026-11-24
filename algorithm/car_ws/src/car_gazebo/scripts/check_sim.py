@@ -36,6 +36,8 @@ def main():
     from sensor_msgs.msg import LaserScan, JointState
     from rosgraph_msgs.msg import Clock
     from nav2_msgs.action import FollowPath
+    from lifecycle_msgs.srv import GetState
+    from lifecycle_msgs.msg import State
     from std_msgs.msg import String
     from std_srvs.srv import Trigger
     from tf2_ros import Buffer, TransformListener
@@ -62,11 +64,31 @@ def main():
             self.buffer = Buffer()
             self.listener = TransformListener(self.buffer, self)
             self.action = ActionClient(self, FollowPath, "/follow_path")
+            self.lifecycle = self.create_client(GetState, "/controller_server/get_state")
+            self.lifecycle_future = None
+            self.controller_active = False
+            self.lifecycle_wall = -math.inf
+            self.create_timer(.5, self.poll_lifecycle)
             self.start_client = self.create_client(Trigger, "/car_gz/follow_locked_route")
             self.cancel_client = self.create_client(Trigger, "/car_gz/cancel_locked_route")
             self.moved = False
             self.initial = nodes[args.start]
             self.goal = nodes[args.goal]
+
+        def poll_lifecycle(self):
+            if self.lifecycle_future is not None:
+                if not self.lifecycle_future.done():
+                    return
+                try:
+                    reply = self.lifecycle_future.result()
+                    self.controller_active = (reply is not None and
+                        reply.current_state.id == State.PRIMARY_STATE_ACTIVE)
+                except Exception:
+                    self.controller_active = False
+                self.lifecycle_wall = time.monotonic()
+                self.lifecycle_future = None
+            if self.lifecycle.service_is_ready():
+                self.lifecycle_future = self.lifecycle.call_async(GetState.Request())
 
         def receive(self, name, msg):
             if name in ("clock", "odom", "scan", "joints"):
@@ -139,7 +161,8 @@ def main():
                     raise ValueError("lock or route mismatch")
             except (KeyError, ValueError, TypeError):
                 missing.append("confirmed live locked path")
-            if not (self.action.server_is_ready() and self.start_client.service_is_ready()
+            if not (self.controller_active and time.monotonic()-self.lifecycle_wall < 2. and
+                    self.action.server_is_ready() and self.start_client.service_is_ready()
                     and self.cancel_client.service_is_ready()):
                 missing.append("Nav2 action and SIM trigger")
             if not self.stopped():
