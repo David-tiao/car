@@ -132,6 +132,22 @@ class SceneTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             route_gate.segment_paths(("C3",), nodes)
 
+    def test_segment_settle_requires_fresh_measured_stop_and_pose(self):
+        ready = route_gate.segment_settled
+        target = (1.2, 1.2)
+        self.assertTrue(ready((1.2, 1.24), target, (.01, .01), .2, True))
+        for pose, speed, age, fresh in (
+                ((1.2, 1.28), (.01, .01), .2, True),
+                (target, (.026, 0.), .2, True),
+                (target, (0., .051), .2, True),
+                (target, (0., 0.), .1, True),
+                (target, (0., 0.), 3.01, True),
+                (target, (0., 0.), .2, False),
+                ((float("nan"), 1.2), (0., 0.), .2, True),
+                (target, (float("nan"), 0.), .2, True)):
+            with self.subTest(pose=pose, speed=speed, age=age, fresh=fresh):
+                self.assertFalse(ready(pose, target, speed, age, fresh))
+
     def test_lock_scan_freshness(self):
         good = {"scan_tf_ready": True, "scan_tf_stamp_ns": 2_000_000_000}
         self.assertTrue(route_gate.fresh_lock_scan(good, 3_000_000_000))

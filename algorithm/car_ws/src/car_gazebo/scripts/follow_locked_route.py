@@ -86,6 +86,14 @@ def segment_paths(names, nodes):
     return tuple(tuple(dense_path([nodes[a], nodes[b]])) for a, b in zip(names, names[1:]))
 
 
+def segment_settled(xy, target, speed, elapsed, odom_after_result):
+    """Check fresh measured stop and position at a junction, not only action status."""
+    return (xy is not None and speed is not None and odom_after_result is True
+            and all(math.isfinite(v) for v in (*xy, *target, *speed, elapsed))
+            and .15 <= elapsed <= 3. and 0 <= speed[0] <= .025
+            and 0 <= speed[1] <= .05 and math.dist(xy, target) <= .06)
+
+
 def main():
     if os.environ.get("ROS_DOMAIN_ID") != "84" or os.environ.get("ROS_LOCALHOST_ONLY") != "1":
         raise RuntimeError("Route execution requires isolated local SIM domain 84")
@@ -224,7 +232,12 @@ def main():
                 self.run = {"key": key, "legs": legs, "index": 0,
                             "started": time.monotonic(), "phase": "REQUESTED",
                             "handle": None, "stopping": False}
-                self.send_segment()
+                try:
+                    self.send_segment()
+                except Exception as exc:
+                    if self.run is not None:
+                        self.finish("FAILED", str(exc))
+                    raise
                 response.success = True
                 response.message = "SIM route requested; each locked edge is executed and verified in order"
             except Exception as exc:
@@ -336,9 +349,8 @@ def main():
                 return
             target = run["legs"][run["index"]][-1]
             # Fresh post-result odometry and a zero-command interval at each junction.
-            if (now-run["settle_wall"] < .15 or self.odom_wall < run["settle_wall"]
-                    or self.odom_speed is None or self.odom_speed[0] > .025
-                    or self.odom_speed[1] > .05 or math.dist(self.xy, target) > .06):
+            if not segment_settled(self.xy, target, self.odom_speed,
+                                   now-run["settle_wall"], self.odom_wall >= run["settle_wall"]):
                 return
             self.completed_segments += 1
             a, b = run["key"][0][run["index"]:run["index"]+2]
