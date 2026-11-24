@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Independent Gazebo SIM only. No hardware startup or broad process cleanup.
 set -eo pipefail
-WS="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
+car_check_workspace
+WS="$CAR_WS"
 cd "$WS"
 usage() {
   echo "Usage: bash bash/gazebo.sh doctor | start [goal] | test [goal] | status"
@@ -22,17 +24,16 @@ goal="${2:-$goal}"
 if [[ ! "$goal" =~ ^[ABC][123]$ || "$goal" == C3 ]]; then
   echo "Invalid distinct goal node: $goal" >&2; exit 2
 fi
-if [[ ! -f /opt/ros/humble/setup.bash || ! -f "$WS/install/setup.bash" ]]; then
-  echo "ENV FAIL: ROS2 Humble or workspace install missing; build car_navigation car_gazebo first." >&2
-  exit 1
-fi
-source /opt/ros/humble/setup.bash
-source "$WS/install/setup.bash"
+car_source_ros
 export ROS_DOMAIN_ID=84 ROS_LOCALHOST_ONLY=1
 check_environment() {
   local p
   if [[ "${ROS_DISTRO:-}" != humble ]]; then echo "ENV FAIL: ROS_DISTRO must be humble"; return 1; fi
-  for p in ros2 ign python3 flock setsid; do
+  if ! command -v ign >/dev/null || ! ign gazebo --versions >/dev/null 2>&1; then
+    echo "ENV FAIL: Gazebo Fortress (ign gazebo) required; Harmonic/Classic alone are not supported by this backend." >&2
+    return 1
+  fi
+  for p in ros2 python3 flock setsid; do
     command -v "$p" >/dev/null || { echo "ENV FAIL: missing $p"; return 1; }
   done
   for p in car_gazebo car_navigation ros_gz_bridge robot_state_publisher nav2_controller nav2_lifecycle_manager dwb_core dwb_critics rviz2; do

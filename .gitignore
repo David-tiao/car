@@ -25,3 +25,12 @@ sim2real/data/web_modes/*.log
 
 # sim2real 运行日志
 sim2real/data/web_modes/*.log
+
+# Local generated radar overlays; tracked legacy copies require separate review.
+/algorithm/car_ws/build_lidar_repair_*/
+/algorithm/car_ws/build_lidar_sdk_repair_*/
+/algorithm/car_ws/log_lidar_repair_*/
+/algorithm/car_ws/install_oneclick_lidar*/
+/algorithm/car_ws/install_oneclick_sdk/
+/algorithm/car_ws/bash/.lidar_build.lock
+/algorithm/car_ws/bash/.COLCON_IGNORE_*

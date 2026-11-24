@@ -41,7 +41,7 @@ amcl:
 
 bt_navigator:
   ros__parameters:
-    default_nav_to_pose_bt_xml: /home/tao/Desktop/algorithm/ydlidar_ws/behavior_trees/competition_nav_to_pose.xml
+    default_nav_to_pose_bt_xml: behavior_trees/competition_nav_to_pose.xml # resolve with render_nav2_params.py
     use_sim_time: True
     global_frame: map
     robot_base_frame: base_link

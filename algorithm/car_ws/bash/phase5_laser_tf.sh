@@ -8,11 +8,10 @@ if (($# != 6));then
  echo 'Measure the real lidar extrinsic first; do not use guessed values on hardware.' >&2
  exit 2
 fi
-WS="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
-set +u
-source /opt/ros/humble/setup.bash
-source "$WS/install/setup.bash"
-set -u
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
+car_check_workspace
+WS="$CAR_WS"
+car_source_ros
 exec ros2 run tf2_ros static_transform_publisher \
   --x "$1" --y "$2" --z "$3" \
   --roll "$4" --pitch "$5" --yaw "$6" \

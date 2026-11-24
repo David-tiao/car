@@ -1,42 +1,39 @@
 #!/usr/bin/env bash
-# Shared helpers. This file must be sourced by scripts in car_ws/bash/.
+# Shared path discovery. Source from car_ws/bash scripts.
 CAR_WS="${CAR_WS:-$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd -P)}"
+CAR_ROS_SETUP="${CAR_ROS_SETUP:-/opt/ros/humble/setup.bash}"
 
 car_check_workspace() {
   if [[ ! -d "$CAR_WS/src" ]]; then
     echo "ERROR: not a ROS2 workspace (missing src/): $CAR_WS" >&2
     return 2
   fi
+  CAR_WS="$(cd -- "$CAR_WS" && pwd -P)" || return 2
 }
 
-car_source_ros() {
-  local had_nounset=0 rc=0
+car_source_setup() {
+  local setup="$1" had_nounset=0 rc=0
+  [[ -r "$setup" ]] || { echo "ERROR: ROS setup missing: $setup" >&2; return 2; }
   case "$-" in *u*) had_nounset=1 ;; esac
-  if [[ ! -f /opt/ros/humble/setup.bash ]]; then
-    echo 'ERROR: /opt/ros/humble/setup.bash missing' >&2
-    return 2
-  fi
-  if [[ ! -f "$CAR_WS/install/setup.bash" ]]; then
-    echo "ERROR: $CAR_WS/install/setup.bash missing; run bash/build.sh first" >&2
-    return 2
-  fi
-  # ROS2 Humble setup uses variables that might be unset under 'set -u'.
   set +u
-  source /opt/ros/humble/setup.bash || rc=$?
-  if ((rc == 0)); then source "$CAR_WS/install/setup.bash" || rc=$?; fi
-  if ((had_nounset == 1)); then set -u; fi
-  if ((rc != 0)); then
-    echo "ERROR: sourcing ROS2 environment failed ($rc)" >&2
-    return "$rc"
-  fi
+  source "$setup" || rc=$?
+  if ((had_nounset)); then set -u; fi
+  if ((rc)); then echo "ERROR: sourcing $setup failed ($rc)" >&2; fi
+  return "$rc"
 }
 
 car_source_ros_base() {
-  local had_nounset=0 rc=0
-  case "$-" in *u*) had_nounset=1 ;; esac
-  [[ -f /opt/ros/humble/setup.bash ]] || { echo 'ERROR: ROS2 Humble not installed' >&2; return 2; }
-  set +u
-  source /opt/ros/humble/setup.bash || rc=$?
-  if ((had_nounset == 1)); then set -u; fi
-  ((rc == 0)) || return "$rc"
+  if [[ -n "${CONDA_PREFIX:-}" || -n "${VIRTUAL_ENV:-}" ]]; then
+    echo 'ERROR: use a clean ROS terminal (no active Conda/venv)' >&2
+    return 2
+  fi
+  car_source_setup "$CAR_ROS_SETUP" || return $?
+  [[ "${ROS_DISTRO:-}" == humble ]] || {
+    echo 'ERROR: ROS2 Humble required; check CAR_ROS_SETUP' >&2; return 2;
+  }
+}
+
+car_source_ros() {
+  car_source_ros_base || return $?
+  car_source_setup "$CAR_WS/install/setup.bash"
 }

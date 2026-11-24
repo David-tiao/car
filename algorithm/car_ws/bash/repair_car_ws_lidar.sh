@@ -4,7 +4,9 @@
 #       仅编译 ydlidar_ros2_driver；注册到 V6 启动器已使用的 overlay。
 # 不启动雷达，不向 STM32 发送命令；不删除地图/算法/其他 ROS 包。
 set -Eeuo pipefail
-WS="${CAR_WS:-$HOME/Desktop/car/algorithm/car_ws}"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
+car_check_workspace
+WS="$CAR_WS"
 SRC="$WS/src/ydlidar_ros2_driver"
 INSTALL="$WS/install_oneclick_lidar"
 STAMP="$(date +%Y%m%d_%H%M%S)_$$"
@@ -17,25 +19,42 @@ BACKUP=""
 err() { echo "[ERROR] $*" >&2; exit 1; }
 [[ -f "$SRC/package.xml" ]] || err "缺少驱动源码：$SRC/package.xml"
 [[ -f "$WS/config/x3.yaml" ]] || err "缺少雷达配置：$WS/config/x3.yaml"
-[[ -r /opt/ros/humble/setup.bash ]] || err "缺少 ROS 2 Humble"
+[[ -r "$CAR_ROS_SETUP" ]] || err "缺少 ROS 2 Humble: $CAR_ROS_SETUP"
 for x in colcon cmake git make; do command -v "$x" >/dev/null || err "缺少编译工具：$x"; done
 # ROS 环境脚本会读取未定义变量，仅在 source 期间关闭 nounset。
-set +u
-source /opt/ros/humble/setup.bash
-set -u
+car_source_ros_base
 
 # 优先使用已成功安装的 SDK，避免重新下载与编译。
 SDK_DIR=""
 SDK_ROOT=""
-for p in "$SDK_PREFIX" "$HOME/Desktop/algorithm/ydlidar_ws/install_oneclick_sdk" /usr/local /usr; do
-  for libdir in lib lib64; do
-    cfg="$p/$libdir/cmake/ydlidar_sdk/ydlidar_sdkConfig.cmake"
-    if [[ -f "$cfg" ]]; then
-      SDK_ROOT="$p"; SDK_DIR="${cfg%/*}"
-      break 2
-    fi
+# Explicit SDK CMake config directory wins; never silently fall back if invalid.
+if [[ -n "${CAR_YDLIDAR_SDK_DIR:-}" ]]; then
+  [[ -f "$CAR_YDLIDAR_SDK_DIR/ydlidar_sdkConfig.cmake" ]] || err "无效 CAR_YDLIDAR_SDK_DIR: $CAR_YDLIDAR_SDK_DIR"
+  SDK_DIR="$(cd -- "$CAR_YDLIDAR_SDK_DIR" && pwd -P)"
+else
+  prefixes=("$SDK_PREFIX")
+  if [[ -n "${CAR_YDLIDAR_SDK_PREFIX:-}" ]]; then
+    [[ -d "$CAR_YDLIDAR_SDK_PREFIX" ]] || err "无效 CAR_YDLIDAR_SDK_PREFIX: $CAR_YDLIDAR_SDK_PREFIX"
+    prefixes=("$CAR_YDLIDAR_SDK_PREFIX")
+  else
+    IFS=: read -r -a cmake_prefixes <<< "${CMAKE_PREFIX_PATH:-}"
+    prefixes+=("${cmake_prefixes[@]}" /usr/local /usr)
+  fi
+  for p in "${prefixes[@]}"; do
+    [[ -n "$p" && -d "$p" ]] || continue
+    for libdir in lib lib64 "lib/$(gcc -print-multiarch 2>/dev/null || true)"; do
+      cfg="$p/$libdir/cmake/ydlidar_sdk/ydlidar_sdkConfig.cmake"
+      if [[ -f "$cfg" ]]; then
+        SDK_ROOT="$(cd -- "$p" && pwd -P)"
+        SDK_DIR="$(cd -- "${cfg%/*}" && pwd -P)"
+        break 2
+      fi
+    done
   done
-done
+  if [[ -n "${CAR_YDLIDAR_SDK_PREFIX:-}" && -z "$SDK_DIR" ]]; then
+    err "指定 SDK prefix 中找不到配置；可显式设置 CAR_YDLIDAR_SDK_DIR"
+  fi
+fi
 if [[ -z "$SDK_DIR" ]]; then
   # 没有 SDK 安装时，优先使用 vendor 源码；没有源码才获取官方 SDK。
   if [[ ! -f "$SDK_SRC/CMakeLists.txt" ]]; then
@@ -106,9 +125,9 @@ if [[ -e "$INSTALL" || -L "$INSTALL" ]]; then
   echo "[BACKUP] $BACKUP"
 fi
 
-export CMAKE_PREFIX_PATH="$SDK_ROOT:${CMAKE_PREFIX_PATH:-}"
-export LIBRARY_PATH="$SDK_ROOT/lib:${LIBRARY_PATH:-}"
-export LD_LIBRARY_PATH="$SDK_ROOT/lib:${LD_LIBRARY_PATH:-}"
+if [[ -n "$SDK_ROOT" ]]; then
+  export CMAKE_PREFIX_PATH="$SDK_ROOT${CMAKE_PREFIX_PATH:+:$CMAKE_PREFIX_PATH}"
+fi
 
 # colcon 的 --log-base 是全局参数，必须位于 build 之前。
 echo '[BUILD] 仅编译 ydlidar_ros2_driver'
@@ -117,7 +136,6 @@ if ! (cd "$WS" && colcon --log-base "$LOG" build \
       --build-base "$BUILD" \
       --install-base "$INSTALL" \
       --packages-select ydlidar_ros2_driver \
-      --symlink-install \
       --cmake-args -DBUILD_TESTING=OFF "-Dydlidar_sdk_DIR=$SDK_DIR"); then
   echo "[ERROR] 驱动编译失败；构建日志目录：$LOG" >&2
   if [[ -n "$BACKUP" ]]; then
@@ -129,9 +147,7 @@ if ! (cd "$WS" && colcon --log-base "$LOG" build \
 fi
 
 [[ -r "$INSTALL/setup.bash" ]] || err "构建结束但缺少 $INSTALL/setup.bash"
-set +u
-source "$INSTALL/setup.bash"
-set -u
+car_source_setup "$INSTALL/setup.bash"
 ros2 pkg prefix ydlidar_ros2_driver || err '包注册验证失败'
 ros2 pkg executables ydlidar_ros2_driver | grep -qE '^ydlidar_ros2_driver[[:space:]]+ydlidar_ros2_driver_node$' || err '缺少驱动节点可执行文件'
 echo '[PASS] 驱动已在新 car_ws 环境注册，V6 可以找到 ydlidar_ros2_driver'
