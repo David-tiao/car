@@ -99,6 +99,14 @@ class SceneTest(unittest.TestCase):
                 route_gate.route_contract(dict(status, **change), points, nodes, edges)
         with self.assertRaises(ValueError):
             route_gate.route_contract(status, [(0, 0)]+points[1:], nodes, edges)
+        key = route_gate.route_contract(status, points, nodes, edges)
+        lock = {"state": "LOCKED", "locked": True, "map_received": True,
+                "expected_obstacles": 2, "obstacles": [{}, {}],
+                "blocked_roads": status["blocked"]}
+        self.assertTrue(route_gate.matching_lock(lock, key))
+        for change in ({"state": "CONFLICT"}, {"locked": False}, {"map_received": False},
+                       {"obstacles": [{}]}, {"blocked_roads": ["C2-C3"]}):
+            self.assertFalse(route_gate.matching_lock(dict(lock, **change), key))
         dense = route_gate.dense_path(points)
         self.assertEqual(dense[0], points[0])
         self.assertAlmostEqual(dense[-1][0], points[-1][0])

@@ -101,11 +101,10 @@ git branch -r
 
 旧资料中的 `refactor/architecture-v2`、`feat/stm32-pty-fsm-realview-20261120` 等分支名反映当时的工作背景；确认现在的事实必须再次查看 `main` 和最新提交。更多事故与修复细节见 [错误复盘](ISSUES_AND_LESSONS.md)。
 
-## 2026-11-24 · Gazebo 建模初版（开发分支）
+## 2026-11-24 · Gazebo 独立三维通道（开发分支）
 
-2026-11-24（开发分支） | car_gazebo 初版：统一预览 URDF/SDF 几何、赛场生成、只读 REAL 镜像接口及离线测试；真实构建和运行待验收。
-
-2026-11-24 | car_gazebo 0.2.0（开发分支） | 加入独立 SIM 全向车体、模拟扫描/里程计/TF 和限速/超时门；Nav2 执行及实机待验证。
-
-2026-11-24 | car_gazebo 0.3.0（开发分支） | SIM Nav2 DWB、已有锁路拓扑复用、显式 FollowPath 门控与取消；实际运行待验收。
-
+| 版本 | 核心变化 | 验收 |
+| --- | --- | --- |
+| car_gazebo 0.1.0 | 预览 URDF/SDF、REAL 只读镜像 | 离线候选；ROS2/Gazebo 未运行 |
+| car_gazebo 0.2.0 | SIM 全向速度、虚拟雷达、odom/TF、超时门 | [软件 CI 成功](https://github.com/David-tiao/car/actions/runs/45332561062) |
+| car_gazebo 0.3.0 | SIM Nav2 DWB、锁路拓扑复用、FollowPath 显式触发及双状态门控 | 运行待验收 |

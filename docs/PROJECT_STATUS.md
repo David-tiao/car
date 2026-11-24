@@ -95,11 +95,6 @@
 
 详细可执行计划见 [路线图与验收标准](ROADMAP_AND_ACCEPTANCE.md)，代码依据见 [架构与算法](ARCHITECTURE_AND_ALGORITHMS.md)。
 
-## Gazebo 建模后续阶段
+## Gazebo 建模与导航
 
-新增独立 car_gazebo 初版：可生成预览 URDF、静态 SDF 赛场与只读真车位姿镜像入口。当前仅代码交付候选，真实 CAD、雷达/相机外参、机械关节、Gazebo 麦轮动力学与虚拟雷达、ROS2 运行及真实镜像均待验证；不影响原 SIM/TEST/REAL/KEYBOARD 网页。
-离线验收：4 项场景测试通过，生成和 XML 解析及覆盖拒绝通过；ROS2/Gazebo 构建、运行和真实 TF 镜像未验收。此阶段未合并 main。
-
-第二阶段：car_gazebo 新增独立 SIM 全向车体速度接口、GPU 虚拟雷达、Gazebo odom→ROS2 TF 和关节动画、SIM 数据时效/限速门与进程监督。现有真车与网页代码不变；真实 Fortress、ROS2 及道路锁定运行仍 NOT_RUN；Nav2 FollowPath、完整 CAD、真实镜像验收待完成。
-
-第三阶段：SIM 独立 Nav2 DWB 参数、已有锁路/拓扑启动编排与 FollowPath 显式执行门代码候选完成；需实测两障碍锁定、路径执行、停令、碰撞和终点误差。真实硬件和完整比赛仍 NOT_RUN。
+独立 `car_gazebo` 代码候选：预览 URDF、静态 SDF 场地、只读 REAL 位姿镜像、SIM 全向速度/虚拟雷达/odom/TF、复用已有锁路及 Nav2 单段 FollowPath。SIM 与网页及真实控制图分离。第二阶段提交 0147e1a 的 [CI](https://github.com/David-tiao/car/actions/runs/45332561062) 通过；当前 ROS2 Humble/Fortress 运行、Nav2 控制、真实镜像均为 NOT_RUN。尚需 CAD、机械参数与传感器外参实测、仿真障碍锁定、连续跟踪/停令/净空验收；整车比赛控制链不因本项目变更而被宣称完成。

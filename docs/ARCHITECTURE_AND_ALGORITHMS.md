@@ -185,7 +185,9 @@ y' = y + (sin θ_mid · vx + cos θ_mid · vy) Δt
 
 延伸：[通信与数据流](PROTOCOLS_AND_DATA_FLOW.md) · [当前进度](PROJECT_STATUS.md) · [验收计划](ROADMAP_AND_ACCEPTANCE.md)。
 
-## Gazebo 三维通道（第一阶段，未验收）
+## Gazebo 三维通道
+
+### 共享几何和 REAL 镜像
 
 新增 `algorithm/car_ws/src/car_gazebo/`，不依赖网页，也不改 STM32/OpenMV。URDF 与 SDF 共享同一份预览车体几何；SDF 场地由现行 `maps/competition_v1/zones.json` 生成，黄色、蓝色和工位为视觉层，真实原料盘及显式模拟障碍有碰撞体。世界原点与比赛 map 左下角一致。轮半径 0.04m、前后半轴距 0.093m、左右半轮距 0.11m 取自 STM32 源码，其他预览外形非实测；未写入雷达、相机外参和机械关节假值。
 
@@ -201,9 +203,9 @@ flowchart LR
     T --> E[已有网页独立通道]
 ```
 
-镜像仅取真实 ROS2 图中 0.5s 内的 map 到 base_link TF；以平面 x/y/yaw 设置模型位姿，过期或异常则保留上次显示并告警。镜像世界不生成假障碍，不发布 /scan、/odom、/tf 或 /clock，不下发电机命令。当前是**静态预览及镜像接口初版**，非麦轮动力学、虚拟雷达、Nav2 执行闭环或机械关节实测。后续须验证 Fortress 实体服务、统一模型尺寸、实车 TF 来源及动态仿真数据隔离。
+镜像仅取真实 ROS2 图中 0.5s 内的 map 到 base_link TF；以平面 x/y/yaw 设置模型位姿，过期或异常则保留上次显示并告警。镜像世界不生成假障碍，不发布 /scan、/odom、/tf 或 /clock，不下发电机命令。REAL 镜像是**只读三维显示**，不提供虚拟雷达或物理控制，且禁止在专用 SIM 域 84 中启动。后续须验证 Fortress 实体服务、统一模型尺寸、实车 TF 来源及动态仿真数据隔离。
 
-### 第二阶段：全向 SIM 数据链（代码候选）
+### 全向 SIM 数据链（代码候选）
 
 Fortress VelocityControl 直接接收车体速度，不伪装真实麦轮滚子动力学；OdometryPublisher 读取 worldPose，GPU lidar 从虚拟场景产生 360° 扫描。仿真激光高度 0.092m 是工程假设（低于 0.10m 模拟障碍柱顶），不可写入实车外参。SDF 碰撞包络为 0.24×0.25×0.08m，质量暂设 2kg，仅仿真用；URDF 外观与 SDF 共用车体几何。
 
@@ -223,11 +225,11 @@ flowchart LR
 
 单独 ROS_DOMAIN_ID=84、ROS_LOCALHOST_ONLY=1、car_sim_* Ignition partition；真实/网页/TEST 不进入该域。SIM 仿真时钟通过 world clock 单向桥接。SIM 的 map=world=odom；odom→base_link 取仿真位姿，base_link→laser_frame 由 SIM URDF 的 robot_state_publisher 唯一发布。轮位姿根据理想 X 型麦轮逆运动学积分，仅 RViz 关节动画；Gazebo 轮视觉固定。令 L=0.093、W=0.11、r=0.04，车体速度 (vx,vy,ω)，a=(L+W)ω，则四轮角速度为 (vx−vy−a, vx+vy+a, vx+vy−a, vx−vy+a)/r。非实测轮方向。指令按二维速度范数 0.20m/s、角速度 0.50rad/s 限制；0.30s 指令过期或任一仿真数据超过 0.50s 返回零。VelocityControl 自身会保持最后指令，故 launch 监督任一子进程退出即关闭本次仿真，不作为硬件急停。
 
-现有道路锁定/拓扑算法可以在独立 SIM 域使用仿真 scan/TF。路径仍为预览，尚未接入 Nav2 FollowPath；当前不改动真实导航配置、速度桥或避障代码。依据：[Fortress VelocityControl](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1VelocityControl.html)、[OdometryPublisher](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1OdometryPublisher.html)、[GPU lidar](https://gazebosim.org/docs/fortress/sensors/)。
+现有道路锁定/拓扑算法可以在独立 SIM 域使用仿真 scan/TF，单段路径执行见下节；当前不改动真实导航配置、速度桥或避障代码。依据：[Fortress VelocityControl](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1VelocityControl.html)、[OdometryPublisher](https://gazebosim.org/api/sim/6/classignition_1_1gazebo_1_1systems_1_1OdometryPublisher.html)、[GPU lidar](https://gazebosim.org/docs/fortress/sensors/)。
 
-### 第三阶段：锁路到 Nav2 执行（SIM 候选）
+### 锁路到 Nav2 执行（SIM 候选）
 
-原有 lock_obstacles.py 与 road_topology.py 不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对锁路心跳、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
+原有 lock_obstacles.py 与 road_topology.py 不改动。新 sim_nav.launch.py 在独立本地域启动物理 /map、规则 /keepout_filter_mask、锁路、Dijkstra、Nav2 controller 与 route gate。Gate 同时检查 LOCKED_READY、LIDAR_CONFIRMED、冻结且无冲突、两条话题的节点坐标与已有拓扑相符、经过的边未被锁定，且仿真位姿在首节点 0.06m 内。只在用户显式触发后向 FollowPath action 发送按 0.025m 最大间距插值的路径；将 wall-time 预览路径重新标记为 SIM 时间。执行时持续核对原始锁路心跳与派生道路/路径状态、仿真 scan/odom/clock 时效；不一致立即封锁速度并请求取消。SIM 时钟回退会锁存故障，必须重启导航以丢弃旧锁。Nav2 action 成功且终点仿真里程计误差≤0.06m 才报告成功。
 
 ```mermaid
 flowchart LR

@@ -44,6 +44,18 @@ def route_contract(status, points, nodes, edges):
     return tuple(names), tuple(sorted(set(blocked)))
 
 
+def matching_lock(lock, route_key):
+    """Require the original lock heartbeat as well as the derived route."""
+    if (not isinstance(lock, dict) or lock.get("state") != "LOCKED" or
+            lock.get("locked") is not True or lock.get("map_received") is not True or
+            lock.get("expected_obstacles") != 2):
+        return False
+    obstacles, roads = lock.get("obstacles"), lock.get("blocked_roads")
+    return (isinstance(obstacles, list) and len(obstacles) == 2 and
+            isinstance(roads, list) and all(isinstance(r, str) for r in roads) and
+            tuple(sorted(set(roads))) == route_key[1])
+
+
 def dense_path(points, spacing=.025):
     if len(points) < 2 or not math.isfinite(spacing) or spacing <= 0:
         raise ValueError("invalid interpolation")
@@ -86,7 +98,9 @@ def main():
             if not path.is_absolute() or not path.is_file():
                 raise RuntimeError("explicit existing topology file required")
             self.nodes, self.edges = load_topology(path)
-            self.status = None
+            self.status = self.lock_status = None
+            self.lock_wall = -math.inf
+            self.clock_reset = False
             self.points = []
             self.xy = None
             self.status_wall = self.path_wall = self.odom_wall = self.scan_wall = self.clock_wall = -math.inf
@@ -97,6 +111,7 @@ def main():
             latched = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                                  reliability=ReliabilityPolicy.RELIABLE)
             self.create_subscription(String, "/competition/road_status", self.on_status, latched)
+            self.create_subscription(String, "/competition/obstacle_lock_status", self.on_lock, latched)
             self.create_subscription(PathMsg, "/competition/locked_road_path", self.on_path, latched)
             self.create_subscription(Odometry, "/odom", self.on_odom, qos_profile_sensor_data)
             self.create_subscription(LaserScan, "/scan", self.on_scan, qos_profile_sensor_data)
@@ -117,6 +132,13 @@ def main():
             except (TypeError, ValueError):
                 self.status = None
             self.status_wall = time.monotonic()
+
+        def on_lock(self, msg):
+            try:
+                self.lock_status = json.loads(msg.data)
+            except (TypeError, ValueError):
+                self.lock_status = None
+            self.lock_wall = time.monotonic()
 
         def on_path(self, msg):
             self.points = []
@@ -140,9 +162,10 @@ def main():
         def on_clock(self, msg):
             stamp = Time.from_msg(msg.clock).nanoseconds
             if stamp < self.clock_stamp:
-                self.stop("SIM_CLOCK_RESET")
+                self.clock_reset = True
+                self.stop("SIM_CLOCK_RESET_RESTART_NAV")
                 self.odom_wall = self.scan_wall = -math.inf
-                self.status_wall = self.path_wall = -math.inf
+                self.status_wall = self.path_wall = self.lock_wall = -math.inf
             if stamp != self.clock_stamp:
                 self.clock_stamp = stamp
                 self.clock_wall = time.monotonic()
@@ -153,10 +176,15 @@ def main():
 
         def live_contract(self):
             now = time.monotonic()
-            if (now-self.status_wall > 2.5 or now-self.path_wall > 2.5 or
+            if self.clock_reset:
+                raise ValueError("SIM clock reset: restart navigation to discard old lock")
+            if (any(now-v > 2.5 for v in (self.status_wall, self.path_wall, self.lock_wall)) or
                     any(now-v > .5 for v in (self.odom_wall, self.scan_wall, self.clock_wall))):
-                raise ValueError("stale route or simulation data")
-            return route_contract(self.status, self.points, self.nodes, self.edges)
+                raise ValueError("stale lock, route or simulation data")
+            key = route_contract(self.status, self.points, self.nodes, self.edges)
+            if not matching_lock(self.lock_status, key):
+                raise ValueError("original lidar lock disagrees with route")
+            return key
 
         def start(self, request, response):
             del request

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Read a live map->base_link TF and update only the dedicated Gazebo mirror."""
 import math
+import os
 import time
 
 import rclpy
@@ -14,6 +15,8 @@ from ros_gz_interfaces.msg import Entity
 class Mirror(Node):
     def __init__(self):
         super().__init__("car_gazebo_real_mirror")
+        if os.environ.get("ROS_DOMAIN_ID") == "84":
+            raise RuntimeError("REAL mirror is forbidden in dedicated Gazebo SIM domain 84")
         self.declare_parameter("enable_real_mirror", False)
         if not self.get_parameter("enable_real_mirror").value:
             raise RuntimeError("Explicit enable_real_mirror:=true is required")
