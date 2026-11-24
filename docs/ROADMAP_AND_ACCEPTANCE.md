@@ -342,4 +342,4 @@ ros2 service call /car_gz/cancel_locked_route std_srvs/srv/Trigger '{}'
 
 断开原始锁路/道路状态/路径/仿真数据，或发生冲突，速度门应输出零并取消；未开始不得产生非零 nav_checked_cmd。SIM 时钟回退后必须重启导航，不允许复用旧锁。此为仿真验收预期，不代表已经运行成功。原有网页与实体控制链不变。
 
-离线全量软件回归：[Actions #45335849607](https://github.com/David-tiao/car/actions/runs/45335849607)，对应 56b503a，已通过。实际 ROS2/Fortress 无界面集成测试 [Actions #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 已启动，查看对应 run 的最终结果及日志；在结果确认之前，不能将运行级验收标为 PASS。GUI 联合显示和真实小车映射仍需单独现场验收。
+离线全量软件回归：[Actions #45335849607](https://github.com/David-tiao/car/actions/runs/45335849607)，对应 56b503a，已通过。实际 ROS2/Fortress 无界面集成测试 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 已完成，结论 FAIL。依赖安装、两个 ROS2 包构建、colcon test 均 PASS；运行检查收到时钟、激光、里程计、TF、地图及 ACTIVE 控制器，但 60s 内未取得一致的锁路路径（`READINESS failed: confirmed live locked path`，锁路状态 `CONFLICT`）。未发起 FollowPath，原因尚未定位，不能视为运动已通过。保留原锁路与速度门，不降低预期障碍数量或跳过检查。[运行日志制品](https://github.com/David-tiao/car/actions/runs/45335849586/artifacts/14893073841)。下一步检查激光反射点簇及地图过滤，识别额外候选来源后复测。GUI 联合显示和真实小车映射仍需单独现场验收。

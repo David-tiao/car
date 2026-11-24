@@ -97,4 +97,4 @@
 
 ## Gazebo 建模与导航
 
-独立 `car_gazebo` 代码候选：预览 URDF、静态 SDF 场地、只读 REAL 位姿镜像、SIM 全向速度/虚拟雷达/odom/TF、复用已有锁路及 Nav2 单段 FollowPath。SIM 与网页及真实控制图分离。0.4.0 增加独立 Gazebo/RViz2 一键启动、运行就绪检查、server-only 路径测试、日志和进程隔离，并修正临时碰撞包络。提交 56b503a 的 [离线 CI](https://github.com/David-tiao/car/actions/runs/45335849607) 通过；[ROS2/Fortress 运行级 CI](https://github.com/David-tiao/car/actions/runs/45335849586) 已启动，最终结果以 run 为准。GUI 实际联动、真实镜像未验收。尚需 CAD、机械参数与传感器外参实测、仿真障碍锁定、连续跟踪/停令/净空验收；整车比赛控制链不因本项目变更而被宣称完成。
+独立 `car_gazebo` 代码候选：预览 URDF、静态 SDF 场地、只读 REAL 位姿镜像、SIM 全向速度/虚拟雷达/odom/TF、复用已有锁路及 Nav2 单段 FollowPath。SIM 与网页及真实控制图分离。0.4.0 增加独立 Gazebo/RViz2 一键启动、运行就绪检查、server-only 路径测试、日志和进程隔离，并修正临时碰撞包络。提交 56b503a 的 [离线 CI](https://github.com/David-tiao/car/actions/runs/45335849607) 通过；[运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586)：依赖安装、colcon build/test 通过；路径就绪 FAIL，雷达锁路 CONFLICT，未执行路径运动。GUI 实际联动、真实镜像未验收。尚需 CAD、机械参数与传感器外参实测、仿真障碍锁定、连续跟踪/停令/净空验收；整车比赛控制链不因本项目变更而被宣称完成。
