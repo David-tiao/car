@@ -70,7 +70,10 @@ def laser_clusters(ranges, angle_min, angle_increment, min_range=.10,
             and min_range <= ranges[0] <= max_range
             and min_range <= ranges[-1] <= max_range
             and math.dist(runs[-1][-1], runs[0][0]) <= max_neighbor_gap):
-        runs[0] = runs[-1] + runs[0]
+        # Inclusive -pi..+pi scans contain one repeated angular sample.
+        # Do not count that duplicated endpoint as independent evidence.
+        duplicate_angle = abs(sweep - math.tau) <= .01 * step
+        runs[0] = runs[-1] + runs[0][int(duplicate_angle):]
         runs.pop()
 
     groups = []

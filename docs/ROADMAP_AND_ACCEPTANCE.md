@@ -452,3 +452,15 @@ python3 bash/audit_lidar_artifacts.py --list
 预期：列出明确匹配旧 build_lidar_repair、install_oneclick_lidar 及对应备份、log_lidar_repair 的 Git 跟踪项、符号链接和缺失项计数。仅访问 Git 索引及文件存在性，不执行 rm/git rm，也不检查其他源码目录。当前基线有 201 个已跟踪历史项；将来解除跟踪前，必须先通知队员核验工作副本、备份旧 overlay 及重要本地文件，在新位置重新构建，避免正常 git pull 删除仍被依赖的跟踪文件。旧提交历史保留，不重写历史。
 
 双架构工作流 `.github/workflows/native_deploy.yml` 在原生 Ubuntu 22.04 x64/ARM64 容器环境中安装仅核心包依赖、将 Git 源码解包到临时新物理路径、在另一 cwd 执行 doctor/build/verify/test。CI 结果以对应提交记录为准；不等同 Pi5 真机、雷达、Gazebo GUI 或实车控制验收。
+
+### P2 原生验收与接缝回归
+
+[双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748)：PC 和 ARM64 两个 job 完成成功；均在临时新工作区通过 doctor/build/verify/test，12 个包、7 个关键 ELF、2 项 colcon 软件测试以及 C3→C2 静态地图 probe。ARM64 runner 非 Pi5 板卡；不代表实际雷达、串口和运动通过。首轮容器 checkout ownership 失败通过仅单次 Git 调用指定 safe.directory 解决，不关闭安全检查。
+
+从 car 仓库根运行：
+
+```bash
+python3 algorithm/car_ws/maps/competition_v1/simple_lock_stage/test_fixed_route.py -v
+````
+
+预期：全周接缝两障碍解析用例锁定 B2-B3 与 B3-C3，真第三目标冲突、部分视场/无效端点不误拼、重复角不重复计数、跨接缝大跨度拒绝。实际 Gazebo CI 另行运行；若仍冲突，查看 CONFLICT evidence 日志；不绕过门控、不增加预期障碍数量。

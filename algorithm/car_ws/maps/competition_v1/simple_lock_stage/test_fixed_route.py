@@ -162,7 +162,8 @@ class FixedRouteTests(unittest.TestCase):
         readings = [math.inf] * 720
         readings[0] = .55
         readings[-1] = .55
-        self.assertEqual(len(laser_clusters(readings, -math.pi, step)), 1)
+        self.assertEqual(laser_clusters(readings, -math.pi, step), [])
+        self.assertEqual(len(laser_clusters(readings, -math.pi, math.tau / 720)), 1)
         readings[:20] = [.55] * 20
         readings[-20:] = [.55] * 20
         # Each half is compact; their full circular span exceeds .14m.
