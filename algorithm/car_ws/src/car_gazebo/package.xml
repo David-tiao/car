@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>car_gazebo</name>
-  <version>0.3.0</version>
+  <version>0.4.0</version>
   <description>Provisional competition URDF, static Gazebo scene and read-only pose mirror</description>
   <maintainer email="maintainer@example.invalid">car project maintainers</maintainer>
   <license>UNLICENSED</license>
@@ -28,5 +28,7 @@
   <exec_depend>dwb_core</exec_depend>
   <exec_depend>dwb_critics</exec_depend>
   <exec_depend>car_navigation</exec_depend>
+  <exec_depend>rviz2</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
   <export><build_type>ament_cmake</build_type></export>
 </package>
