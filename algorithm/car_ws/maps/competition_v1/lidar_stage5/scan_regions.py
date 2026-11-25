@@ -16,9 +16,11 @@ from collections import deque
 
 # Map origin lower-left; x right, y up. Bounds in metres (xmin,ymin,xmax,ymax).
 # QR center y=1.1..1.3, A4 landscape width .297; raw center x=1.1..1.3, r=.15.
-# Extra margin allows physical placement and modest map measurement error.
+# Figure 1: disk protrudes 75..85 mm into field; with r=.15, center y=2.465..2.475.
+# Retain the legacy map's nominal y=2.4 as a search prior, not as a measurement.
+# Include the complete possible disk envelope (max y=2.625) plus margin.
 QR_ROI = (2.25, 0.90, 2.55, 1.50)
-RAW_ROI = (0.90, 2.15, 1.50, 2.58)
+RAW_ROI = (0.90, 2.15, 1.50, 2.65)
 MAX_SCAN_TRANSLATION_M = .005  # provisional stationary-test threshold
 MAX_SCAN_ROTATION_RAD = math.radians(.3)
 
@@ -230,19 +232,22 @@ def self_test():
         assert len(scan_runs(ranges,0,increment,.1,8.,(0,0,0),(.9,-.2,1.1,.2)))==2
     # Ray casting with true first surface intersections, not pre-made fitted points.
     for cx in (1.10,1.20,1.30):
-        pose = (cx,1.85,.2)
-        ranges = []
-        inc = math.pi/720
-        for i in range(1440):
-            a = -math.pi+i*inc+pose[2]
-            u,v = math.cos(a),math.sin(a)
-            projection = (cx-pose[0])*u+(2.4-pose[1])*v
-            disc = projection**2-((cx-pose[0])**2+(2.4-pose[1])**2-.15**2)
-            distance = projection-math.sqrt(max(0.,disc))
-            ranges.append(distance if disc >= 0 and distance > 0 else float("nan"))
-        result = region_result(scan_runs(ranges,-math.pi,inc,.1,8.,pose,RAW_ROI),fit_disk,pose)
-        assert result["status"]=="GEOMETRY_CANDIDATE"
-        assert math.dist(result["candidates"][0]["center_map_m"],(cx,2.4))<1e-6
+        for cy in (2.4,2.465,2.475):
+            for count in (360,1440):
+                pose = (cx,1.85,.2)
+                ranges = []
+                inc = 2*math.pi/count
+                for i in range(count):
+                    a = -math.pi+i*inc+pose[2]
+                    u,v = math.cos(a),math.sin(a)
+                    projection = (cx-pose[0])*u+(cy-pose[1])*v
+                    disc = projection**2-((cx-pose[0])**2+(cy-pose[1])**2-.15**2)
+                    distance = projection-math.sqrt(max(0.,disc))
+                    ranges.append(distance if disc >= 0 and distance > 0 else float("nan"))
+                result = region_result(scan_runs(ranges,-math.pi,inc,.1,8.,pose,RAW_ROI),fit_disk,pose)
+                assert result["status"]=="GEOMETRY_CANDIDATE", (cx,cy,count,result)
+                assert math.dist(result["candidates"][0]["center_map_m"],(cx,cy))<1e-6
+                assert abs(result["candidates"][0]["nearest_candidate_return_m"]-(cy-pose[1]-.15))<.002
     for cy in (1.10,1.20,1.30):
         pose = (1.85,cy,.15)
         ranges = []
@@ -258,7 +263,7 @@ def self_test():
     # A long wall should not be accepted as a board; a short coplanar patch is ambiguous.
     assert fit_board([(2.4,.91+i*.01) for i in range(59)]) is None
     assert fit_board(line)["wall_or_board_unresolved"]
-    print("PASS: geometry, six ray-cast placements, seam, timing, motion gate, wall ambiguity")
+    print("PASS: geometry, 21 ray-cast cases (including rule disk edge), seam, timing, motion gate, wall ambiguity")
 
 
 def main():
