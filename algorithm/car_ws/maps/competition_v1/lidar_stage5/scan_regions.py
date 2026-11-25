@@ -692,6 +692,7 @@ def main():
             self.startup = None
             self.startup_pub = None
             self.startup_snapshot = None
+            self.startup_first_pose = None
             self.startup_last_pub = 0.
             if startup_mode:
                 frames = int(os.environ.get("CAR_STARTUP_FRAMES","20"))
@@ -820,6 +821,12 @@ def main():
                                      identity_verified=False, stationary_test_only=True,
                                      qr_board=results[0],raw_disk=results[1]))
                     if self.startup is not None:
+                        if self.startup_first_pose is None:
+                            self.startup_first_pose = bp
+                        elif not stationary_during_scan(self.startup_first_pose,bp):
+                            self.startup.finish("MOTION_DURING_STARTUP")
+                            self.publish_startup()
+                            continue
                         field = startup_full_field(msg.ranges,msg.angle_min,msg.angle_increment,
                                                    msg.range_min,msg.range_max,lp,bp)
                         self.startup.observe(field,stamp.nanoseconds)
