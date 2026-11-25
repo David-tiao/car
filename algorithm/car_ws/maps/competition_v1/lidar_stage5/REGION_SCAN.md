@@ -142,3 +142,5 @@ ros2 topic echo /competition/lidar/startup_targets --once
 快照关键字段：`status` 为 `BOTH_GEOMETRIES_FOUND` 或 `INCOMPLETE`；`qr_board`、`raw_disk` 有各自 `state`、`position_map_m`、`position_base_m`、`matched_frames`、`max_spread_m`。只有多帧稳定且唯一的几何候选才给出坐标；无回波、点数不足、多处相似形状或首末时刻 TF 不可信时均不虚构坐标。位置信息是**激光几何候选**，不是已确认为二维码板或物料盘的最终判定。整个快照仍然 `identity_verified=false`、`navigation_authorized=false`；不能自动发车或替代 OpenMV 识别二维码内容和物料颜色。
 
 严格物理限制：起始位置可能遮挡目标，平面 X3 看不到高于扫描平面的物体，二维码板若与背景平面共面无法仅用轮廓区分；这些情形无法保证开局静止一次全场扫描就得到两个实际坐标，必须由视觉/移动后复核或更换硬件安装方案。当前仅完成**感知结果快照话题**，原 V6 启动器和 Nav2 并未消费这个新话题；如需直接驱动后续自主路径，必须另行审查对应模块及授权范围。
+
+开局累积20帧时，还会将后续车体位姿与第一帧的位姿比较；超过平移5mm或yaw 0.3°即终止此次扫描并发布不完整结果。此检查只依赖 TF，不代表硬件本身静止已被独立验证。当前仍需完成真实 TF 和双目标可见性实机验收。
