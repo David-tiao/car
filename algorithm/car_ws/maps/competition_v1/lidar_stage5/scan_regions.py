@@ -186,6 +186,8 @@ def region_result(runs, fitter, base_pose):
 
 
 def self_test():
+    if not __debug__:
+        raise RuntimeError("self-test requires assertions; unset PYTHONOPTIMIZE")
     line = [(2.4,1.07+i*.02) for i in range(14)]
     arc = [(1.2+.15*math.cos(a),2.4+.15*math.sin(a))
            for a in [-2.8+i*.15 for i in range(17)]]
@@ -288,6 +290,7 @@ def main():
             self.queue = deque(maxlen=8)
             self.last_rx = time.monotonic()
             self.last_report = -math.inf
+            self.last_status = "WAITING_FOR_SCAN"
             self.last_stamp = -1
             self.steady = Clock(clock_type=ClockType.STEADY_TIME)
             self.start_wall = time.monotonic()
@@ -301,13 +304,23 @@ def main():
         def report(self,data):
             self.pub.publish(String(data=json.dumps(data,allow_nan=False)))
             self.last_report = time.monotonic()
+            self.last_status = data["status"]
             if data["status"] == "OBSERVATION_ONLY" and not self.ready:
                 self.ready = True
                 self.get_logger().info("READY: valid scan and time-aligned stationary TF; observation only")
 
         def on_scan(self,msg):
             self.last_rx = time.monotonic()
-            stamp = Time.from_msg(msg.header.stamp)
+            if self.count_publishers("/scan") > 1:
+                self.queue.clear()
+                self.report(dict(status="MULTIPLE_SCAN_PUBLISHERS"))
+                return
+            try:
+                stamp = Time.from_msg(msg.header.stamp)
+            except (ValueError, OverflowError) as exc:
+                self.queue.clear()
+                self.report(dict(status="INVALID_SCAN",reason=str(exc)))
+                return
             if stamp.nanoseconds <= 0 or msg.header.frame_id != "laser_frame" or not msg.ranges:
                 self.queue.clear()
                 self.report(dict(status="INVALID_SCAN"))
@@ -335,7 +348,7 @@ def main():
         def tick(self):
             now = time.monotonic()
             if not self.ready and self.startup_timeout and now-self.start_wall > self.startup_timeout:
-                raise RuntimeError("region startup timed out: require valid scan and measured stationary TF")
+                raise RuntimeError("region startup timed out: require valid scan and measured stationary TF; last status="+self.last_status)
             if now-self.last_rx > .6:
                 self.queue.clear()
                 if now-self.last_report > .5:
