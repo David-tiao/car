@@ -366,7 +366,7 @@ def collect_raw(path, count):
     from pathlib import Path
     import rclpy
     from sensor_msgs.msg import LaserScan
-    from rclpy.qos import qos_profile_sensor_data
+    from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy, ReliabilityPolicy
     path = Path(path).expanduser().resolve()
     if path.exists() or not path.parent.is_dir():
         raise ValueError("output exists or parent directory missing; choose a new artifact path")
@@ -490,14 +490,183 @@ def calibration_cli():
         parser.exit(1,f"[ERROR] {exc}\n")
 
 
+
+# Startup mode examines ALL field-facing returns first. The two search bands
+# are rule-based classification priors only; no coordinates are assigned without
+# laser evidence. A 2-D scan cannot decode QR or see a disk above its scan plane.
+FULL_FIELD_ROI = (-.20, -.20, 2.65, 2.72)
+
+
+def select_roi_runs(full_runs, roi):
+    xmin, ymin, xmax, ymax = roi
+    selected = []
+    for run in full_runs:
+        segment = []
+        for p in run:
+            if xmin <= p[0] <= xmax and ymin <= p[1] <= ymax:
+                segment.append(p)
+            elif segment:
+                selected.append(segment)
+                segment = []
+        if segment:
+            selected.append(segment)
+    return selected
+
+
+def startup_full_field(ranges, angle_min, increment, rmin, rmax, laser_pose, base_pose):
+    # Reject partial-FOV frames: "all-field" must not silently use a small arc.
+    sweep = max(0, len(ranges)-1)*abs(increment)
+    if not math.radians(330) <= sweep <= 2*math.pi+.03:
+        raise ValueError("startup requires a near-360-degree LaserScan")
+    all_runs = scan_runs(ranges,angle_min,increment,rmin,rmax,laser_pose,FULL_FIELD_ROI)
+    # Every angle is considered once, even when a return lies outside the field.
+    return dict(
+        all_field_points=sum(map(len,all_runs)),
+        qr_board=region_result(select_roi_runs(all_runs,QR_ROI),fit_board,base_pose),
+        raw_disk=region_result(select_roi_runs(all_runs,RAW_ROI),fit_disk,base_pose))
+
+
+class StartupAccumulator:
+    """One bounded, stationary startup snapshot; never a navigation command."""
+    def __init__(self, total=20, min_hits=5):
+        if not 5<=total<=200 or not 2<=min_hits<=total:
+            raise ValueError("invalid startup scan frame/hit thresholds")
+        self.total,self.min_hits = total,min_hits
+        self.frames = self.points = self.last_stamp = 0
+        self.evidence = {"qr_board":[],"raw_disk":[]}
+        self.ambiguous = {"qr_board":0,"raw_disk":0}
+        self.finished = False
+        self.terminated_by = "FRAME_LIMIT"
+
+    def observe(self, result, stamp_ns):
+        if self.finished:
+            return
+        if stamp_ns <= self.last_stamp:
+            raise ValueError("nonmonotonic startup scan stamp")
+        self.last_stamp = stamp_ns
+        self.frames += 1
+        self.points += result["all_field_points"]
+        for name in self.evidence:
+            entry = result[name]
+            if entry["status"] == "AMBIGUOUS":
+                self.ambiguous[name] += 1
+            elif entry["status"] == "GEOMETRY_CANDIDATE":
+                cand = entry["candidates"][0]
+                self.evidence[name].append((self.frames,cand["center_map_m"],cand["center_base_m"]))
+        if self.frames >= self.total:
+            self.finished = True
+
+    def finish(self, reason="TIMEOUT"):
+        if not self.finished:
+            self.finished,self.terminated_by = True,reason
+
+    def target(self,name):
+        from statistics import median
+        evidence = self.evidence[name]
+        tracks = []
+        # Spatially separate different physical candidates: do not take an
+        # average across two different board positions or disk-sized objects.
+        for frame,p,b in evidence:
+            matches = [t for t in tracks if
+                       math.dist(p,[median(e[1][0] for e in t),median(e[1][1] for e in t)]) <= .06]
+            if matches:
+                matches[0].append((frame,p,b))
+            else:
+                tracks.append([(frame,p,b)])
+        confirmed = [t for t in tracks if len(t)>=self.min_hits]
+        result = dict(state="UNOBSERVED", observed_frames=len(evidence),
+                      ambiguous_frames=self.ambiguous[name],
+                      identity_verified=False, position_map_m=None,
+                      position_base_m=None)
+        if len(confirmed)>1 or self.ambiguous[name]>=self.min_hits:
+            result["state"]="AMBIGUOUS"
+            return result
+        if not confirmed:
+            result["state"]="INSUFFICIENT_EVIDENCE" if evidence else "UNOBSERVED"
+            return result
+        matched = confirmed[0]
+        x,y = median(e[1][0] for e in matched),median(e[1][1] for e in matched)
+        spread = max(math.dist(e[1],[x,y]) for e in matched)
+        if spread>.04:
+            result.update(state="UNSTABLE",max_spread_m=spread)
+            return result
+        bx,by = median(e[2][0] for e in matched),median(e[2][1] for e in matched)
+        result.update(state="GEOMETRY_CANDIDATE",
+                      position_map_m=[x,y],position_base_m=[bx,by],
+                      matched_frames=len(matched),max_spread_m=spread)
+        return result
+
+    def snapshot(self):
+        qr,disk = self.target("qr_board"),self.target("raw_disk")
+        both = all(t["state"]=="GEOMETRY_CANDIDATE" for t in (qr,disk))
+        return dict(phase="SNAPSHOT" if self.finished else "SCANNING",
+                    status="BOTH_GEOMETRIES_FOUND" if both else "INCOMPLETE",
+                    frame_count=self.frames,frame_target=self.total,
+                    all_field_points=self.points,scan_stamp_ns=self.last_stamp,
+                    terminated_by=self.terminated_by if self.finished else None,
+                    map_frame="map",identity_verified=False,
+                    navigation_authorized=False,qr_board=qr,raw_disk=disk)
+
+
+def startup_self_test():
+    p = (0,0,0)
+    def example(name,cx,cy):
+        return {name:dict(status="GEOMETRY_CANDIDATE",
+                          candidates=[dict(center_map_m=[cx,cy],
+                                           center_base_m=[cx-p[0],cy-p[1]])])}
+    good = StartupAccumulator(8,4)
+    for n in range(1,9):
+        result = dict(all_field_points=300)
+        result.update(example("qr_board",2.4,1.17+.001*(n%2)))
+        result.update(example("raw_disk",1.2,2.47+.001*(n%2)))
+        good.observe(result,n)
+    out=good.snapshot()
+    assert out["status"]=="BOTH_GEOMETRIES_FOUND"
+    assert out["qr_board"]["position_map_m"][0]==2.4
+    assert out["raw_disk"]["position_map_m"][0]==1.2
+    assert not out["navigation_authorized"] and not out["identity_verified"]
+    assert not out["qr_board"]["identity_verified"]
+    # No ranges or a partial field of view must never manufacture a position.
+    assert startup_full_field([float("nan")]*360,-math.pi,2*math.pi/360,.1,8.,p,p)["qr_board"]["status"]=="NO_RETURN"
+    try:
+        startup_full_field([1.]*90,0.,math.pi/180,.1,8.,p,p)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("partial field of view accepted")
+    # Two persistent, disjoint locations must remain ambiguous.
+    clash=StartupAccumulator(10,4)
+    for n in range(1,11):
+        r=dict(all_field_points=100,raw_disk=dict(status="NO_RETURN"))
+        r.update(example("qr_board",2.4,1.05 if n<=5 else 1.35))
+        clash.observe(r,n)
+    assert clash.snapshot()["qr_board"]["state"]=="AMBIGUOUS"
+    missed=StartupAccumulator(5,2)
+    for n in range(1,6):
+        missed.observe(dict(all_field_points=0,qr_board=dict(status="NO_RETURN"),
+                            raw_disk=dict(status="NO_RETURN")),n)
+    assert missed.snapshot()["status"]=="INCOMPLETE"
+    assert missed.snapshot()["raw_disk"]["position_map_m"] is None
+    # A full field scan still isolates the A4 plate from unrelated returns.
+    line=[(2.4,1.07+i*.02) for i in range(14)]
+    other=[(1.,1.+i*.02) for i in range(10)]
+    assert len(select_roi_runs([line,other],QR_ROI))==1
+    assert fit_board(select_roi_runs([line,other],QR_ROI)[0]) is not None
+    print("PASS: startup full-field FOV, stable coordinate snapshot, ambiguity and missing-target guards")
+
+
 def main():
     if sys.argv[1:] == ["--self-test"]:
         self_test()
         calibration_self_test()
+        startup_self_test()
         return
     if len(sys.argv)>1 and sys.argv[1] in ('capture','calibrate'):
         calibration_cli()
         return
+    startup_mode = len(sys.argv)==2 and sys.argv[1]=="startup"
+    if len(sys.argv)>1 and not startup_mode:
+        raise SystemExit("Use --self-test, capture, calibrate, startup or no arguments")
     import rclpy
     from rclpy.node import Node
     from rclpy.time import Time
@@ -520,6 +689,18 @@ def main():
             self.buf = Buffer()
             self.listener = TransformListener(self.buf,self)
             self.pub = self.create_publisher(String,"/competition/lidar/regions",10)
+            self.startup = None
+            self.startup_pub = None
+            self.startup_snapshot = None
+            self.startup_last_pub = 0.
+            if startup_mode:
+                frames = int(os.environ.get("CAR_STARTUP_FRAMES","20"))
+                hits = int(os.environ.get("CAR_STARTUP_HITS","5"))
+                self.startup = StartupAccumulator(frames,hits)
+                latched = QoSProfile(depth=1,durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                                     reliability=ReliabilityPolicy.RELIABLE)
+                self.startup_pub = self.create_publisher(
+                    String,"/competition/lidar/startup_targets",latched)
             self.queue = deque(maxlen=8)
             self.last_rx = time.monotonic()
             self.last_report = -math.inf
@@ -543,6 +724,8 @@ def main():
                 self.get_logger().info("READY: valid scan and time-aligned stationary TF; observation only")
 
         def on_scan(self,msg):
+            if self.startup is not None and self.startup.finished:
+                return
             self.last_rx = time.monotonic()
             if self.count_publishers("/scan") > 1:
                 self.queue.clear()
@@ -578,8 +761,25 @@ def main():
                 self.report(dict(status="SCAN_QUEUE_OVERFLOW"))
             self.queue.append((self.last_rx,stamp,msg,duration))
 
+        def publish_startup(self):
+            if self.startup_snapshot is None:
+                self.startup_snapshot=self.startup.snapshot()
+                self.get_logger().warning("STARTUP_SNAPSHOT status="+self.startup_snapshot["status"])
+            self.startup_pub.publish(String(data=json.dumps(self.startup_snapshot,allow_nan=False)))
+            self.startup_last_pub=time.monotonic()
+
         def tick(self):
             now = time.monotonic()
+            if self.startup is not None:
+                if self.startup.finished:
+                    self.queue.clear()
+                    if now-self.startup_last_pub>=1:
+                        self.publish_startup()
+                    return
+                if now-self.start_wall>=18:
+                    self.startup.finish("TIMEOUT")
+                    self.publish_startup()
+                    return
             if not self.ready and self.startup_timeout and now-self.start_wall > self.startup_timeout:
                 raise RuntimeError("region startup timed out: require valid scan and measured stationary TF; last status="+self.last_status)
             if now-self.last_rx > .6:
@@ -619,6 +819,12 @@ def main():
                                      map_frame="map",body_frame="base_link",
                                      identity_verified=False, stationary_test_only=True,
                                      qr_board=results[0],raw_disk=results[1]))
+                    if self.startup is not None:
+                        field = startup_full_field(msg.ranges,msg.angle_min,msg.angle_increment,
+                                                   msg.range_min,msg.range_max,lp,bp)
+                        self.startup.observe(field,stamp.nanoseconds)
+                        if self.startup.finished:
+                            self.publish_startup()
                 except (ValueError,OverflowError) as exc:
                     self.report(dict(status="INVALID_GEOMETRY",reason=str(exc)))
 

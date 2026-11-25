@@ -5,6 +5,8 @@
 #       bash lidar.sh regions       复用现有 /scan + 实测 TF，启动只读区域观察
 #       bash lidar.sh start-regions 启动雷达与区域观察（要求已发布实测 TF）
 #       bash lidar.sh test-regions  不依赖 ROS/硬件的区域扫描回归测试
+#       bash lidar.sh startup            开局复用已有 /scan，静止全场定位快照
+#       bash lidar.sh start-startup      单命令雷达驱动+静止全场定位快照
 #       bash lidar.sh capture FILE [--frames N]  采集现有 /scan 至本地文件（无 TF）
 #       bash lidar.sh calibrate FILE --front-m D --left-m D --front-deg A --left-deg A  离线外参计算
 # 注意：当 V6 一键程序已运行时，只使用 regions，禁止重复启动串口。
@@ -16,7 +18,7 @@ CFG="${CAR_LIDAR_CONFIG:-$WS/config/x3.yaml}"
 MODE="${1:-start}"
 REGION="$WS/maps/competition_v1/lidar_stage5/scan_regions.py"
 case "$MODE" in
-  start|doctor|regions|start-regions|test-regions|capture|calibrate) ;;
+  start|doctor|regions|start-regions|test-regions|startup|start-startup|capture|calibrate) ;;
   *) echo "[ERROR] 用法: bash lidar.sh [start|doctor|regions|start-regions|test-regions|capture|calibrate]" >&2; exit 2 ;;
 esac
 if [[ "$MODE" == calibrate ]]; then
@@ -37,7 +39,7 @@ if [[ "$MODE" == capture ]]; then
 fi
 [[ ! -r "$WS/install/setup.bash" ]] || car_source_setup "$WS/install/setup.bash"
 [[ ! -r "$WS/install_oneclick_lidar/setup.bash" ]] || car_source_setup "$WS/install_oneclick_lidar/setup.bash"
-if [[ "$MODE" == regions || "$MODE" == start-regions ]]; then
+if [[ "$MODE" == regions || "$MODE" == start-regions || "$MODE" == startup || "$MODE" == start-startup ]]; then
   [[ -r "$REGION" ]] || { echo "[ERROR] 缺少区域扫描源码：$REGION" >&2; exit 1; }
   command -v flock >/dev/null || { echo '[ERROR] 缺少 flock，无法防止重复启动' >&2; exit 1; }
   STATE="${XDG_STATE_HOME:-$HOME/.local/state}/car-lidar"
@@ -60,15 +62,18 @@ try:
     if node.count_publishers('/competition/lidar/regions'):
         raise SystemExit('[ERROR] 区域话题已有发布者；请检查当前 ROS_DOMAIN_ID')
     count = node.count_publishers('/scan')
-    expected = 1 if sys.argv[1]=='regions' else 0
+    expected = 1 if sys.argv[1] in ('regions','startup') else 0
     if count != expected:
         raise SystemExit(f'[ERROR] /scan 发布者数量 {count}，期望 {expected}；不要重复启动雷达')
 finally:
     node.destroy_node()
     rclpy.shutdown()
 PYGRAPH
-  if [[ "$MODE" == regions ]]; then
-    echo '[INFO] 复用现有 /scan；12 秒内需收到有效扫描及实测静止 TF。'
+  if [[ "$MODE" == regions || "$MODE" == startup ]]; then
+    echo '[INFO] 复用已有 /scan，静止且需有真实 map->laser_frame TF。'
+    if [[ "$MODE" == startup ]]; then
+      exec env CAR_REGION_STARTUP_TIMEOUT=12 /usr/bin/python3 "$REGION" startup
+    fi
     exec env CAR_REGION_STARTUP_TIMEOUT=12 /usr/bin/python3 "$REGION"
   fi
 fi
@@ -95,7 +100,7 @@ PYPORT
 if [[ ! -r "$PORT" || ! -w "$PORT" ]]; then
   echo "[ERROR] 雷达串口不可读写：$PORT" >&2; exit 1
 fi
-if [[ "$MODE" == start-regions ]] && ! command -v fuser >/dev/null; then
+if [[ "$MODE" == start-regions || "$MODE" == start-startup ]] && ! command -v fuser >/dev/null; then
   echo '[ERROR] 缺少 fuser，无法检查串口冲突' >&2; exit 1
 fi
 if command -v fuser >/dev/null 2>&1 && fuser "$PORT" >/dev/null 2>&1; then
@@ -105,7 +110,7 @@ if [[ "$MODE" == doctor ]]; then
   echo "[PASS] 驱动已注册；串口 $PORT 可访问且未检测到占用；未启动雷达。"
   exit 0
 fi
-if [[ "$MODE" == start-regions ]]; then
+if [[ "$MODE" == start-regions || "$MODE" == start-startup ]]; then
   LOG="$(mktemp -d "$STATE/region.XXXXXXXX")"
   # 只清理本 shell 的直接子进程，不按名称或串口杀其他程序。
   cleanup_regions() {
@@ -125,7 +130,11 @@ if [[ "$MODE" == start-regions ]]; then
   echo "[INFO] 联合启动；日志：$LOG；请保持车体静止。"
   "$PREFIX/lib/ydlidar_ros2_driver/ydlidar_ros2_driver_node" --ros-args --params-file "$CFG" >"$LOG/driver.log" 2>&1 &
   driver_pid=$!
-  CAR_REGION_STARTUP_TIMEOUT=12 /usr/bin/python3 "$REGION" >"$LOG/regions.log" 2>&1 &
+  if [[ "$MODE" == start-startup ]]; then
+    CAR_REGION_STARTUP_TIMEOUT=12 /usr/bin/python3 "$REGION" startup >"$LOG/regions.log" 2>&1 &
+  else
+    CAR_REGION_STARTUP_TIMEOUT=12 /usr/bin/python3 "$REGION" >"$LOG/regions.log" 2>&1 &
+  fi
   region_pid=$!
   for ((i=0;i<150;i++)); do
     if ! kill -0 "$driver_pid" 2>/dev/null || ! kill -0 "$region_pid" 2>/dev/null; then
@@ -133,13 +142,25 @@ if [[ "$MODE" == start-regions ]]; then
       tail -n 20 "$LOG/driver.log" "$LOG/regions.log" >&2 || true
       exit 1
     fi
-    if grep -Fq 'READY: valid scan and time-aligned stationary TF' "$LOG/regions.log"; then
+    if [[ "$MODE" == start-startup ]] && grep -Fq 'STARTUP_SNAPSHOT status=' "$LOG/regions.log"; then
+      if grep -Fq 'STARTUP_SNAPSHOT status=BOTH_GEOMETRIES_FOUND' "$LOG/regions.log"; then
+        echo '[PASS] 开局全场扫描发现两个几何候选；身份仍需视觉确认，禁止自动运动。'
+        break
+      fi
+      echo '[ERROR] 开局扫描未能确定两个独立几何候选；见 ROS /competition/lidar/startup_targets' >&2
+      exit 1
+    fi
+    if [[ "$MODE" == start-regions ]] && grep -Fq 'READY: valid scan and time-aligned stationary TF' "$LOG/regions.log"; then
       echo '[PASS] 雷达区域观察就绪（未确认目标身份，不授权运动）。'
       break
     fi
     sleep .1
   done
-  if ! grep -Fq 'READY: valid scan and time-aligned stationary TF' "$LOG/regions.log"; then
+  if [[ "$MODE" == start-startup ]] && grep -Fq 'STARTUP_SNAPSHOT status=BOTH_GEOMETRIES_FOUND' "$LOG/regions.log"; then
+    :
+  elif [[ "$MODE" == start-regions ]] && grep -Fq 'READY: valid scan and time-aligned stationary TF' "$LOG/regions.log"; then
+    :
+  else
     echo "[ERROR] 区域扫描未就绪；检查实际 TF、时间戳和 $LOG" >&2
     tail -n 20 "$LOG/driver.log" "$LOG/regions.log" >&2 || true
     exit 1

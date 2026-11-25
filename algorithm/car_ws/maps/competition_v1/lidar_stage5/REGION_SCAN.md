@@ -118,3 +118,27 @@ bash bash/lidar.sh calibrate ~/workspace/12_artifacts/car/lidar/walls-01.json \
 5. 换距离、重新摆位独立采集验证，核对尺量、正负号、车体轴向及残差。只有人工确认两墙实测且安装水平后，才使用原 phase5_laser_tf.sh 发布全部六个实测参数。当前工具不会发布 TF、修改配置、触发控制或将候选标为已验收。
 
 自检新增已知平面外参射线模拟、坏时间戳/少帧、非法角域、非有限回波编码测试，由原 test-regions 和全量离线入口执行。真实采集和标定未验收。
+
+
+## 开局全场扫描（本轮需求修正）
+
+目的：一键启动时**从实际 /scan 的完整一圈 360° 激光数据**中检出场地目标，而非接近某个预存点后才开始测距。现有 `regions` 调试模式保留，新开 `startup` 模式。使用规则给出的目标可能区域**分类真实回波**，不直接输出旧地图的名义坐标。
+
+```bash
+# workplace ROS2 Humble 干净终端，Car 的唯一主要工作副本
+source ~/workspace/00_system/workplace/scripts/activate.sh ros
+cd ~/workspace/05_project_github/car/algorithm/car_ws
+bash bash/lidar.sh test-regions
+# 若 V6 已启动雷达 /scan，且已经有实测 map->base_link->laser_frame TF：
+bash bash/lidar.sh startup
+# 或在没有别的驱动时，以一个命令启动雷达和全场扫描：
+bash bash/lidar.sh start-startup
+# 另一终端查看一次性快照（TRANSIENT_LOCAL）：
+ros2 topic echo /competition/lidar/startup_targets --once
+```
+
+`startup` 连续处理默认20帧（环境变量 CAR_STARTUP_FRAMES 允许5～200；CAR_STARTUP_HITS 默认5，至少2次、至多帧数），要求扫描覆盖≥330°；每帧先将所有有效回波投影到实测 map 坐标，再分离二维码板与原料盘可能范围内的几何点簇，分别做直线/圆弧拟合、跨帧一致性筛选，最终发布 `/competition/lidar/startup_targets` （`std_msgs/String`，JSON，TRANSIENT_LOCAL）。现场障碍物仍由既有 `/competition/obstacle_lock_status` 处理，不擅自更改锁路逻辑。
+
+快照关键字段：`status` 为 `BOTH_GEOMETRIES_FOUND` 或 `INCOMPLETE`；`qr_board`、`raw_disk` 有各自 `state`、`position_map_m`、`position_base_m`、`matched_frames`、`max_spread_m`。只有多帧稳定且唯一的几何候选才给出坐标；无回波、点数不足、多处相似形状或首末时刻 TF 不可信时均不虚构坐标。位置信息是**激光几何候选**，不是已确认为二维码板或物料盘的最终判定。整个快照仍然 `identity_verified=false`、`navigation_authorized=false`；不能自动发车或替代 OpenMV 识别二维码内容和物料颜色。
+
+严格物理限制：起始位置可能遮挡目标，平面 X3 看不到高于扫描平面的物体，二维码板若与背景平面共面无法仅用轮廓区分；这些情形无法保证开局静止一次全场扫描就得到两个实际坐标，必须由视觉/移动后复核或更换硬件安装方案。当前仅完成**感知结果快照话题**，原 V6 启动器和 Nav2 并未消费这个新话题；如需直接驱动后续自主路径，必须另行审查对应模块及授权范围。
