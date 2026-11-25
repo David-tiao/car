@@ -266,9 +266,237 @@ def self_test():
     print("PASS: geometry, 21 ray-cast cases (including rule disk edge), seam, timing, motion gate, wall ambiguity")
 
 
+
+# Calibration is deliberately separate from map ROI observation: it uses raw
+# laser-frame data and measured perpendicular wall distances, never a guessed TF.
+def wall_line(frame, angle_deg, half_deg):
+    amin, inc = frame["angle_min"], frame["angle_increment"]
+    lo, hi = frame["range_min"], frame["range_max"]
+    ranges = frame["ranges"]
+    if (not all(math.isfinite(v) for v in (amin,inc,lo,hi)) or
+            not 0 < abs(inc) <= math.pi or not 0 <= lo < hi or
+            not 2 <= len(ranges) <= 10000):
+        raise ValueError("invalid scan metadata")
+    target, half = math.radians(angle_deg),math.radians(half_deg)
+    points = []
+    for i,r in enumerate(ranges):
+        a = amin+i*inc
+        delta = math.atan2(math.sin(a-target),math.cos(a-target))
+        if abs(delta) <= half and r is not None and math.isfinite(r) and max(lo,.001)<=r<=hi:
+            points.append((r*math.cos(a),r*math.sin(a)))
+    if len(points)<12:
+        raise ValueError("wall sector has fewer than 12 points")
+    x,y,uv,aa,ab,bb = centered(points)
+    theta = .5*math.atan2(2*ab,aa-bb)
+    c,s = math.cos(theta),math.sin(theta)
+    along = [c*u+s*v for u,v in uv]
+    rms = math.sqrt(sum((-s*u+c*v)**2 for u,v in uv)/len(uv))
+    nx,ny = -s,c
+    rho = nx*x+ny*y
+    if rho < 0:
+        nx,ny,rho = -nx,-ny,-rho
+    span = max(along)-min(along)
+    if span < .25 or rms > .015 or rho < .10:
+        raise ValueError("wall fit rejected: insufficient span, excessive residual or range")
+    return math.atan2(ny,nx),rho,rms
+
+
+def wrap_angle(a):
+    return math.atan2(math.sin(a),math.cos(a))
+
+
+def solve_wall_frame(frame, front_m, left_m, front_deg, left_deg, half_deg):
+    f,rho_f,ef = wall_line(frame,front_deg,half_deg)
+    l,rho_l,el = wall_line(frame,left_deg,half_deg)
+    yf,yl = wrap_angle(-f),wrap_angle(math.pi/2-l)
+    if abs(wrap_angle(yf-yl)) > math.radians(2):
+        raise ValueError("wall normals not perpendicular within 2 degrees; check wall sectors")
+    yaw = wrap_angle(yf+.5*wrap_angle(yl-yf))
+    return front_m-rho_f,left_m-rho_l,yaw,max(ef,el)
+
+
+def calibrate_walls(data, front_m, left_m, front_deg, left_deg, half_deg):
+    from statistics import median
+    if (not all(math.isfinite(v) for v in (front_m,left_m,front_deg,left_deg,half_deg)) or
+            not .15<=front_m<=5 or not .15<=left_m<=5 or not 5<=half_deg<=35 or
+            abs(wrap_angle(math.radians(front_deg-left_deg)))<=2*math.radians(half_deg)):
+        raise ValueError("invalid measured distances or overlapping/invalid sectors")
+    if data.get("format")!="car_lidar_raw_v1" or data.get("frame_id")!="laser_frame":
+        raise ValueError("unsupported raw capture format or frame")
+    frames = data["frames"]
+    if not 10<=len(frames)<=200:
+        raise ValueError("require 10..200 raw scan frames")
+    stamps = [f["stamp_ns"] for f in frames]
+    if any(type(v) is not int or v<=0 for v in stamps) or any(a>=b for a,b in zip(stamps,stamps[1:])):
+        raise ValueError("invalid or non-monotonic capture stamps")
+    fits = [solve_wall_frame(f,front_m,left_m,front_deg,left_deg,half_deg) for f in frames]
+    x,y = median(f[0] for f in fits),median(f[1] for f in fits)
+    yaw = wrap_angle(fits[0][2]+median(wrap_angle(f[2]-fits[0][2]) for f in fits))
+    spread_m = max(math.hypot(f[0]-x,f[1]-y) for f in fits)
+    spread_rad = max(abs(wrap_angle(f[2]-yaw)) for f in fits)
+    if spread_m>.010 or spread_rad>math.radians(1) or abs(x)>.30 or abs(y)>.30:
+        raise ValueError("inconsistent wall fits or implausible translation; no calibration candidate")
+    return dict(status="CALIBRATION_CANDIDATE_ONLY",frames=len(fits),
+                x_m=x,y_m=y,yaw_rad=yaw,yaw_deg=math.degrees(yaw),
+                max_translation_spread_m=spread_m,max_yaw_spread_rad=spread_rad,
+                max_wall_rms_m=max(f[3] for f in fits),
+                z_m=None,roll_rad=None,pitch_rad=None,
+                requires_independent_validation=True)
+
+
+def capture_frame(msg):
+    n = len(msg.ranges)
+    scan_duration(n,msg.time_increment,msg.scan_time)
+    amin,inc,lo,hi = msg.angle_min,msg.angle_increment,msg.range_min,msg.range_max
+    if (msg.header.frame_id!="laser_frame" or not 2<=n<=10000 or
+            not all(math.isfinite(v) for v in (amin,inc,lo,hi)) or
+            not 0<abs(inc)<=math.pi or not 0<=lo<hi):
+        raise ValueError("invalid frame or scan geometry")
+    stamp = int(msg.header.stamp.sec)*1000000000+int(msg.header.stamp.nanosec)
+    if stamp<=0 or not 0<=msg.header.stamp.nanosec<1000000000:
+        raise ValueError("invalid stamp")
+    ranges = [float(r) if math.isfinite(r) and max(lo,.001)<=r<=hi else None for r in msg.ranges]
+    if sum(r is not None for r in ranges)<12:
+        raise ValueError("insufficient valid returns")
+    return dict(stamp_ns=stamp,angle_min=amin,angle_increment=inc,range_min=lo,
+                range_max=hi,time_increment=msg.time_increment,scan_time=msg.scan_time,ranges=ranges)
+
+
+def collect_raw(path, count):
+    from pathlib import Path
+    import rclpy
+    from sensor_msgs.msg import LaserScan
+    from rclpy.qos import qos_profile_sensor_data
+    path = Path(path).expanduser().resolve()
+    if path.exists() or not path.parent.is_dir():
+        raise ValueError("output exists or parent directory missing; choose a new artifact path")
+    if not 10<=count<=200:
+        raise ValueError("capture requires 10..200 frames")
+    frames = []
+    failure = []
+    rclpy.init(args=[])
+    node = None
+    try:
+        node = rclpy.create_node("car_lidar_raw_capture")
+        def receive(msg):
+            if failure or len(frames)>=count:
+                return
+            try:
+                if node.count_publishers("/scan")!=1:
+                    raise ValueError("require exactly one discovered /scan publisher")
+                f = capture_frame(msg)
+                age = (node.get_clock().now().nanoseconds-f["stamp_ns"])/1e9
+                if not -.1<=age<=.6:
+                    raise ValueError("stale or future scan stamp")
+                if frames and f["stamp_ns"]<=frames[-1]["stamp_ns"]:
+                    raise ValueError("non-monotonic scan")
+                frames.append(f)
+            except (ValueError,OverflowError) as exc:
+                failure.append(str(exc))
+        subscription = node.create_subscription(LaserScan,"/scan",receive,qos_profile_sensor_data)
+        deadline = time.monotonic()+max(15.,count*.5)
+        while len(frames)<count and not failure and time.monotonic()<deadline and rclpy.ok():
+            rclpy.spin_once(node,timeout_sec=.1)
+        if failure or len(frames)!=count or node.count_publishers("/scan")!=1:
+            raise RuntimeError(f"capture incomplete: {len(frames)}/{count}; "+("; ".join(failure) or "timeout or publisher conflict"))
+        # Exclusive create: no overwrite; no output before a complete capture.
+        payload = json.dumps(dict(format="car_lidar_raw_v1",frame_id="laser_frame",
+                                  physical_stationary_required=True,frames=frames),allow_nan=False)
+        if len(payload)>32*1024*1024:
+            raise ValueError("capture exceeds 32 MiB")
+        with path.open("x",encoding="utf-8") as out:
+            out.write(payload+"\n")
+        print(f"CAPTURED {len(frames)} frames: {path} (not a calibration result)")
+    finally:
+        if node is not None:
+            node.destroy_node()
+        if rclpy.ok():
+            rclpy.shutdown()
+
+
+def calibration_self_test():
+    # Known synthetic extrinsic, two perpendicular walls at known base distances.
+    from types import SimpleNamespace
+    x,y,yaw = .045,-.025,.17
+    front,left = .80,.65
+    frames = []
+    n = 720
+    inc = 2*math.pi/n
+    for j in range(12):
+        ranges = []
+        for i in range(n):
+            a = -math.pi+i*inc+yaw
+            u,v = math.cos(a),math.sin(a)
+            hits = [(front-x)/u if u>1e-8 else math.inf,
+                    (left-y)/v if v>1e-8 else math.inf]
+            r = min(hits)
+            ranges.append(r if .1<=r<=8 else None)
+        frames.append(dict(stamp_ns=1000000000+j*140000000,angle_min=-math.pi,
+                           angle_increment=inc,range_min=.1,range_max=8.,ranges=ranges))
+    data = dict(format="car_lidar_raw_v1",frame_id="laser_frame",frames=frames)
+    result = calibrate_walls(data,front,left,-math.degrees(yaw),90-math.degrees(yaw),20.)
+    assert math.dist((result["x_m"],result["y_m"]),(x,y))<1e-8
+    assert abs(wrap_angle(result["yaw_rad"]-yaw))<1e-8 and result["z_m"] is None
+    for bad in (dict(data,frames=frames[:3]),dict(data,frames=frames[:11]+[frames[0]])):
+        try:
+            calibrate_walls(bad,front,left,0,90,20)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("bad capture accepted")
+    for sectors in ((0,0,20),(0,90,1)):
+        try:
+            calibrate_walls(data,front,left,*sectors)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("bad sectors accepted")
+    stamp = SimpleNamespace(sec=1,nanosec=0)
+    msg = SimpleNamespace(header=SimpleNamespace(frame_id="laser_frame",stamp=stamp),
+                          angle_min=0.,angle_increment=.01,range_min=.1,range_max=8.,
+                          time_increment=.001,scan_time=.1,ranges=[1.]*12+[float("nan"),0.,float("inf")])
+    assert capture_frame(msg)["ranges"][-3:]==[None,None,None]
+    print("PASS: two-wall planar extrinsic, invalid capture/sector rejection, raw invalid range encoding")
+
+
+def calibration_cli():
+    import argparse
+    from pathlib import Path
+    parser = argparse.ArgumentParser(description="Read-only laser calibration tools; no TF or motor commands")
+    commands = parser.add_subparsers(dest="mode",required=True)
+    capture = commands.add_parser("capture")
+    capture.add_argument("output")
+    capture.add_argument("--frames",type=int,default=30)
+    solve = commands.add_parser("calibrate")
+    solve.add_argument("input")
+    solve.add_argument("--front-m",type=float,required=True)
+    solve.add_argument("--left-m",type=float,required=True)
+    solve.add_argument("--front-deg",type=float,required=True)
+    solve.add_argument("--left-deg",type=float,required=True)
+    solve.add_argument("--half-deg",type=float,default=20.)
+    args = parser.parse_args()
+    try:
+        if args.mode=="capture":
+            collect_raw(args.output,args.frames)
+        else:
+            path = Path(args.input).expanduser()
+            if path.stat().st_size>32*1024*1024:
+                raise ValueError("capture exceeds 32 MiB")
+            with path.open(encoding="utf-8") as src:
+                data = json.load(src)
+            print(json.dumps(calibrate_walls(data,args.front_m,args.left_m,args.front_deg,
+                                             args.left_deg,args.half_deg),indent=2,allow_nan=False))
+    except (ValueError,TypeError,KeyError,OSError,RuntimeError,OverflowError) as exc:
+        parser.exit(1,f"[ERROR] {exc}\n")
+
+
 def main():
     if sys.argv[1:] == ["--self-test"]:
         self_test()
+        calibration_self_test()
+        return
+    if len(sys.argv)>1 and sys.argv[1] in ('capture','calibrate'):
+        calibration_cli()
         return
     import rclpy
     from rclpy.node import Node

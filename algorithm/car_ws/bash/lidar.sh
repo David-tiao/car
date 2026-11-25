@@ -5,6 +5,8 @@
 #       bash lidar.sh regions       复用现有 /scan + 实测 TF，启动只读区域观察
 #       bash lidar.sh start-regions 启动雷达与区域观察（要求已发布实测 TF）
 #       bash lidar.sh test-regions  不依赖 ROS/硬件的区域扫描回归测试
+#       bash lidar.sh capture FILE [--frames N]  采集现有 /scan 至本地文件（无 TF）
+#       bash lidar.sh calibrate FILE --front-m D --left-m D --front-deg A --left-deg A  离线外参计算
 # 注意：当 V6 一键程序已运行时，只使用 regions，禁止重复启动串口。
 set -Eeuo pipefail
 source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
@@ -14,17 +16,25 @@ CFG="${CAR_LIDAR_CONFIG:-$WS/config/x3.yaml}"
 MODE="${1:-start}"
 REGION="$WS/maps/competition_v1/lidar_stage5/scan_regions.py"
 case "$MODE" in
-  start|doctor|regions|start-regions|test-regions) ;;
-  *) echo "[ERROR] 用法: bash lidar.sh [start|doctor|regions|start-regions|test-regions]" >&2; exit 2 ;;
+  start|doctor|regions|start-regions|test-regions|capture|calibrate) ;;
+  *) echo "[ERROR] 用法: bash lidar.sh [start|doctor|regions|start-regions|test-regions|capture|calibrate]" >&2; exit 2 ;;
 esac
+if [[ "$MODE" == calibrate ]]; then
+  shift
+  exec /usr/bin/python3 "$REGION" calibrate "$@"
+fi
 if [[ "$MODE" == test-regions ]]; then
   exec /usr/bin/python3 "$REGION" --self-test
 fi
-if [[ ! -r "$CAR_ROS_SETUP" || ( "$MODE" != regions && ! -r "$CFG" ) ]]; then
+if [[ ! -r "$CAR_ROS_SETUP" || ( "$MODE" != regions && "$MODE" != capture && ! -r "$CFG" ) ]]; then
   echo "[ERROR] ROS Humble 或雷达配置不存在：$CFG" >&2; exit 1
 fi
 # ROS 的 setup.bash 可能访问未定义 AMENT_* 环境变量，加载时临时关闭 -u。
 car_source_ros_base
+if [[ "$MODE" == capture ]]; then
+  shift
+  exec /usr/bin/python3 "$REGION" capture "$@"
+fi
 [[ ! -r "$WS/install/setup.bash" ]] || car_source_setup "$WS/install/setup.bash"
 [[ ! -r "$WS/install_oneclick_lidar/setup.bash" ]] || car_source_setup "$WS/install_oneclick_lidar/setup.bash"
 if [[ "$MODE" == regions || "$MODE" == start-regions ]]; then

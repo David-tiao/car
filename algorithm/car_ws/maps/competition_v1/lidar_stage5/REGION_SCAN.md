@@ -83,3 +83,38 @@ python3 maps/competition_v1/lidar_stage5/scan_regions.py --self-test
 ## 规则图1边界复核
 
 规则第3页图1的原料盘伸入场地尺寸为75~85mm；在原料盘半径150mm、上边界 y=2.4m 的坐标约定下，中心推算为 y=2.465~2.475m。此推算不是实测外参，也不改变原地图。将原料 ROI 上界由2.58m调整到2.65m以覆盖圆盘外缘，并补充两种角采样密度的射线回归（总21组）。上述旧提交的本地测试记录不覆盖本次变更；最终验收以本次提交的测试证据为准。
+
+## Workplace 实车外参标定辅助（只读采集 + 离线计算）
+
+复用 workplace 的 ROS 2 Humble 系统 Python 环境与 Car 唯一主要工作副本；不创建虚拟环境、不安装依赖、不硬编码个人绝对路径。原始扫描属于本地采集产物，不进入 Git。以下示例目录按 workplace 推荐布局，实际路径以本机 dev projects 检查为准。
+
+```bash
+source ~/workspace/00_system/workplace/scripts/activate.sh ros
+cd ~/workspace/05_project_github/car/algorithm/car_ws
+bash bash/lidar.sh test-regions
+```
+
+1. 将车停稳并禁止底盘运动，雷达固定且水平。车体 +X 前方和 +Y 左侧分别放置两面平整垂直墙，精确对齐车体轴向，两墙法线垂直。尺量 **base_link 原点** 到前墙、左墙的垂距（米），不是雷达外壳到墙的距离。确保雷达扫描平面打到墙面，清空遮挡。
+2. 使用已有雷达 /scan；没有驱动时另开终端执行原 lidar.sh start。不要重复启动。用 RViz LaserScan（Fixed Frame=laser_frame）确认两个墙的法线大致角度，按雷达 +X 为0°、逆时针为正；选取各墙单独回波的角度窗口，避免包含墙角、桌腿、其他物体。
+3. 在本地显式建立产物目录后采集30帧，不依赖外参或 map TF，不发布任何话题：
+
+```bash
+mkdir -p ~/workspace/12_artifacts/car/lidar
+bash bash/lidar.sh capture ~/workspace/12_artifacts/car/lidar/walls-01.json --frames 30
+```
+
+采集只接受单个已发现 /scan 发布者、laser_frame、递增且新鲜的时间戳、有效量程和扫描时间；无效回波编码为 JSON null；未收齐帧则失败且不创建正常结果文件，已有文件不会覆盖。人工保持物理静止，原始采集无 TF 不能自动验证静止。
+
+4. 将下列变量替换为**实测值**（没有实测值不要运行），同一份采集可反复离线计算：
+
+```bash
+bash bash/lidar.sh calibrate ~/workspace/12_artifacts/car/lidar/walls-01.json \
+  --front-m "$FRONT_M" --left-m "$LEFT_M" \
+  --front-deg "$FRONT_DEG" --left-deg "$LEFT_DEG" --half-deg 20
+```
+
+两墙分别做最小二乘正交直线拟合，法线朝墙；前墙和左墙测得的 rho 与从 base_link 测得的 D 相减得 x、y，两个法线角相对车体坐标方向计算 yaw。每帧至少12点、跨度≥0.25m、残差≤15mm，法线垂直偏差≤2°；10~200帧全部通过才给出中位数候选，最大平移离散≤10mm、yaw离散≤1°。工程阈值不代表标定准确度。Z、roll、pitch 保持 null，不推测机械尺寸。
+
+5. 换距离、重新摆位独立采集验证，核对尺量、正负号、车体轴向及残差。只有人工确认两墙实测且安装水平后，才使用原 phase5_laser_tf.sh 发布全部六个实测参数。当前工具不会发布 TF、修改配置、触发控制或将候选标为已验收。
+
+自检新增已知平面外参射线模拟、坏时间戳/少帧、非法角域、非有限回波编码测试，由原 test-regions 和全量离线入口执行。真实采集和标定未验收。
