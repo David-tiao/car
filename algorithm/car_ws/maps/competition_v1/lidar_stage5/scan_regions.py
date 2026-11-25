@@ -9,6 +9,7 @@ Run --self-test without ROS to exercise the geometry.
 """
 import json
 import math
+import os
 import sys
 import time
 from collections import deque
@@ -18,6 +19,24 @@ from collections import deque
 # Extra margin allows physical placement and modest map measurement error.
 QR_ROI = (2.25, 0.90, 2.55, 1.50)
 RAW_ROI = (0.90, 2.15, 1.50, 2.58)
+MAX_SCAN_TRANSLATION_M = .005  # provisional stationary-test threshold
+MAX_SCAN_ROTATION_RAD = math.radians(.3)
+
+
+def scan_duration(count, time_increment, scan_time):
+    """LaserScan stamp is the first ray; conservative end when timing is incomplete."""
+    if count < 2 or not all(math.isfinite(v) and v >= 0 for v in (time_increment, scan_time)):
+        raise ValueError("invalid scan timing")
+    duration = max((count-1)*time_increment, scan_time)
+    if not 0 < duration <= .5:
+        raise ValueError("missing or implausible scan timing")
+    return duration
+
+
+def stationary_during_scan(first, last):
+    yaw = last[2]-first[2]
+    return (math.dist(first[:2],last[:2]) <= MAX_SCAN_TRANSLATION_M and
+            abs(math.atan2(math.sin(yaw),math.cos(yaw))) <= MAX_SCAN_ROTATION_RAD)
 
 
 def planar_pose(transform):
@@ -51,7 +70,7 @@ def scan_runs(ranges, angle_min, increment, rmin, rmax, pose, roi):
     """Keep only actual finite returns; split at invalid samples and gaps."""
     if not all(math.isfinite(v) for v in (angle_min, increment, rmin, rmax)):
         raise ValueError("invalid scan metadata")
-    if increment == 0 or rmin < 0 or rmax <= rmin:
+    if not 0 < abs(increment) <= math.pi or rmin < 0 or rmax <= rmin:
         raise ValueError("invalid scan metadata")
     xmin, ymin, xmax, ymax = roi
     runs, run = [], []
@@ -112,7 +131,8 @@ def fit_board(points):
     if not (.12 <= span <= .35 and rms <= .015 and abs(c) <= .35):
         return None
     return dict(center_map_m=[x,y], observed_span_m=span, rms_m=rms,
-                tangent_yaw_map_rad=theta, point_count=len(points))
+                tangent_yaw_map_rad=theta, point_count=len(points),
+                wall_or_board_unresolved=True)
 
 
 def fit_disk(points):
@@ -152,9 +172,12 @@ def region_result(runs, fitter, base_pose):
         if fit is None:
             continue
         x,y = to_body(fit["center_map_m"],base_pose)
-        fit.update(center_base_m=[x,y], center_distance_m=math.hypot(x,y),
+        fit.update(identity_verified=False, center_base_m=[x,y], center_distance_m=math.hypot(x,y),
                    bearing_rad=math.atan2(y,x),
                    nearest_candidate_return_m=min(math.hypot(*to_body(p,base_pose)) for p in run))
+        if "tangent_yaw_map_rad" in fit:
+            a = fit["tangent_yaw_map_rad"]-base_pose[2]
+            fit["perpendicular_line_distance_m"] = abs(-math.sin(a)*x+math.cos(a)*y)
         candidates.append(fit)
     return dict(status=("GEOMETRY_CANDIDATE" if len(candidates)==1 else
                         "AMBIGUOUS" if candidates else "RETURN_ONLY"),
@@ -181,7 +204,59 @@ def self_test():
     runs = scan_runs([1.,float("nan"),1.],0.,.01,.1,8.,
                      (0,0,0),(.9,-.1,1.1,.1))
     assert [len(r) for r in runs]==[1,1]
-    print("PASS: line, circle, degeneracy, ambiguity, no-return, transform, invalid scan")
+    assert region_result([line],fit_board,(2.,1.2,0))["candidates"][0]["wall_or_board_unresolved"]
+    candidate = region_result([line],fit_board,(2.,1.2,0))["candidates"][0]
+    assert not candidate["identity_verified"] and abs(candidate["perpendicular_line_distance_m"]-.4)<1e-8
+    assert abs(scan_duration(360,.0004,.14)-.1436)<1e-8
+    for args in ((1,.01,.1),(360,0,0),(360,-.1,.1),(360,.01,.1)):
+        try:
+            scan_duration(*args)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("invalid timing accepted")
+    assert stationary_during_scan((0,0,math.pi-.001),(0,0,-math.pi+.001))
+    assert not stationary_during_scan((0,0,0),(.01,0,0))
+    assert not stationary_during_scan((0,0,0),(0,0,.02))
+    # Full-circle seam and invalid endpoint, both scan directions.
+    for increment in (math.pi/180,-math.pi/180):
+        ranges = [float("nan")]*360
+        ranges[:4] = [1.]*4
+        ranges[-4:] = [1.]*4
+        assert [len(r) for r in scan_runs(ranges,0,increment,.1,8.,(0,0,0),(.9,-.2,1.1,.2))]==[8]
+        ranges[0] = float("nan")
+        assert len(scan_runs(ranges,0,increment,.1,8.,(0,0,0),(.9,-.2,1.1,.2)))==2
+    # Ray casting with true first surface intersections, not pre-made fitted points.
+    for cx in (1.10,1.20,1.30):
+        pose = (cx,1.85,.2)
+        ranges = []
+        inc = math.pi/720
+        for i in range(1440):
+            a = -math.pi+i*inc+pose[2]
+            u,v = math.cos(a),math.sin(a)
+            projection = (cx-pose[0])*u+(2.4-pose[1])*v
+            disc = projection**2-((cx-pose[0])**2+(2.4-pose[1])**2-.15**2)
+            distance = projection-math.sqrt(max(0.,disc))
+            ranges.append(distance if disc >= 0 and distance > 0 else float("nan"))
+        result = region_result(scan_runs(ranges,-math.pi,inc,.1,8.,pose,RAW_ROI),fit_disk,pose)
+        assert result["status"]=="GEOMETRY_CANDIDATE"
+        assert math.dist(result["candidates"][0]["center_map_m"],(cx,2.4))<1e-6
+    for cy in (1.10,1.20,1.30):
+        pose = (1.85,cy,.15)
+        ranges = []
+        inc = math.pi/720
+        for i in range(1440):
+            a = -math.pi+i*inc+pose[2]
+            u,v = math.cos(a),math.sin(a)
+            d = .55/u if u > 1e-8 else -1
+            ranges.append(d if d > 0 and abs(d*v)<=.297/2 else float("nan"))
+        result = region_result(scan_runs(ranges,-math.pi,inc,.1,8.,pose,QR_ROI),fit_board,pose)
+        assert result["status"]=="GEOMETRY_CANDIDATE"
+        assert abs(result["candidates"][0]["perpendicular_line_distance_m"]-.55)<1e-6
+    # A long wall should not be accepted as a board; a short coplanar patch is ambiguous.
+    assert fit_board([(2.4,.91+i*.01) for i in range(59)]) is None
+    assert fit_board(line)["wall_or_board_unresolved"]
+    print("PASS: geometry, six ray-cast placements, seam, timing, motion gate, wall ambiguity")
 
 
 def main():
@@ -191,6 +266,8 @@ def main():
     import rclpy
     from rclpy.node import Node
     from rclpy.time import Time
+    from rclpy.duration import Duration
+    from rclpy.clock import Clock, ClockType
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
@@ -212,37 +289,60 @@ def main():
             self.last_rx = time.monotonic()
             self.last_report = -math.inf
             self.last_stamp = -1
+            self.steady = Clock(clock_type=ClockType.STEADY_TIME)
+            self.start_wall = time.monotonic()
+            self.startup_timeout = float(os.environ.get("CAR_REGION_STARTUP_TIMEOUT","0"))
+            if not math.isfinite(self.startup_timeout) or self.startup_timeout < 0:
+                raise ValueError("invalid startup timeout")
+            self.ready = False
             self.sub = self.create_subscription(LaserScan,"/scan",self.on_scan,qos_profile_sensor_data)
-            self.timer = self.create_timer(.05,self.tick)
+            self.timer = self.create_timer(.05,self.tick,clock=self.steady)
 
         def report(self,data):
             self.pub.publish(String(data=json.dumps(data,allow_nan=False)))
             self.last_report = time.monotonic()
+            if data["status"] == "OBSERVATION_ONLY" and not self.ready:
+                self.ready = True
+                self.get_logger().info("READY: valid scan and time-aligned stationary TF; observation only")
 
         def on_scan(self,msg):
             self.last_rx = time.monotonic()
             stamp = Time.from_msg(msg.header.stamp)
-            if stamp.nanoseconds <= 0 or not msg.header.frame_id or not msg.ranges:
+            if stamp.nanoseconds <= 0 or msg.header.frame_id != "laser_frame" or not msg.ranges:
                 self.queue.clear()
                 self.report(dict(status="INVALID_SCAN"))
                 return
             if stamp.nanoseconds <= self.last_stamp:
                 self.queue.clear()
-                self.last_stamp = -1
                 self.report(dict(status="NONMONOTONIC_SCAN"))
                 return
             self.last_stamp = stamp.nanoseconds
-            self.queue.append((self.last_rx,stamp,msg))
+            try:
+                duration = scan_duration(len(msg.ranges),msg.time_increment,msg.scan_time)
+                if not (math.isfinite(msg.range_min) and math.isfinite(msg.range_max) and
+                        0 <= msg.range_min < msg.range_max and
+                        any(math.isfinite(r) and max(.001,msg.range_min)<=r<=msg.range_max for r in msg.ranges)):
+                    raise ValueError("no valid ranges or invalid range limits")
+            except ValueError as exc:
+                self.queue.clear()
+                self.report(dict(status="INVALID_SCAN",reason=str(exc)))
+                return
+            if len(self.queue)==self.queue.maxlen:
+                self.queue.clear()
+                self.report(dict(status="SCAN_QUEUE_OVERFLOW"))
+            self.queue.append((self.last_rx,stamp,msg,duration))
 
         def tick(self):
             now = time.monotonic()
+            if not self.ready and self.startup_timeout and now-self.start_wall > self.startup_timeout:
+                raise RuntimeError("region startup timed out: require valid scan and measured stationary TF")
             if now-self.last_rx > .6:
                 self.queue.clear()
                 if now-self.last_report > .5:
                     self.report(dict(status="SCAN_STALE"))
                 return
             while self.queue:
-                received,stamp,msg = self.queue[0]
+                received,stamp,msg,duration = self.queue[0]
                 age = (self.get_clock().now().nanoseconds-stamp.nanoseconds)/1e9
                 if now-received > .4 or age > .6 or age < -.1:
                     self.queue.popleft()
@@ -251,12 +351,19 @@ def main():
                 try:
                     laser = self.buf.lookup_transform("map",msg.header.frame_id,stamp)
                     base = self.buf.lookup_transform("map","base_link",stamp)
+                    end = stamp+Duration(seconds=duration)
+                    laser_end = self.buf.lookup_transform("map",msg.header.frame_id,end)
+                    base_end = self.buf.lookup_transform("map","base_link",end)
                 except TransformException:
                     # Never block the listener or use latest-time TF instead.
                     return
                 self.queue.popleft()
                 try:
                     lp,bp = planar_pose(laser.transform),planar_pose(base.transform)
+                    if not (stationary_during_scan(lp,planar_pose(laser_end.transform)) and
+                            stationary_during_scan(bp,planar_pose(base_end.transform))):
+                        self.report(dict(status="MOTION_UNSUPPORTED",stamp_ns=stamp.nanoseconds))
+                        continue
                     results = []
                     for roi,fitter in zip(self.rois,(fit_board,fit_disk)):
                         runs = scan_runs(msg.ranges,msg.angle_min,msg.angle_increment,
@@ -264,6 +371,7 @@ def main():
                         results.append(region_result(runs,fitter,bp))
                     self.report(dict(status="OBSERVATION_ONLY",stamp_ns=stamp.nanoseconds,
                                      map_frame="map",body_frame="base_link",
+                                     identity_verified=False, stationary_test_only=True,
                                      qr_board=results[0],raw_disk=results[1]))
                 except (ValueError,OverflowError) as exc:
                     self.report(dict(status="INVALID_GEOMETRY",reason=str(exc)))
