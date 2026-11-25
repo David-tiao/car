@@ -1,0 +1,14 @@
+# Replace this ABSOLUTE path with your annotated training dataset root.
+# This file is a TEMPLATE, not evidence that images or labels exist.
+path: /ABS/PATH/TO/material6_dataset
+train: images/train
+val: images/val
+# Optional: test: images/test
+# Class indices are EXACTLY color_id - 1 in the Pi C++ parser.
+names:
+  0: red
+  1: yellow
+  2: blue
+  3: green
+  4: black
+  5: cyan

@@ -101,8 +101,10 @@ ServoEstimate calculate_servo(const Spot& spot, const ServoSettings& cfg) {
     ServoEstimate result;
     result.error_u_px = spot.u - cfg.ref_u_px;
     result.error_v_px = spot.v - cfg.ref_v_px;
-    result.pixel_centered = std::hypot(result.error_u_px,
-                                       result.error_v_px) <= cfg.tolerance_px;
+    // A default diagnostic crosshair is not a taught pickup reference.
+    result.pixel_centered = cfg.reference_taught &&
+        std::hypot(result.error_u_px,
+                   result.error_v_px) <= cfg.tolerance_px;
 
     if (!cfg.reference_taught || !cfg.jacobian) return result;
     if (!valid_jacobian(*cfg.jacobian))

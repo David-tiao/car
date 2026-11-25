@@ -32,9 +32,9 @@ endif()
 option(PI_MATERIAL_WITH_OPENCV "Build OpenCV camera detection + GUI" ON)
 if(PI_MATERIAL_WITH_OPENCV)
     find_package(OpenCV 4.5 REQUIRED COMPONENTS
-        core imgproc highgui imgcodecs videoio)
+        core imgproc highgui imgcodecs videoio dnn)
 
-    add_library(pi_material_cv STATIC src/detector.cpp src/camera.cpp)
+    add_library(pi_material_cv STATIC src/detector.cpp src/camera.cpp src/yolo_detector.cpp)
     target_include_directories(pi_material_cv PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/include" ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(pi_material_cv PUBLIC
@@ -50,5 +50,9 @@ if(PI_MATERIAL_WITH_OPENCV)
         target_link_libraries(test_material_detector PRIVATE pi_material_cv)
         target_compile_options(test_material_detector PRIVATE -Wall -Wextra -Wpedantic)
         add_test(NAME material_synthetic_color_detection COMMAND test_material_detector)
+        add_executable(test_material_yolo tests/test_yolo.cpp)
+        target_link_libraries(test_material_yolo PRIVATE pi_material_cv)
+        target_compile_options(test_material_yolo PRIVATE -Wall -Wextra -Wpedantic)
+        add_test(NAME material_yolo_output_and_letterbox COMMAND test_material_yolo)
     endif()
 endif()

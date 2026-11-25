@@ -167,3 +167,29 @@ cat /tmp/pi_material_result.json
 - [ ] 与 QR 代码/屏显示互斥摄像头使用，实测二维码内容→材料顺序→全 6 步报告的端到端链路。
 
 本目录不修改 `algorithm/openmv/`、`STM32F4/`、`algorithm/car_ws/` 和 C2 代码。
+
+## 8. YOLO 神经网络推理（C++ ONNX）
+
+本目录现在支持 `--backend hsv`（默认）和 `--backend yolo` 两种可互换识别后端，二者共享**同一套六步 QR 目标序列、稳定跟踪、局部视觉伺服和 JSON 报告**。
+
+YOLO 模型必须是已按 `red / yellow / blue / green / black / cyan` 训练的**六类** YOLOv8/YOLO11 Detect ONNX，且 `nms=False`、batch=1、输出张量的通道数为 10。COCO-80 / YOLOv5 / 内嵌 NMS 导出格式不能直接用。训练和导出细节见 [YOLO 推理与数据集说明](yolo/README.md)，数据集类别模板见 [material6.example.yaml](yolo/material6.example.yaml)。
+
+```bash
+# 编译时需要 OpenCV dnn 模块：libopencv-dev
+cmake -S algorithm/pi/material -B build/pi_material -DCMAKE_BUILD_TYPE=Release
+cmake --build build/pi_material -j2
+ctest --test-dir build/pi_material --output-on-failure
+
+# 先用 algorithm/pi/QR/pi_qr 扫码写出 /tmp/pi_qr_verified.txt
+# 退出 QR 摄像头进程，然后在 Pi5 上执行：
+./build/pi_material/pi_material \
+  --backend yolo --model /ABS/PATH/TO/best.onnx \
+  --yolo-imgsz 640 --confidence 0.50 --nms-iou 0.45 \
+  --source pi --qr-file /tmp/pi_qr_verified.txt \
+  --result-file /tmp/pi_material_result.json
+```
+
+YOLO 使用 Letterbox 原图坐标逆映射、argmax 类别过滤和 NMS；只检测**当前任务指定颜色**，同色多候选必须拒识。报告增加 `detector_backend`、`detector_confidence` 和 `detector_processing_ms`（仅检测器运行时间，不是实际图像/控制指令全链路延迟）。
+
+**当前没有六类实际训练权重、实物标定和实机推理记录**。YOLO 检测框中心只是视觉目标候选；若未提供经过实测的夹爪目标点与雅可比，仍不会产生毫米级动作建议，也不会发送任何真实电机命令。
+

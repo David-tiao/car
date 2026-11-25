@@ -19,11 +19,13 @@ struct ColorHit {
     cv::Rect box;
     double circularity = 0;
     double fill = 0;
+    double confidence = 0;  // YOLO class confidence; HSV has no calibrated score
 };
 
 struct Detection {
     std::vector<ColorHit> candidates;
     std::optional<Spot> unique;  // only populated for precisely one candidate
+    std::optional<double> unique_confidence;  // YOLO only
     bool ambiguous = false;
 };
 
