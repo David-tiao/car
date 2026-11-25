@@ -366,7 +366,7 @@ def collect_raw(path, count):
     from pathlib import Path
     import rclpy
     from sensor_msgs.msg import LaserScan
-    from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy, ReliabilityPolicy
+    from rclpy.qos import qos_profile_sensor_data
     path = Path(path).expanduser().resolve()
     if path.exists() or not path.parent.is_dir():
         raise ValueError("output exists or parent directory missing; choose a new artifact path")
@@ -672,7 +672,7 @@ def main():
     from rclpy.time import Time
     from rclpy.duration import Duration
     from rclpy.clock import Clock, ClockType
-    from rclpy.qos import qos_profile_sensor_data
+    from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy, ReliabilityPolicy
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
     from tf2_ros import Buffer, TransformListener, TransformException
