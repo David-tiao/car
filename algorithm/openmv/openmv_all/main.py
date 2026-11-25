@@ -261,6 +261,12 @@ class ElectricalApp:
 
     def reset(self):
         self.board = Mission()
+        self.task_session = 0
+        self.source_batch = None
+        self.message = None
+        self.last_done = None
+        self.prepared = None
+        self.home_zone = None
         self.source = None
         self.idle()
 
@@ -316,9 +322,9 @@ class ElectricalApp:
             self.session = session
             self.tol_x, self.tol_y = tx, ty
             if job == 1:
+                self.reset()
+                self.session = self.task_session = session
                 self.state = 'QR'
-                self.board = Mission()
-                self.source = None
             elif job == 40:
                 self.state = 'AREA'
                 colors = self.board.groups[0] if self.board.groups else range(1, 7)
@@ -333,13 +339,18 @@ class ElectricalApp:
 
     def command(self, cmd):
         name = cmd[0]
-        if name in ('JOB', 'SCAN_BEGIN', 'ALIGN'):
+        if name == 'CHECK':
+            self.task_check(cmd)
+        elif name in ('JOB', 'SCAN_BEGIN', 'ALIGN'):
             request = ('JOB',) + cmd[1:] if name == 'SCAN_BEGIN' else cmd
             self.start(request, name == 'SCAN_BEGIN')
         elif cmd == ('RESET',):
             self.reset()
             self.link.send('IDLE')
         elif cmd == ('CANCEL',):
+            self.task_session = 0
+            self.last_done = None
+            self.prepared = None
             self.idle()
             self.source = None
             self.link.send('IDLE')
@@ -371,12 +382,111 @@ class ElectricalApp:
         else:
             raise ValueError('UNKNOWN_CMD')
 
+    def task_check(self, cmd):
+        # CHECK,scan session,manipulation step,B(efore)/A(fter),colour,ring
+        if len(cmd) != 6 or cmd[3] not in ('B', 'A'):
+            raise ValueError('FORMAT')
+        session = self.number(cmd[1], 1, 65535)
+        step = self.number(cmd[2], 1, 25)
+        color = self.number(cmd[4], 0, 6)
+        ring = self.number(cmd[5], 0, 3)
+        if session != self.task_session:
+            raise ValueError('SESSION')
+        if cmd == self.last_done:
+            self.link.send('DID', session, step)
+            return
+        item = self.board.current()
+        if not item or step != self.board.step or color != item[2]:
+            raise ValueError('STEP')
+        if item[0] == 'HOME':
+            if ring not in (1, 2) or C.HOME_WINDOWS[ring] is None:
+                raise ValueError('CAL_HOME')
+            if cmd[3] == 'A' and self.home_zone != ring:
+                raise ValueError('ZONE')
+            self.home_zone = ring
+        elif ring != item[3]:
+            raise ValueError('STEP')
+        if self.request == cmd:
+            return  # Keep accumulating fresh frames across MCU retries.
+        if self.state not in ('IDLE', 'CHECK') or (cmd[3] == 'A' and self.prepared != step):
+            raise ValueError('PHASE')
+        if self.state == 'CHECK' and self.request[3] == 'A':
+            raise ValueError('PHASE')
+        if item[1] == 'RAW' and cmd[3] == 'B':
+            batch = 0 if step < 13 else 1
+            if self.source is None or self.source_batch != batch:
+                self.source = SourceStation(self.board.groups[batch*2], self.materials)
+                self.source_batch = batch
+            else:
+                # Keep the verified disk anchor when only one or two pieces remain.
+                self.source.tracker.clear()
+                self.source.track_id = None
+                self.source.last_frame = None
+        if item[0] != 'HOME':
+            slot = (step-1) % 3
+            key = 'PICK' if item[0] == 'PICK' else 'PUT'
+            windows = [C.TRAY_STEP_WINDOWS.get((step, ph), C.TRAY_WINDOWS[key, ph][slot])
+                       for ph in ('B', 'A')]
+            self.tray_window = windows[0 if cmd[3] == 'B' else 1]
+            if (None in windows
+                    or C.TRAY_EMPTY_LAB is None):
+                raise ValueError('CAL_TRAY')
+        if item[0] == 'STACK':
+            lower, upper = C.STACK_WINDOWS[ring]
+            if (not lower or not upper or max(abs(lower[0]-upper[0]), abs(lower[1]-upper[1]))
+                    <= lower[2]+upper[2]):
+                raise ValueError('CAL_STACK')
+        self.request = cmd
+        self.message = None
+        self.state = 'CHECK'
+        self.stable.reset()
+        self.last_report = None
+
+    def task_frame(self, img, now):
+        op, station, color, ring = self.board.current()
+        before = self.request[3] == 'B'
+        point = None
+        if op == 'HOME':
+            point = self.stations.home_patch(img, C.HOME_WINDOWS[self.home_zone])
+        elif self.stations.tray_evidence(img, self.tray_window,
+                color if (op == 'PICK') != before else 0):
+            if station == 'RAW':
+                if before:
+                    face = self.source.observe(img, color, now)
+                    if face and near(face[:2], (C.PICK_TARGET_X,C.PICK_TARGET_Y), C.PICK_SLOT_TOL_PX):
+                        point = face[:2]
+                else:
+                    point = self.tray_window[:2]
+            elif op == 'STACK':
+                window = C.STACK_WINDOWS[ring][0 if before else 1]
+                point = self.stations.face_in_window(img, window, color)
+            else:
+                empty = (op == 'PLACE') == before
+                point = (self.stations.empty_ring(img, ring) if empty else
+                         self.stations.occupied_ring(img, station, ring, color))
+                if point and not near(point, (C.RING_TARGET_X, C.RING_TARGET_Y), C.PICK_SLOT_TOL_PX):
+                    point = None
+        if self.stable.update(point, now) is None or not self.due(now):
+            return
+        step = self.board.step
+        if before:
+            self.prepared = step
+            self.link.send('CAN', self.task_session, step)
+            self.last_report = now
+        else:
+            self.last_done = self.request
+            self.board.confirm()
+            self.prepared = None
+            self.idle()
+            self.link.send('DID', self.task_session, step)
+
     def commands(self, now):
         for cmd in self.link.poll():
             try:
                 self.command(cmd)
             except ValueError as exc:
-                self.link.send('ERR', str(exc))
+                self.message = str(exc)
+                self.link.send('ERR', self.message)
 
     def due(self, now):
         return self.last_report is None or time.ticks_diff(now, self.last_report) >= C.REPORT_MS
@@ -428,6 +538,8 @@ class ElectricalApp:
             self.qr_frame(img, now)
         elif self.state == 'RING':
             self.ring_frame(img, now)
+        elif self.state == 'CHECK':
+            self.task_frame(img, now)
         elif self.state == 'AREA':
             disk, _, _ = self.source.disk_sample(img)
             if disk:
@@ -439,7 +551,12 @@ class ElectricalApp:
                 self.last_report = now
         elif self.state == 'MATERIAL':
             self.material_frame(img, now)
-        self.panel.update(self.board, self.state)
+        label = self.state
+        if self.state == 'CHECK':
+            label = 'LOOK' if self.request[3] == 'B' else 'VERIFY'
+        elif self.board.groups and self.board.current() is None:
+            label = 'DONE'
+        self.panel.update(self.board, self.message or label)
 
 
 def run():

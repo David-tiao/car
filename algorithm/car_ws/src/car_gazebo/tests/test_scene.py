@@ -113,6 +113,10 @@ class SceneTest(unittest.TestCase):
                 "expected_obstacles": 2, "obstacles": [{}, {}],
                 "blocked_roads": status["blocked"]}
         self.assertTrue(route_gate.matching_lock(lock, key))
+        for n in (1, 3):
+            other = dict(lock, expected_obstacles=n, obstacles=[{}]*n)
+            self.assertTrue(route_gate.matching_lock(other, key, n))
+            self.assertFalse(route_gate.matching_lock(other, key, 2))
         for change in ({"state": "CONFLICT"}, {"locked": False}, {"map_received": False},
                        {"obstacles": [{}]}, {"blocked_roads": ["C2-C3"]}):
             self.assertFalse(route_gate.matching_lock(dict(lock, **change), key))

@@ -33,6 +33,8 @@ static uint8_t add_batch(RaceTaskPlan *plan, uint8_t batch,
                  colors[batch][item], positions[batch][item])) return 0U;
     }
     if (!add(plan, TASK_ACTION_GO_STORAGE, batch, 0U, 0U, 0U)) return 0U;
+    /* Only the first batch is placed flat at storage. */
+    if (batch == 1U) return 1U;
     for (item = 0U; item < 3U; item++) {
         if (!add(plan, TASK_ACTION_PLACE_STORAGE, batch, item,
                  colors[batch][item], positions[batch][item])) return 0U;
@@ -52,7 +54,6 @@ uint8_t RaceTaskPlan_Build(RaceTaskPlan *plan,
     if (!add_batch(plan, 0U, colors, positions)) return 0U;
     if (!add(plan, TASK_ACTION_GO_MATERIAL, 1U, 0U, 0U, 0U)) return 0U;
     if (!add_batch(plan, 1U, colors, positions)) return 0U;
-    if (!add(plan, TASK_ACTION_GO_STORAGE, 1U, 0U, 0U, 0U)) return 0U;
     for (item = 0U; item < 3U; item++) {
         /* Second-batch item is stacked over the first-batch item with
          * the same color; position is the first batch's storage slot. */

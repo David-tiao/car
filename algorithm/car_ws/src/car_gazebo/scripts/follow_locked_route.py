@@ -44,14 +44,15 @@ def route_contract(status, points, nodes, edges):
     return tuple(names), tuple(sorted(set(blocked)))
 
 
-def matching_lock(lock, route_key):
+def matching_lock(lock, route_key, expected=2):
     """Require the original lock heartbeat as well as the derived route."""
     if (not isinstance(lock, dict) or lock.get("state") != "LOCKED" or
             lock.get("locked") is not True or lock.get("map_received") is not True or
-            lock.get("expected_obstacles") != 2):
+            type(expected) is not int or expected < 1 or
+            type(lock.get("expected_obstacles")) is not int or lock["expected_obstacles"] != expected):
         return False
     obstacles, roads = lock.get("obstacles"), lock.get("blocked_roads")
-    return (isinstance(obstacles, list) and len(obstacles) == 2 and
+    return (isinstance(obstacles, list) and len(obstacles) == expected and
             isinstance(roads, list) and all(isinstance(r, str) for r in roads) and
             tuple(sorted(set(roads))) == route_key[1])
 
@@ -117,6 +118,7 @@ def main():
             super().__init__("car_sim_route_gate")
             if not self.get_parameter("use_sim_time").value:
                 raise RuntimeError("SIM route gate requires simulation clock")
+            self.expected = self.declare_parameter("expected_obstacles", 2).value
             self.declare_parameter("topology_file", "")
             path = Path(self.get_parameter("topology_file").value)
             if not path.is_absolute() or not path.is_file():
@@ -214,7 +216,7 @@ def main():
                     any(now-v > .5 for v in (self.odom_wall, self.scan_wall, self.clock_wall))):
                 raise ValueError("stale lock, route or simulation data")
             key = route_contract(self.status, self.points, self.nodes, self.edges)
-            if not matching_lock(self.lock_status, key):
+            if not matching_lock(self.lock_status, key, self.expected):
                 raise ValueError("original lidar lock disagrees with route")
             if not fresh_lock_scan(self.lock_status, self.clock_stamp):
                 raise ValueError("no recent exact-time TF scan evidence")

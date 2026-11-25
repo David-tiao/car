@@ -78,11 +78,13 @@ class HostQrEvent(ctypes.Structure):
 
 
 class CTaskSession:
-    """Runs real RaceFsm's 8 QR actions THEN real 34-action RaceTaskPlan.
+    """Runs real RaceFsm's 8 QR actions THEN real 30-action RaceTaskPlan.
 
     A host-only C adapter supplies synthetic healthy, settled feedback;
     SVG paths are *separate* rule-mission route previews, not C motor outputs.
     """
+
+    TASK_ACTION_COUNT = 30
 
     def __init__(self, plan, task, fault):
         if shutil.which("gcc") is None:
@@ -125,7 +127,7 @@ class CTaskSession:
         except Exception:
             self.tmp.cleanup()
             raise
-        self.total = 8 + 34
+        self.total = self.qr_total + self.TASK_ACTION_COUNT
         self.phase = "QR_ROUTE"
         self.task = task
         self.fault = fault
@@ -197,7 +199,7 @@ class CTaskSession:
         if event.qr_confirmed:
             kind = "SCAN_QR"
         if self.lib.HostQr_State() == 2:
-            if not self.lib.HostQr_Valid() or self.lib.HostTask_InitScanned() != 34:
+            if not self.lib.HostQr_Valid() or self.lib.HostTask_InitScanned() != self.TASK_ACTION_COUNT:
                 self.lib.HostQr_Fail(0)
                 raise ValueError("C RaceTaskPlan must start only after confirmed QR")
             self.phase = "TASK"

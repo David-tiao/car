@@ -9,7 +9,7 @@
 | 模式 | 实际执行后端 | 状态步骤 | 可执行真实电机？ |
 | --- | --- | --- | --- |
 | **串口模拟 · CAR-LINK PTY** | 原 `mission_test_session.PtyMissionSession`、`mission_wire_sim.MockPeer`、匿名 `pty.openpty()`、CAR-LINK 帧/ACK/COMPLETED | 随路线变化，通常 42 命令 | **不能** |
-| **C 代码状态机 · GCC** | GCC 编译原 `STM32F4/App/race_fsm.c` + `race_task_plan.c` + `race_task_gate.c`，用独立测试适配器在主机调用原生 C | 8 个扫码/进站动作 + 34 个搬运动作 | **不能** |
+| **C 代码状态机 · GCC** | GCC 编译原 `STM32F4/App/race_fsm.c` + `race_task_plan.c` + `race_task_gate.c`，用独立测试适配器在主机调用原生 C | 8 个扫码/进站动作 + 30 个搬运动作 | **不能** |
 
 模式切换后点「初始化任务」才会启动新测试会话。
 可以「执行一步」「连续运行」「重置」，也支持指定二维码、起点、阻塞道路、ACK 丢失和动作失败故障。
@@ -59,8 +59,8 @@ git pull --ff-only
 bash algorithm/car_ws/bash/test_stm32_fsm_realview.sh
 ```
 
-预计测试覆盖已有 Python PTY 仿真、C 原生 34 动作反馈门控、
-两种模式不同的命令粒度（C 为 8+34，PTY 随路线变化）、运行集隔离、可动画化的道路节点数据，
+预计测试覆盖已有 Python PTY 仿真、C 原生 30 动作反馈门控、
+两种模式不同的命令粒度（C 为 8+30，PTY 随路线变化）、运行集隔离、可动画化的道路节点数据，
 以及网页资源/脚本语法。
 
 再开一个终端：
@@ -74,7 +74,7 @@ python3 sim2real/server.py --host 127.0.0.1 --port 8090
 
 1. 第一屏确认赛道地图已提到最上方，地图编辑、障碍开关、原有路线仍能操作。
 2. 地图右侧点击「串口模拟 · CAR-LINK PTY」，选择正常、初始化，再单步或连续执行。观察橙色小车沿路网移动、反馈日志变化。
-3. 重置并切换「C 代码状态机 · GCC」。初始化后应显示 42 个状态机步骤；第 5 步是 `SCAN_QR/QR_CONFIRMED`，第 8 步到原料区并初始化 34 个搬运动作，第 9 步才允许开始 `PICK`。
+3. 重置并切换「C 代码状态机 · GCC」。初始化后应显示 38 个状态机步骤；第 5 步是 `SCAN_QR/QR_CONFIRMED`，第 8 步到原料区并初始化 30 个搬运动作，第 9 步才允许开始 `PICK`。
 4. 注入第 3 步 FAILED 或第 2 步无 ACK，验证最终 FAULT、没有后续虚假位移或计数。
 5. 进入 `/real`，确认没有模拟测试面板，真实遥测仍只读。
 
@@ -109,18 +109,18 @@ python3 sim2real/server.py --host 127.0.0.1 --port 8090
 现在主机编译的测试库先执行现有 STM32 **`App/race_fsm.c`** 内的
 `Race_StartQrRoute` 八步：MOVE、MOVE、TURN、SETTLE、**SCAN**、
 MOVE、MOVE、SETTLE。SCAN 步调用真正的 C `Race_SubmitQr`
-校验任务码与会话，再调用 `HostTask_InitScanned` 构建后续 34 步任务。
+校验任务码与会话，再调用 `HostTask_InitScanned` 构建后续 30 步任务。
 
-因此 C 模式合计 **8 + 34 = 42** 个动作；第 5 步明确显示 `SCAN_QR` /
+因此 C 模式合计 **8 + 30 = 38** 个动作；第 5 步明确显示 `SCAN_QR` /
 `QR_CONFIRMED`，任务码未确认时不允许执行 PICK。
-在第 5 步注入 `qr_timeout` 可验证扫描失败、34 步任务不会启动。
+在第 5 步注入 `qr_timeout` 可验证扫描失败、30 步任务不会启动。
 扫码过程使用**主机合成反馈与已输入的测试任务码**，没有实际采集图像，
 不能称为 OpenMV 实机已扫码或 STM32 全固件已运行。
 
-原始匿名 PTY 串口模式仍然完全保留，单独使用原 CAR-LINK 工作流，其步数按路线变化，不与 C 的 42 步强行一一映射。
+原始匿名 PTY 串口模式仍然完全保留，单独使用原 CAR-LINK 工作流，其步数按路线变化，不与 C 的 38 步强行一一映射。
 
 新增回归测试验证 CELL 17 必须禁用 B2-B3、两个引擎读取同一封路条件、
-被封路时的绕行、扫码超时锁存和扫码成功后进入 34 步任务。
+被封路时的绕行、扫码超时锁存和扫码成功后进入 30 步任务。
 
 ## 重要核查：STM32 原生 C 路线**不具备路障绕行**
 
@@ -147,7 +147,7 @@ MOVE、MOVE、SETTLE。SCAN 步调用真正的 C `Race_SubmitQr`
 `motion_provenance=PYTHON_DIJKSTRA_VISUAL_PREVIEW_NOT_NATIVE_C_MOTION`。
 
 此外 `RACE_PICK_DIRECT_KEY_TEST=1U` 仍保持测试配置，`app_race.c`
-尚未真正执行完整 34 个动作；GCC 的 42 步测试包含合成反馈，
+尚未真正执行完整 30 个动作；GCC 的 38 步测试包含合成反馈，
 不应宣称现成 STM32 固件具有完整自主搬运执行器。
 
 此处**没有修改真实 STM32 运动轨迹或启用电机**，只消除网页验收误导。

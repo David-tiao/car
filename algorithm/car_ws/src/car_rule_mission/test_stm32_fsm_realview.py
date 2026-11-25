@@ -140,14 +140,14 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertIsNone(web_mode_gateway.CHANNELS["real"]["ros"]["snapshot"])
         self.assertFalse(lab.status()["hardware_authorized"])
 
-    def test_native_c_mode_scans_before_running_34_material_actions(self):
+    def test_native_c_mode_scans_before_running_30_task_actions(self):
         import shutil
         if shutil.which("gcc") is None:
             self.skipTest("Host GCC required for real native C mode")
         response = lab.action(start(engine="code_fsm"))
         self.assertEqual(response["transport"], "NATIVE_GCC_C_FSM_NO_UART")
         self.assertFalse(response["hardware_authorized"])
-        self.assertEqual(response["snapshot"]["total_steps"], 42)
+        self.assertEqual(response["snapshot"]["total_steps"], 38)
         self.assertEqual(response["snapshot"]["phase"], "QR_ROUTE")
         self.assertEqual(response["snapshot"]["node"], "C3")
         steps = [lab.action({"action": "step"}) for _ in range(8)]
@@ -162,9 +162,9 @@ class MockSTM32RealViewTests(unittest.TestCase):
         self.assertEqual(first_pick["snapshot"]["kind"], "PICK")
         self.assertEqual(first_pick["snapshot"]["completed_steps"], 9)
         final = lab.action({"action": "run"})["snapshot"]
-        self.assertEqual((final["state"], final["completed_steps"]), ("DONE", 42))
+        self.assertEqual((final["state"], final["completed_steps"]), ("DONE", 38))
         self.assertEqual((final["pick_count"], final["place_count"],
-                          final["stack_count"]), (12, 15, 3))
+                          final["stack_count"]), (12, 12, 3))
         self.assertTrue(final["home_confirmed"])
 
     def test_native_c_fault_latches_without_phantom_map_motion(self):
@@ -249,7 +249,7 @@ class MockSTM32RealViewTests(unittest.TestCase):
         original = lab.SESSION
         lab.action(start(engine="code_fsm"))
         self.assertEqual((original.master, original.slave), (-1, -1))
-        self.assertEqual(lab.status()["snapshot"]["total_steps"], 42)
+        self.assertEqual(lab.status()["snapshot"]["total_steps"], 38)
         lab.action(start(engine="pty"))
         self.assertEqual(lab.status()["snapshot"]["total_steps"],
                          len(lab.SESSION.steps))

@@ -993,17 +993,51 @@ class StationVision:
             window = self.ring_window(gray, ring)
         if window is None:
             return None
-        x, y, r = window
-        if not (r > 0 and 0 <= x-r and x+r < img.width() and
-                0 <= y-r and y+r < img.height()):
+        return self.face_in_window(img, window, color, gray)
+
+    @staticmethod
+    def window_roi(img, window):
+        if window is None:
             return None
-        blobs = self.materials.color_blobs(img, (x-r, y-r, 2*r+1, 2*r+1))
+        x, y, r = window
+        if r <= 0 or x-r < 0 or x+r >= img.width() or y-r < 0 or y+r >= img.height():
+            return None
+        return x-r, y-r, 2*r+1, 2*r+1
+
+    def face_in_window(self, img, window, color, gray=None):
+        roi = self.window_roi(img, window)
+        if roi is None:
+            return None
+        x, y, r = window
+        blobs = self.materials.color_blobs(img, roi)
+        if gray is None:
+            gray = img.to_grayscale(copy=True)
         faces = self.materials.material_candidates(img, gray, None, blobs)
-        faces = [f for f in faces if near((f[1], f[2]), (x, y), r)
-                 and f[1]-f[3] >= x-r and f[1]+f[3] <= x+r
-                 and f[2]-f[3] >= y-r and f[2]+f[3] <= y+r]
+        faces = [f for f in faces if abs(f[1]-x)+f[3] <= r and abs(f[2]-y)+f[3] <= r]
         if len(faces) == 1 and faces[0][0] == color:
             return faces[0][1], faces[0][2]
+        return None
+
+    def tray_evidence(self, img, window, color):
+        if color:
+            return self.face_in_window(img, window, color) is not None
+        roi = self.window_roi(img, window)
+        if roi is None or C.TRAY_EMPTY_LAB is None:
+            return False
+        minimum = int(roi[2]*roi[3]*C.TRAY_EMPTY_FRACTION)
+        patches = img.find_blobs([C.TRAY_EMPTY_LAB], roi=roi, x_stride=1, y_stride=1,
+                                 pixels_threshold=minimum, area_threshold=minimum)
+        return any(val(p, 'pixels') >= minimum for p in patches)
+
+    def home_patch(self, img, window):
+        roi = self.window_roi(img, window)
+        if roi is None:
+            return None
+        minimum = int(roi[2]*roi[3]*C.HOME_BLUE_FRACTION)
+        blobs = img.find_blobs([C.HOME_BLUE], roi=roi, x_stride=1, y_stride=1,
+                               pixels_threshold=minimum, area_threshold=minimum)
+        if any(val(b, 'pixels') >= minimum for b in blobs):
+            return window[:2]
         return None
 
     def blue_home(self, img):
@@ -1062,8 +1096,10 @@ class Panel:
                 y = (i // columns) * (usable_height // (4//columns))
                 self.canvas.draw_string(x, y, group + ('+' if i < 3 else ''),
                                         color=white, scale=scale)
-            self.canvas.draw_string(2, usable_height+1, 'PICK %d PUT %d' % (job.picks, job.places), color=white)
-            self.canvas.draw_string(2, usable_height+19, '%02d %s' % (min(25,job.step),state),
+            totals = 'P%d D%d' % (job.picks, job.places)
+            counter_scale = max(1, min(2, (C.LCD_WIDTH-2)//(len(totals)*8)))
+            self.canvas.draw_string(2, usable_height+1, totals, color=white, scale=counter_scale)
+            self.canvas.draw_string(2, usable_height+23, '%02d %s' % (min(25,job.step),state),
                                     color=(0,255,100))
         else:
             self.canvas.draw_string(4, 50, state, color=white, scale=2)

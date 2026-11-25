@@ -244,9 +244,17 @@ static void handle_body(VisionContext *vision, char *body, uint32_t now_ms)
 
     if (!strcmp(fields[0], "READY") && count == 2 && !strcmp(fields[1], "IDLE")) {
         if (Vision_RingActive(vision)) ring_fail(vision, "OPENMV_RESTART");
+        if (vision->check_phase) vision->result = VISION_RESULT_ERROR;
         vision->ready = 1U;
         vision->rx_seq_valid = 0U;
         vision->phase = VISION_IDLE;
+        return;
+    }
+    if ((!strcmp(fields[0], "CAN") || !strcmp(fields[0], "DID")) && count == 3) {
+        if (vision->check_phase == (fields[0][0] == 'C' ? 'B' : 'A') &&
+            parse_long(fields[1], &session) && session == vision->check_session &&
+            parse_long(fields[2], &step) && step == vision->check_step)
+            vision->check_received = 1U;
         return;
     }
     if (!strcmp(fields[0], "ACK") && count == 3 && !strcmp(fields[1], "JOB")) {
@@ -598,6 +606,22 @@ int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms)
         return 0;
     }
     return 1;
+}
+
+int Vision_RequestCheck(VisionContext *vision, uint16_t session, uint8_t step,
+                        char phase, uint8_t color, uint8_t ring)
+{
+    char body[40];
+    if (!vision || !vision->ready || vision->phase != VISION_IDLE ||
+        !session || !step || step > 25U || (phase != 'B' && phase != 'A') ||
+        color > 6U || ring > 3U || Vision_RingActive(vision)) return 0;
+    (void)snprintf(body, sizeof(body), "CHECK,%u,%u,%c,%u,%u",
+                   (unsigned)session, (unsigned)step, phase, (unsigned)color, (unsigned)ring);
+    vision->check_session = session;
+    vision->check_step = step;
+    vision->check_phase = phase;
+    vision->check_received = 0U;
+    return Vision_SendBody(vision, body);
 }
 
 int Vision_Cancel(VisionContext *vision)

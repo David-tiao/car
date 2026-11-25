@@ -8,7 +8,7 @@ static const uint8_t RINGS[2][3] = {{1U, 2U, 3U}, {2U, 3U, 1U}};
 static void init_plan(RaceTaskPlan *plan, RaceTaskGate *gate)
 {
     assert(RaceTaskPlan_Build(plan, COLORS, RINGS));
-    assert(plan->count == 34U);
+    assert(plan->count == 30U);
     assert(RaceTaskPlan_Start(plan));
     assert(RaceTaskGate_Init(gate, plan));
 }
@@ -60,8 +60,8 @@ static void test_all_actions_and_correlated_feedback(void)
         now += 10U;
     }
     assert(picks == 6U && rough_placements == 6U && retrieves == 6U);
-    assert(storage == 6U && stacks == 3U && returns == 1U);
-    assert(gate.completed == 34U);
+    assert(storage == 3U && stacks == 3U && returns == 1U);
+    assert(gate.completed == 30U);
     assert(RaceTaskPlan_Done(&plan));
     assert(!RaceTaskGate_Issue(&gate, now, &intent));
     assert(gate.error == TASK_GATE_ERROR_NONE);
@@ -135,6 +135,6 @@ int main(void)
     test_all_actions_and_correlated_feedback();
     test_fault_and_timeout_guards();
     test_invalid_plan_rejected();
-    puts("PASS: real STM32 C RaceTaskPlan 34 actions, paired ACK/result, dedup, faults and same-color stacking");
+    puts("PASS: real STM32 C RaceTaskPlan 30 actions, paired ACK/result, dedup, faults and same-color stacking");
     return 0;
 }

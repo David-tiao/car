@@ -93,7 +93,7 @@
         b.classList.toggle('selected',active);
       }
       cRouteWarning.hidden=mode!=='code_fsm';
-      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'C RaceFsm 扫码状态机（8 步）→ 任务表（34 步），运动路径仅为 Python 预览')+
+      details.textContent=(mode==='pty'?'原有虚拟 STM32 串口':'C RaceFsm 扫码状态机（8 步）→ 任务表（30 步），运动路径仅为 Python 预览')+
         ' · 切换后请点击初始化任务';
       step.disabled=busy||needsInit;run.disabled=busy||needsInit;
     }

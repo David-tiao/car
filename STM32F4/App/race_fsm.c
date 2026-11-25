@@ -96,7 +96,7 @@ uint8_t Race_RunActions(RaceFsm *race, const RaceAction *actions, uint8_t count,
             return 0U;
         }
     }
-    memcpy(race->actions, actions, count * sizeof(*actions));
+    memmove(race->actions, actions, count * sizeof(*actions));
     race->action_count = count;
     race->action_index = 0U;
     race->origin_x = feedback->x;
@@ -113,12 +113,42 @@ uint8_t Race_RunActions(RaceFsm *race, const RaceAction *actions, uint8_t count,
     return 1U;
 }
 
+static int taught_actions(RaceAction *out, uint8_t capacity, uint8_t zone,
+                          uint8_t leg, uint8_t ring)
+{
+    static const struct {
+        uint8_t zone, leg, ring;
+        float x, y, yaw;
+    } poses[] = { RACE_TAUGHT_ROUTES };
+    size_t i;
+    uint8_t n = 0U;
+    for (i = 0; i < sizeof(poses)/sizeof(poses[0]); ++i) {
+        if (poses[i].zone != zone || poses[i].leg != leg || poses[i].ring != ring)
+            continue;
+        if (n >= capacity || !isfinite(poses[i].x) || !isfinite(poses[i].y) ||
+            !isfinite(poses[i].yaw)) return -1;
+        out[n++] = (RaceAction){RACE_ACTION_MOVE, poses[i].x, poses[i].y,
+            poses[i].yaw, RACE_MOVE_TIMEOUT_MS, RACE_ARRIVAL_HOLD_MS};
+    }
+    return n;
+}
+
 uint8_t Race_StartQrRoute(RaceFsm *race, const RaceFeedback *feedback, uint32_t now)
 {
-    RaceAction actions[8];
+    RaceAction *actions = race->actions;
+    int qr, raw;
     float along, inward, heading, cosine, sine;
     float local_x, local_y;
-    if (race->zone < 1U || race->zone > 2U) return 0U;
+    if (race->state != RACE_READY || race->zone < 1U || race->zone > 2U) return 0U;
+    qr = taught_actions(actions, RACE_MAX_ACTIONS - 2U, race->zone, 7U, 0U);
+    if (qr < 0) { Race_Fail(race, RACE_ERROR_CONFIG); return 0U; }
+    raw = taught_actions(actions + qr + 1, (uint8_t)(RACE_MAX_ACTIONS - qr - 1),
+                         race->zone, 8U, 0U);
+    if (qr || raw) {
+        if (qr <= 0 || raw <= 0) { Race_Fail(race, RACE_ERROR_CONFIG); return 0U; }
+        actions[qr] = (RaceAction){RACE_ACTION_SCAN, 0, 0, 0, RACE_SCAN_TIMEOUT_MS, 0};
+        return Race_RunActions(race, actions, (uint8_t)(qr+1+raw), feedback, now);
+    }
     along = RACE_QR_FROM_BOTTOM_M - ((race->zone == 1U) ?
             RACE_FIELD_SIZE_M - RACE_START_CENTER_M : RACE_START_CENTER_M);
     inward = RACE_CENTER_FROM_WALL_M - RACE_START_CENTER_M;
@@ -153,6 +183,27 @@ uint8_t Race_StartQrRoute(RaceFsm *race, const RaceFeedback *feedback, uint32_t 
                               RACE_MATERIAL_TIMEOUT_MS, RACE_ARRIVAL_HOLD_MS};
     actions[7] = (RaceAction){RACE_ACTION_SETTLE, 0.0f, 0.0f, 0.0f, 3000U, RACE_SETTLE_MS};
     return Race_RunActions(race, actions, 8U, feedback, now);
+}
+
+/* Keep the QR plan and the original odometry frame across station legs. */
+uint8_t Race_StartTaskRoute(RaceFsm *race, uint8_t leg, uint8_t ring,
+                            const RaceFeedback *feedback, uint32_t now)
+{
+    int n;
+    if (race->state != RACE_TASK || !valid_feedback(feedback) || !still(feedback))
+        return 0U;
+    n = taught_actions(race->actions, RACE_MAX_ACTIONS, race->zone, leg, ring);
+    if (n <= 0) return 0U;
+    if (leg == 4U) {
+        if (n >= (int)RACE_MAX_ACTIONS) return 0U;
+        race->actions[n++] = (RaceAction){RACE_ACTION_MOVE, 0.0f, 0.0f, 0.0f,
+            RACE_MOVE_TIMEOUT_MS, RACE_ARRIVAL_HOLD_MS};
+    }
+    race->action_count = (uint8_t)n;
+    race->action_index = 0U;
+    race->state = RACE_RUNNING;
+    enter_action(race, now);
+    return 1U;
 }
 
 void Race_Tick(RaceFsm *race, const RaceFeedback *feedback, uint32_t now)

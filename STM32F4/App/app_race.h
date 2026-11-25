@@ -10,6 +10,6 @@ uint8_t AppRace_StartRingAlign(uint8_t target);
 const RaceFsm *AppRace_Status(void);
 const RaceTaskPlan *AppRace_TaskPlan(void);
 /* Current executable flow has ended (also true for fault/abort).
- * RACE_DONE alone only means the material route has ended. */
+ * In match mode completion requires all plan actions including confirmed home. */
 uint8_t AppRace_LogFinished(void);
 #endif

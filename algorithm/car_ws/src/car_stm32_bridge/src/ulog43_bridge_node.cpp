@@ -69,8 +69,8 @@ public:
     if (!(pulses_per_meter_>0 && wheel_ppr_>0 && wheelbase_half_>0 && track_half_>0)) {
       throw std::invalid_argument("pulses_per_meter / wheel geometry must be positive");
     }
-    if (baud_!=115200) {
-      throw std::invalid_argument("this phase-1 implementation only supports 115200 baud");
+    if (baud_ != 115200 && baud_ != 230400) {
+      throw std::invalid_argument("baud must be 115200 or 230400");
     }
     if (!port_.empty() && !replay_file_.empty()) {
       throw std::invalid_argument("port and replay_file must not both be set");
@@ -108,8 +108,11 @@ private:
     termios t{};
     if(::tcgetattr(fd_,&t)!=0){close_serial();return false;}
     ::cfmakeraw(&t);
-    ::cfsetispeed(&t,B115200);
-    ::cfsetospeed(&t,B115200);
+    const speed_t speed = baud_ == 230400 ? B230400 : B115200;
+    if (::cfsetispeed(&t, speed) != 0 || ::cfsetospeed(&t, speed) != 0) {
+      close_serial();
+      return false;
+    }
     t.c_cflag=(t.c_cflag & ~CSIZE)|CS8|CLOCAL|CREAD;
     t.c_cflag &= ~(PARENB|CSTOPB|CRTSCTS);
     t.c_cc[VMIN]=0;

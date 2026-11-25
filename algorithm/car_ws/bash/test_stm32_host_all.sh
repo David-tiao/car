@@ -28,6 +28,13 @@ compile_run test_app \
   tests/race/test_app.c App/race_fsm.c App/app_race.c App/race_ui.c \
   App/app_pick_fsm.c App/app_pick_motion.c App/race_task_plan.c
 
+compile_run test_task_mission -DTEST_TASK_MISSION -include tests/race/stubs/config.h \
+  tests/race/test_app.c App/race_fsm.c App/app_race.c App/race_ui.c \
+  App/app_pick_fsm.c App/app_pick_motion.c App/race_task_plan.c
+TEST_DROP_CONFIRMATION=1 "$tmp/test_task_mission"
+TEST_STOP_TRANSFER=1 "$tmp/test_task_mission"
+compile_run test_task_gate tests/race/test_task_gate.c App/race_task_gate.c App/race_task_plan.c
+
 # The ULog host logger also has a deterministic test suite with firmware
 # modes 0 and 3. Cover no-logging build and direct/manual flow branches.
 ulog_common=(-DULOG_TEST -std=c99 -Wall -Wextra -Werror

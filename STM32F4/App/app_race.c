@@ -23,6 +23,11 @@ static RaceTaskPlan s_plan;
 static AppRingAlign s_ring;
 static uint8_t s_direct_cycle_done;
 static uint8_t s_ring_control;
+typedef enum { TASK_NEXT, TASK_TRAVEL, TASK_DOCK, TASK_ALIGN, TASK_BEFORE, TASK_ARM,
+               TASK_AFTER, TASK_RESET } TaskStage;
+static TaskStage s_stage;
+static uint8_t s_mission, s_step;
+static uint32_t s_check_since, s_check_sent;
 #if (RACE_PICK_DIRECT_KEY_TEST != 0U)
 static void start_direct_pick(uint32_t now, uint8_t reverse)
 {
@@ -119,8 +124,148 @@ static uint8_t warmed_up(uint32_t now)
     return app_imu_bias_ready() && (uint32_t)(now - s_boot) >= RACE_WARMUP_MS;
 }
 
+static uint8_t travel_leg(TaskActionKind kind)
+{
+    switch (kind) {
+    case TASK_ACTION_GO_ROUGH: return 1U;
+    case TASK_ACTION_GO_STORAGE: return 2U;
+    case TASK_ACTION_GO_MATERIAL: return 3U;
+    case TASK_ACTION_RETURN_START: return 4U;
+    default: return 0U;
+    }
+}
+
+static uint8_t start_transfer(const TaskAction *action, uint32_t now)
+{
+    static const float tray_angles[] = {90.0f, 0.0f, 270.0f};
+    if (action->item >= 3U || !PickFsm_IsReady(&s_pick)) return 0U;
+    if (action->kind == TASK_ACTION_PICK || action->kind == TASK_ACTION_RETRIEVE_ROUGH) {
+        s_pick.forward_cycle_index = action->item;
+        return PickFsm_Start(&s_pick, now);
+    }
+    s_pick.config.reverse_to_ground_steps = s_pick_config.reverse_to_ground_steps;
+    s_pick.config.reverse_reset_steps = s_pick_config.reverse_reset_steps;
+    if (action->kind == TASK_ACTION_STACK_STORAGE) {
+        const int32_t extra = RACE_STACK_EXTRA_STEPS;
+        if (extra <= 0 || extra >= s_pick.config.reverse_to_ground_steps) return 0U;
+        s_pick.config.reverse_to_ground_steps -= extra;
+        s_pick.config.reverse_reset_steps += extra;
+    }
+    return PickFsm_SetReverseTurntableAngle(&s_pick, tray_angles[action->item]) &&
+           PickFsm_StartReverse(&s_pick, now);
+}
+
+static void request_check(const TaskAction *action, TaskStage stage, uint32_t now)
+{
+    VisionContext *vision = Vision_GetDefault();
+    if (s_stage != stage) s_check_since = now;
+    s_stage = stage;
+    s_check_sent = now;
+    if (!Vision_RequestCheck(vision, (uint16_t)s_race.scan_session, s_step,
+                             stage == TASK_BEFORE ? 'B' : 'A', action->color,
+                             action->kind == TASK_ACTION_RETURN_START ? s_race.zone : action->position))
+        Race_Fail(&s_race, RACE_ERROR_LINK);
+}
+
+static void poll_mission(const RaceFeedback *current, uint32_t now)
+{
+    const TaskAction *action = RaceTaskPlan_Current(&s_plan);
+    VisionContext *vision = Vision_GetDefault();
+    uint8_t leg;
+    if (!action || !current->imu_valid || !RaceVision_Healthy() ||
+        vision->result == VISION_RESULT_ERROR || vision->result == VISION_RESULT_TIMEOUT) {
+        Race_Fail(&s_race, !current->imu_valid ? RACE_ERROR_IMU : RACE_ERROR_VISION_CHECK);
+        return;
+    }
+    switch (s_stage) {
+    case TASK_NEXT:
+        leg = travel_leg(action->kind);
+        if (leg || action->position) {
+            s_stage = leg ? TASK_TRAVEL : TASK_DOCK;
+            if (!leg) leg = (action->kind == TASK_ACTION_PLACE_ROUGH ||
+                             action->kind == TASK_ACTION_RETRIEVE_ROUGH) ? 5U : 6U;
+            if (!Race_StartTaskRoute(&s_race, leg, action->position, current, now))
+                Race_Fail(&s_race, RACE_ERROR_ROUTE_UNTAUGHT);
+        } else {
+            request_check(action, TASK_BEFORE, now);
+        }
+        break;
+    case TASK_TRAVEL:
+        if (action->kind != TASK_ACTION_RETURN_START) {
+            (void)RaceTaskPlan_Advance(&s_plan);
+            s_stage = TASK_NEXT;
+            break;
+        }
+        /* Home also needs fresh blue-zone evidence after the odometry stop. */
+        request_check(action, TASK_BEFORE, now);
+        break;
+    case TASK_DOCK:
+        if (s_ring.calibration_valid && (action->kind == TASK_ACTION_PLACE_ROUGH ||
+                                         action->kind == TASK_ACTION_PLACE_STORAGE)) {
+            if (AppRingAlign_Start(&s_ring, action->position, now))
+                s_stage = TASK_ALIGN;
+            else
+                Race_Fail(&s_race, RACE_ERROR_VISION_CHECK);
+        } else {
+            request_check(action, TASK_BEFORE, now);
+        }
+        break;
+    case TASK_ALIGN:
+        AppRingAlign_Poll(&s_ring, now);
+        if (AppRingAlign_Failed(&s_ring)) {
+            Race_Fail(&s_race, RACE_ERROR_VISION_CHECK);
+        } else if (AppRingAlign_Succeeded(&s_ring)) {
+            Mecanum_Stop(s_chassis);
+            request_check(action, TASK_BEFORE, now);
+        }
+        break;
+    case TASK_BEFORE:
+    case TASK_AFTER:
+        if ((uint32_t)(now - s_check_since) >= RACE_CHECK_TIMEOUT_MS) {
+            Race_Fail(&s_race, RACE_ERROR_VISION_CHECK);
+        } else if (vision->check_received) {
+            vision->check_received = 0U;
+            if (s_stage == TASK_BEFORE) {
+                if (action->kind == TASK_ACTION_RETURN_START) {
+                    request_check(action, TASK_AFTER, now);
+                } else if (start_transfer(action, now)) {
+                    s_stage = TASK_ARM;
+                } else {
+                    Race_Fail(&s_race, RACE_ERROR_ARM);
+                }
+            } else {
+                (void)RaceTaskPlan_Advance(&s_plan);
+                s_step++;
+                vision->check_phase = 0;
+                if (RaceTaskPlan_Done(&s_plan)) {
+                    s_mission = 0U;
+                    s_race.state = RACE_DONE;
+                } else {
+                    PickFsm_Reset(&s_pick, now);
+                    s_stage = TASK_RESET;
+                }
+            }
+        } else if ((uint32_t)(now - s_check_sent) >= RACE_CHECK_RETRY_MS) {
+            request_check(action, s_stage, now);
+        }
+        break;
+    case TASK_ARM:
+        if (PickFsm_IsDone(&s_pick)) request_check(action, TASK_AFTER, now);
+        else if (!PickFsm_IsActive(&s_pick)) Race_Fail(&s_race, RACE_ERROR_ARM);
+        break;
+    case TASK_RESET:
+        if (PickFsm_IsReady(&s_pick)) s_stage = TASK_NEXT;
+        else if (!PickFsm_IsActive(&s_pick)) Race_Fail(&s_race, RACE_ERROR_ARM);
+        break;
+    }
+}
+
 void AppRace_Init(MecanumChassis_t *chassis)
 {
+    memset(&s_plan, 0, sizeof(s_plan));
+    s_mission = 0U;
+    s_stage = TASK_NEXT;
+    s_step = 1U;
     s_chassis = chassis;
     s_direct_cycle_done = 0U;
     s_ring_control = 0U;
@@ -218,7 +363,7 @@ void AppRace_Poll(void)
         Race_Fail(&s_race, RaceVision_Healthy() ?
                   RACE_ERROR_SCAN_TIMEOUT : RACE_ERROR_LINK);
     }
-    if (s_ring_control || Vision_RingActive(Vision_GetDefault())) {
+    if (!s_mission && (s_ring_control || Vision_RingActive(Vision_GetDefault()))) {
         if (s_stalled && Vision_RingActive(Vision_GetDefault()))
             (void)Vision_Cancel(Vision_GetDefault());
         AppRingAlign_Poll(&s_ring, now);
@@ -243,9 +388,9 @@ void AppRace_Poll(void)
     can_start = (s_race.state == RACE_READY) && warmed_up(now) && current.imu_valid;
  #endif
     input_event = RaceInput_Poll(&s_input, now,
-                                 s_race.state == RACE_RUNNING, can_start);
+                                 s_race.state == RACE_RUNNING || s_mission, can_start);
     if ((input_event & RACE_INPUT_PRESS) != 0U &&
-        s_race.state == RACE_RUNNING) {
+        (s_race.state == RACE_RUNNING || s_mission)) {
         Race_Abort(&s_race);
     }
     if ((input_event & RACE_INPUT_LONG) != 0U &&
@@ -263,12 +408,20 @@ void AppRace_Poll(void)
     }
     Race_Tick(&s_race, &current, now);
     if (previous_state == RACE_RUNNING && s_race.state == RACE_DONE &&
-        RaceTaskPlan_Current(&s_plan) != 0 &&
-        RaceTaskPlan_Current(&s_plan)->kind == TASK_ACTION_PICK) {
-        if ((RACE_PICK_ENABLE != 0U) && !PickFsm_Start(&s_pick, now)) {
-            s_race.error = RACE_ERROR_CONFIG;
-            s_race.state = RACE_FAULT;
-        }
+        RACE_PICK_ENABLE && !RACE_PICK_DIRECT_KEY_TEST && s_plan.valid) {
+        Mecanum_Stop(s_chassis);
+        if (!s_mission) RaceVision_EndScan();
+        s_mission = 1U;
+        s_race.state = RACE_TASK;
+    }
+    if (s_mission && s_race.state == RACE_TASK)
+        poll_mission(&current, now);
+    if ((s_race.state == RACE_FAULT || s_race.state == RACE_ABORTED) && s_mission) {
+        s_mission = 0U;
+        if (s_stage == TASK_ALIGN) AppRingAlign_Cancel(&s_ring);
+        Vision_GetDefault()->check_phase = 0;
+        (void)Vision_Cancel(Vision_GetDefault());
+        PickFsm_Abort(&s_pick);
     }
     if (PickFsm_IsActive(&s_pick) || s_pick.state == PICK_RESETTING) PickFsm_Poll(&s_pick, now);
 #if (RACE_PICK_DIRECT_KEY_TEST != 0U)
@@ -277,11 +430,6 @@ void AppRace_Poll(void)
         PickFsm_Reset(&s_pick, now);
     }
 #endif
-    if (PickFsm_IsDone(&s_pick) && RaceTaskPlan_Current(&s_plan) != 0 &&
-        RaceTaskPlan_Current(&s_plan)->kind == TASK_ACTION_PICK) {
-        (void)RaceTaskPlan_Advance(&s_plan);
-        PickFsm_Reset(&s_pick, now);
-    }
     if (s_race.state == RACE_RUNNING &&
         (previous_state != RACE_RUNNING || previous_index != s_race.action_index)) {
         const RaceAction *action = &s_race.actions[s_race.action_index];
@@ -300,10 +448,10 @@ void AppRace_Poll(void)
     saved_irq = __get_PRIMASK();
     __disable_irq();
     if (s_stalled) Race_Fail(&s_race, RACE_ERROR_LOOP_STALL);
-    s_active = (s_race.state == RACE_RUNNING) || PickFsm_IsActive(&s_pick) ||
+    s_active = s_mission || (s_race.state == RACE_RUNNING) || PickFsm_IsActive(&s_pick) ||
                s_ring_control;
     s_last_poll = now;
-    if (s_race.state != RACE_READY && s_race.state != RACE_RUNNING &&
+    if (!s_mission && s_race.state != RACE_READY && s_race.state != RACE_RUNNING &&
         !PickFsm_IsActive(&s_pick)) {
         if (s_control) stop_outputs();
         s_control = 0U;
@@ -343,11 +491,8 @@ uint8_t AppRace_LogFinished(void)
     /* Boot reset is not a completed test. Wait for the post-test reset. */
     return s_direct_cycle_done && PickFsm_IsReady(&s_pick);
 #else
-    /* The current executor parks after the material route and optional pick.
-     * This is NOT proof that the entire planned competition is complete.
-     * When remaining actions are connected, use RaceTaskPlan_Done(&s_plan)
-     * here instead of the material-route end state. */
-    return s_race.state == RACE_DONE;
+    return s_race.state == RACE_DONE &&
+           (RACE_PICK_ENABLE == 0U || RaceTaskPlan_Done(&s_plan));
 #endif
 }
 #endif

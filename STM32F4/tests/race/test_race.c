@@ -224,9 +224,10 @@ static void test_task_plan(void)
     static const uint8_t positions[2][3] = {{3U, 2U, 1U}, {2U, 1U, 3U}};
     RaceTaskPlan plan;
     const TaskAction *action;
-    uint8_t pick_count = 0U;
+    uint8_t pick_count = 0U, storage_visits[2] = {0U, 0U};
+    uint8_t flat_count = 0U, stack_count = 0U;
     assert(RaceTaskPlan_Build(&plan, colors, positions));
-    assert(plan.count == 34U);
+    assert(plan.count == 30U);
     assert(RaceTaskPlan_Start(&plan));
     action = RaceTaskPlan_Current(&plan);
     assert(action->kind == TASK_ACTION_PICK && action->batch == 0U &&
@@ -234,13 +235,23 @@ static void test_task_plan(void)
     while (!RaceTaskPlan_Done(&plan)) {
         action = RaceTaskPlan_Current(&plan);
         if (action->kind == TASK_ACTION_PICK) pick_count++;
+        assert(action->batch < 2U);
+        if (action->kind == TASK_ACTION_GO_STORAGE) storage_visits[action->batch]++;
+        if (action->kind == TASK_ACTION_PLACE_STORAGE) {
+            assert(action->batch == 0U);
+            flat_count++;
+        }
         if (action->kind == TASK_ACTION_STACK_STORAGE) {
+            assert(action->batch == 1U);
+            stack_count++;
             if (action->color == 2U) assert(action->position == 1U);
             if (action->color == 5U) assert(action->position == 2U);
             if (action->color == 4U) assert(action->position == 3U);
         }
         assert(RaceTaskPlan_Advance(&plan));
     }
+    assert(storage_visits[0] == 1U && storage_visits[1] == 1U);
+    assert(flat_count == 3U && stack_count == 3U);
     assert(pick_count == 6U && RaceTaskPlan_Current(&plan) == 0);
 }
 
@@ -313,13 +324,28 @@ static void test_v4_qr_session_contract(void)
     assert(vision.result == VISION_RESULT_QR_DONE);
     inject_v4(&vision, 7U, "IDLE", 20U, 0);
     assert(vision.phase == VISION_IDLE);
+    assert(Vision_RequestCheck(&vision, 23, 1, 'B', 1, 0));
+    assert(strstr(v4_tx, "CHECK,23,1,B,1,0*"));
+    inject_v4(&vision, 8, "CAN,24,1", 22, 0);
+    inject_v4(&vision, 9, "CAN,23,2", 22, 0);
+    inject_v4(&vision, 10, "DID,23,1", 22, 0);
+    inject_v4(&vision, 11, "CAN,23,1", 22, 1);
+    assert(!vision.check_received);
+    inject_v4(&vision, 12, "CAN,23,1", 22, 0);
+    assert(vision.check_received);
+    assert(Vision_RequestCheck(&vision, 23, 1, 'A', 1, 0));
+    assert(!vision.check_received);
+    inject_v4(&vision, 13, "CAN,23,1", 23, 0);
+    assert(!vision.check_received);
+    inject_v4(&vision, 14, "DID,23,1", 23, 0);
+    assert(vision.check_received);
     assert(Vision_StartQrJob(&vision, 24U, 30U));
     assert(vision.qr_session == 24U);
     /* Stale QR from scan 23 cannot activate the new scan. */
-    inject_v4(&vision, 8U, "ACK,JOB,1", 31U, 0);
-    inject_v4(&vision, 9U, "QR,156+123+516+231,23", 32U, 0);
+    inject_v4(&vision, 15U, "ACK,JOB,1", 31U, 0);
+    inject_v4(&vision, 16U, "QR,156+123+516+231,23", 32U, 0);
     assert(!Vision_TakeQr(&vision, code));
-    inject_v4(&vision, 10U, "QR,156+123+516+231,24", 32U, 0);
+    inject_v4(&vision, 17U, "QR,156+123+516+231,24", 32U, 0);
     assert(Vision_TakeQr(&vision, code));
 }
 

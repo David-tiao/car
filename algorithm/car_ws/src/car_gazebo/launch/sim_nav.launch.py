@@ -27,9 +27,12 @@ def setup(context):
                     parameters=[{"use_sim_time": True, "map_yaml": str(map_yaml), "mask_yaml": str(mask)}],
                     remappings=[("/car/navigation/keepout_mask", "/keepout_filter_mask")], output="screen")
     # Existing scripts remain read-only and publish the same route and lock contracts.
-    lock_node = ExecuteProcess(cmd=[sys.executable, str(lock), "--expected", "2"], output="screen")
+    expected = int(LaunchConfiguration("expected_obstacles").perform(context))
+    if expected < 1:
+        raise ValueError("expected_obstacles must be positive")
+    lock_node = ExecuteProcess(cmd=[sys.executable, str(lock), "--expected", str(expected)], output="screen")
     topology_node = ExecuteProcess(cmd=[sys.executable, str(topology), "--start", start,
-                                        "--goal", goal, "--expected-obstacles", "2"], output="screen")
+                                        "--goal", goal, "--expected-obstacles", str(expected)], output="screen")
     controller = Node(package="nav2_controller", executable="controller_server",
                       name="controller_server", parameters=[params],
                       remappings=[("cmd_vel", "/car_gz/nav_cmd_vel")], output="screen")
@@ -37,7 +40,7 @@ def setup(context):
                      name="lifecycle_manager_sim", parameters=[{"use_sim_time": True,
                          "autostart": True, "node_names": ["controller_server"]}], output="screen")
     route = Node(package="car_gazebo", executable="follow_locked_route.py",
-                 parameters=[{"use_sim_time": True, "topology_file": str(topology)}], output="screen")
+                 parameters=[{"use_sim_time": True, "topology_file": str(topology), "expected_obstacles": expected}], output="screen")
     processes = [map_node, lock_node, topology_node, controller, lifecycle, route]
     return [RegisterEventHandler(OnProcessExit(target_action=p,
                on_exit=[EmitEvent(event=Shutdown(reason="SIM navigation process exited"))]))
@@ -47,6 +50,7 @@ def setup(context):
 def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument("map_dir", description="Absolute competition_v1 directory"),
+        DeclareLaunchArgument("expected_obstacles", default_value="2"),
         DeclareLaunchArgument("start", default_value="C3"),
         DeclareLaunchArgument("goal", default_value="A1"),
         OpaqueFunction(function=setup),

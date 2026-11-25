@@ -79,7 +79,7 @@ void RaceUi_Init(void)
 void RaceUi_Poll(const RaceFsm *race, uint32_t now, uint8_t warmed_up)
 {
     static const char *const states[] = {
-        "READY", "RUNNING", "MATERIAL READY", "FAULT", "STOPPED"
+        "READY", "RUNNING", "ROUTE DONE", "FAULT", "STOPPED", "TASK"
     };
     static const char *const actions[] = {"MOVE", "TURN", "SETTLE", "SCAN"};
     char line[32];
@@ -101,10 +101,20 @@ void RaceUi_Poll(const RaceFsm *race, uint32_t now, uint8_t warmed_up)
                            actions[race->actions[race->action_index].kind]);
             text_line(12U, line);
             text_line(24U, "PRESS:STOP");
+        } else if (race->state == RACE_TASK) {
+            text_line(12U, "VISION / ARM");
+            text_line(24U, "PRESS:STOP");
+        } else if (race->state == RACE_DONE) {
+            text_line(12U, "PARKED");
         } else {
             (void)snprintf(line, sizeof(line), "ERROR:%u RESET TO ARM",
                            (unsigned)race->error);
             text_line(12U, line);
+            if (race->error == RACE_ERROR_ROUTE_UNTAUGHT) text_line(24U, "TEACH STATION ROUTE");
+            else if (race->error == RACE_ERROR_ARM) text_line(24U, "CHECK ARM / HEIGHT");
+            else if (race->error == RACE_ERROR_VISION_CHECK)
+                text_line(24U, Vision_GetDefault()->last_error[0] ?
+                          Vision_GetDefault()->last_error : "CHECK CAMERA VIEW");
         }
         text_line(36U, race->task_code);
         text_line(48U, RaceVision_Healthy() ? "USART3:RX READY" : "USART3:FAULT");

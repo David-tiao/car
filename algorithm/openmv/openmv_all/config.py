@@ -88,3 +88,25 @@ HOME_MIN_PIXELS = 1200
 # 电控 architecture-v2 使用 V4；原 V5 主控可显式选择 V5。
 UART_PROTOCOL = 'V4'
 RING_TARGET_X, RING_TARGET_Y = 160, 120
+
+# In the fixed camera view, teach (u, v, half_width) for each car pocket
+# (slot 1..3). The tray angle can differ before and after a movement.
+# Each empty pocket needs a visible patch of the taught LAB background.
+# Use a marker on the vehicle only. None means "no physical evidence".
+TRAY_WINDOWS = {
+    ('PICK', 'B'): (None, None, None), ('PICK', 'A'): (None, None, None),
+    ('PUT', 'B'): (None, None, None), ('PUT', 'A'): (None, None, None),
+}
+# Override a view when the tray reaches a different angle on a particular
+# transfer. Keys are (mission step 1..24, 'B'/'A'), values use the same format.
+TRAY_STEP_WINDOWS = {}
+TRAY_EMPTY_LAB = None
+TRAY_EMPTY_FRACTION = 0.55
+# With an oblique camera, teach disjoint top-face windows at one and two
+# levels per storage ring. If the levels look identical, use another view.
+STACK_WINDOWS = {1: (None, None), 2: (None, None), 3: (None, None)}
+
+# At the taught home pose, choose a ground-only (u, v, half_width) patch for
+# each start zone. Calibrate the blue coverage threshold on the real floor.
+HOME_WINDOWS = {1: None, 2: None}
+HOME_BLUE_FRACTION = 0.75

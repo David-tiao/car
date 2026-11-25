@@ -530,6 +530,13 @@ void PickFsm_Abort(PickFsm *fsm)
 {
     if (fsm == 0) return;
     AppStepper_Stop(PICK_LIFT_AXIS);
+    /* Hold each moving servo at its last issued pulse. Disabled channels stay off. */
+    if (Servo_IsBusy(PICK_GRIPPER_SERVO))
+        Servo_SetAngleImmediate(PICK_GRIPPER_SERVO, Servo_GetAngle(PICK_GRIPPER_SERVO));
+    if (Servo_IsBusy(PICK_ROTATE_SERVO))
+        Servo_SetAngleImmediate(PICK_ROTATE_SERVO, Servo_GetAngle(PICK_ROTATE_SERVO));
+    if (Servo_IsBusy(PICK_TURNTABLE_SERVO))
+        Servo_SetAngleImmediate(PICK_TURNTABLE_SERVO, Servo_GetAngle(PICK_TURNTABLE_SERVO));
     fsm->state = PICK_ABORTED;
 }
 

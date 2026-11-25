@@ -11,7 +11,8 @@ typedef enum {
     RACE_RUNNING,
     RACE_DONE,
     RACE_FAULT,
-    RACE_ABORTED
+    RACE_ABORTED,
+    RACE_TASK
 } RaceState;
 
 typedef enum {
@@ -28,7 +29,10 @@ typedef enum {
     RACE_ERROR_SCAN_TIMEOUT,
     RACE_ERROR_IMU,
     RACE_ERROR_LINK,
-    RACE_ERROR_LOOP_STALL
+    RACE_ERROR_LOOP_STALL,
+    RACE_ERROR_ROUTE_UNTAUGHT,
+    RACE_ERROR_VISION_CHECK,
+    RACE_ERROR_ARM
 } RaceError;
 
 typedef struct {
@@ -67,6 +71,8 @@ void Race_Init(RaceFsm *race);
 uint8_t Race_SelectZone(RaceFsm *race, uint8_t zone);
 uint8_t Race_RunActions(RaceFsm *race, const RaceAction *actions, uint8_t count,
                        const RaceFeedback *feedback, uint32_t now);
+uint8_t Race_StartTaskRoute(RaceFsm *race, uint8_t leg, uint8_t ring,
+                            const RaceFeedback *feedback, uint32_t now);
 uint8_t Race_StartQrRoute(RaceFsm *race, const RaceFeedback *feedback, uint32_t now);
 void Race_Tick(RaceFsm *race, const RaceFeedback *feedback, uint32_t now);
 void Race_Abort(RaceFsm *race);

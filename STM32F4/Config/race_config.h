@@ -23,7 +23,25 @@
 #define RACE_SCAN_TIMEOUT_MS        8000U
 #define RACE_MATERIAL_TIMEOUT_MS    12000U
 #define RACE_PICK_ENABLE            1U
-#define RACE_PICK_DIRECT_KEY_TEST   1U
+#ifndef RACE_PICK_DIRECT_KEY_TEST
+#define RACE_PICK_DIRECT_KEY_TEST   0U
+#endif
+#define RACE_CHECK_TIMEOUT_MS       30000U
+#define RACE_CHECK_RETRY_MS         500U
+/* Taught absolute poses in metres/radians relative to the selected start.
+ * Route rows: {zone, leg, ring, x, y, yaw}; rows for a key run in order.
+ * Leg 1 raw->rough, 2 rough->storage, 3 storage->raw, 4 storage->home.
+ * Leg 5/6 are rough/storage docking at ring 1..3. Transit uses ring 0.
+ * Optional legs 7 (start->QR) and 8 (QR->raw) replace the stock QR route
+ * together for that zone; include a stationary QR viewpoint at end of leg 7.
+ * Zone 0 is a sentinel, never selected. No field measurements shipped. */
+#ifndef RACE_TAUGHT_ROUTES
+#define RACE_TAUGHT_ROUTES {0U, 0U, 0U, 0.0f, 0.0f, 0.0f}
+#endif
+/* Positive distance, in lift motor steps, from flat release to upper level. */
+#ifndef RACE_STACK_EXTRA_STEPS
+#define RACE_STACK_EXTRA_STEPS 0
+#endif
 #define RACE_PICK_TURNTABLE_ENABLE  1U
 #define RACE_PICK_TURNTABLE_ONLY    0U
 #define RACE_PICK_ROTATE_HOME_DEG  0.0f

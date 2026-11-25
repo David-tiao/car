@@ -108,6 +108,10 @@ typedef struct {
     uint16_t qr_session;
     VisionPhase phase;
     VisionResult result;
+    uint16_t check_session;
+    uint8_t check_step;
+    char check_phase;
+    uint8_t check_received;
     VisionPosition pos;
     uint8_t qr_ready;
     char qr_code[VISION_TASK_CODE_SIZE];
@@ -139,6 +143,8 @@ int Vision_StartQrJob(VisionContext *vision, uint32_t session, uint32_t now_ms);
 int Vision_StartJobTol(VisionContext *vision, unsigned code,
                        unsigned tolerance_x_px, unsigned tolerance_y_px,
                        uint32_t now_ms);
+int Vision_RequestCheck(VisionContext *vision, uint16_t session, uint8_t step,
+                        char phase, uint8_t color, uint8_t ring);
 int Vision_Cancel(VisionContext *vision);
 int Vision_Reset(VisionContext *vision);
 int Vision_QueryStatus(VisionContext *vision);
