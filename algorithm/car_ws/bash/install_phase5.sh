@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd -- "$HERE/.." && pwd -P)"
-WS="${1:-$HOME/Desktop/car/algorithm/car_ws}"
+WS="${1:-${CAR_WS:-$ROOT}}"
 [[ -d "$WS/src" && -d "$WS/maps/competition_v1" ]] || {
  echo "ERROR: wrong workspace / missing competition map: $WS" >&2;exit 2;
 }

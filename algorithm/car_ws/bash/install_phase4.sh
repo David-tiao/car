@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 ROOT="$(cd -- "$HERE/.." && pwd -P)"
-WS="${1:-$HOME/Desktop/car/algorithm/car_ws}"
+WS="${1:-${CAR_WS:-$ROOT}}"
 [[ -d "$WS/src/car_interfaces/msg" && -f "$WS/src/car_interfaces/CMakeLists.txt" ]] || { echo "ERROR: car_interfaces not found in $WS" >&2; exit 2; }
 [[ -d "$WS/src/car_serial_link" ]] || { echo 'ERROR: CAR-LINK phase 3 must already be installed.' >&2; exit 2; }
 [[ -d "$WS/bash" ]] || mkdir -p -- "$WS/bash"

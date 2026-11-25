@@ -13,3 +13,16 @@
 **项目文件**：启动入口均归入 `car_ws/bash`；算法仍在 `maps/competition_v1`，配置在 `config/x3.yaml`；运行记录与日志保留在 `~/.local/state/competition_v6_viewer/`。
 
 **提示**：仅迁移脚本不等于雷达驱动已编译。移动 ROS 工作空间后，需通过 `bash lidar.sh doctor` 在线检查 `ydlidar_ros2_driver` 注册状态。
+
+**可移植部署**：从脚本真实目录自动定位工作区；不依赖 Desktop/workplace。可使用 CAR_WS、CAR_ROS_SETUP 等显式环境覆盖。运行 `python3 test_portability.py -v` 检查离线路径契约；`bash repair_car_ws_lidar.sh doctor` 只检查 SDK；`build` 使用现有 SDK，缺失时不会默认下载；`--allow-sdk-build` 是单独授权的本地 SDK 构建。操作及边界见 [跨电脑部署与路径验收](../../../docs/ROADMAP_AND_ACCEPTANCE.md#跨电脑部署与路径验收)。
+
+- `bash deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：原生部署、指定包集合及构建验证（不自动安装依赖或启动硬件）。默认自动选择本机 pc/pi5；sim 需要匹配的 Fortress 或 Harmonic 模拟器及 ROS bridge。
+- `python3 audit_lidar_artifacts.py --list`：只读列出旧雷达 Git 跟踪产物，不删除、不修改索引。参见跨电脑部署与路径验收章节。
+
+固定场景运行验收（99fcf34）：`bash gazebo.sh test C2` 与 `bash gazebo.sh test A1` 均实际通过，分别 1/1、4/4 路段，误差 0.0387m、0.0374m，零驱动与静止里程计。[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287)。前提 Fortress/Humble；GUI 与真实镜像尚待现场验证。
+
+`CAR_GAZEBO_BACKEND=auto|fortress|harmonic`（默认 auto）：按已加载 ROS overlay 的实际桥接库 ABI 选择、检查 Gazebo major；不匹配即拒绝，无安装/替换行为。Harmonic 需要单独配对 Humble bridge，详见操作文档及 [双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228)。
+
+2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。
+
+P4：更新旧 checkout 前使用 [迁移备份步骤](../../../docs/ROADMAP_AND_ACCEPTANCE.md#历史构建产物迁移)。更新后 `python3 audit_lidar_artifacts.py --expect-empty` 应报告 TRACKED=0；`bash repair_car_ws_lidar.sh doctor`、`build`、`verify` 依次执行，verify 只验证包注册/ELF/动态库，不打开串口。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 双架构 PASS。

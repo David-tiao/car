@@ -1,0 +1,62 @@
+name: Native YDLIDAR rebuild after artifact migration
+
+on:
+  pull_request:
+    paths:
+      - "algorithm/car_ws/bash/repair_car_ws_lidar.sh"
+      - "algorithm/car_ws/bash/backup_lidar_artifacts.py"
+      - "algorithm/car_ws/bash/test_lidar_artifact_migration.py"
+      - "algorithm/car_ws/src/ydlidar_ros2_driver/**"
+      - "algorithm/car_ws/build_lidar_repair_*/**"
+      - "algorithm/car_ws/log_lidar_repair_*/**"
+      - "algorithm/car_ws/install_oneclick_lidar*/**"
+      - ".github/workflows/lidar_native_rebuild.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rebuild:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-22.04-arm]
+    runs-on: ${{ matrix.runner }}
+    container: ros:humble-ros-base-jammy
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    env:
+      DEBIAN_FRONTEND: noninteractive
+      ROS_DOMAIN_ID: "86"
+      ROS_LOCALHOST_ONLY: "1"
+      SDK_COMMIT: ad8e30f9e9315d4bd7544df85571072fdbcd31ea
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native dependencies and pinned SDK
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends git ca-certificates build-essential cmake pkg-config python3-colcon-common-extensions ros-humble-visualization-msgs ros-humble-geometry-msgs ros-humble-sensor-msgs ros-humble-std-srvs util-linux
+          root="$(mktemp -d "$RUNNER_TEMP/car-lidar-XXXXXXXX")"
+          printf 'LIDAR_CI_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
+          git clone --depth 1 --branch V1.2.7 https://github.com/YDLIDAR/YDLidar-SDK.git "$root/sdk-src"
+          test "$(git -C "$root/sdk-src" rev-parse HEAD)" = "$SDK_COMMIT"
+          cmake -S "$root/sdk-src" -B "$root/sdk-build" -DCMAKE_INSTALL_PREFIX="$root/sdk-install" -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=OFF -DBUILD_TEST=OFF -DBUILD_CSHARP=OFF
+          cmake --build "$root/sdk-build" --parallel 2
+          cmake --install "$root/sdk-build"
+      - name: Rebuild driver in relocated workspace without any old overlay
+        run: |
+          root="$LIDAR_CI_ROOT"
+          mkdir "$root/checkout"
+          git -c safe.directory="$(pwd -P)" archive HEAD algorithm/car_ws/bash algorithm/car_ws/config algorithm/car_ws/src/ydlidar_ros2_driver | tar -x -C "$root/checkout"
+          export CAR_WS="$root/checkout/algorithm/car_ws"
+          export CAR_YDLIDAR_SDK_PREFIX="$root/sdk-install"
+          test ! -e "$CAR_WS/install_oneclick_lidar"
+          cd /tmp
+          bash "$CAR_WS/bash/repair_car_ws_lidar.sh" doctor
+          bash "$CAR_WS/bash/repair_car_ws_lidar.sh" build
+          bash "$CAR_WS/bash/repair_car_ws_lidar.sh" verify
+          test -f "$CAR_WS/src/ydlidar_ros2_driver/COLCON_IGNORE"
+          echo "PASS: native lidar rebuild, no hardware opened"

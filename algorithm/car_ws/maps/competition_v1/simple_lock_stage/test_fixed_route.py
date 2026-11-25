@@ -10,7 +10,7 @@ sys.path.insert(0, str(HERE))
 sys.path.insert(0, str(HERE.parent / 'topology_stage6'))
 
 from lock_core import ObstacleLock, laser_clusters, roads_at
-from lock_obstacles import static_map_free
+from lock_obstacles import static_map_free, PendingScans
 from road_topology import EDGES, canonical, shortest, plan_mission, validate_lock
 
 
@@ -116,6 +116,83 @@ class FixedRouteTests(unittest.TestCase):
     def test_clustering_rejects_invalid_metadata(self):
         self.assertEqual(laser_clusters([1.], 0, 0), [])
         self.assertEqual(laser_clusters([1.], 0, .02, min_range=2, max_range=1), [])
+
+    def test_gazebo_two_obstacles_crossing_scan_seam(self):
+        # Analytic ray/circle intersections matching the C3 SIM fixture.
+        # A target directly behind the robot straddles -pi/+pi.
+        for count, step in ((720, math.tau / 719), (720, math.tau / 720)):
+            for sign in (1, -1):
+                first = -sign * math.pi
+                targets = [(-.55, 0.), (-.85, -.55)]
+                readings = []
+                for i in range(count):
+                    a = first + i * sign * step
+                    dx, dy = math.cos(a), math.sin(a)
+                    hits = []
+                    for x, y in targets:
+                        projection = x * dx + y * dy
+                        disc = .025**2 - (x*dy-y*dx)**2
+                        if projection > 0 and disc >= 0:
+                            hits.append(projection - math.sqrt(disc))
+                    readings.append(min(hits, default=math.inf))
+                groups = laser_clusters(readings, first, sign * step)
+                self.assertEqual(len(groups), 2, groups)
+                engine = ObstacleLock()
+                for _ in range(8):
+                    engine.observe([(2.05+x, 2.05+y) for x,y,_ in groups])
+                self.assertEqual(engine.state, 'LOCKED')
+                self.assertEqual(engine.status()['blocked_roads'], ['B2-B3', 'B3-C3'])
+                # A genuine third compact object remains a conflict.
+                for _ in range(5):
+                    engine.observe([(2.05+x, 2.05+y) for x,y,_ in groups] + [(2.05, 1.55)])
+                self.assertEqual(engine.state, 'CONFLICT')
+
+    def test_partial_fov_and_invalid_endpoint_not_joined(self):
+        # Short partial scan: endpoints close in space but unrelated runs.
+        readings = [1., 1., math.inf, math.inf, 1., 1.]
+        self.assertEqual(len(laser_clusters(readings, 0., .01)), 2)
+        step = math.tau / 719
+        readings = [math.inf] * 720
+        readings[1:4] = [.5] * 3
+        readings[-3:] = [.5] * 3
+        self.assertEqual(len(laser_clusters(readings, -math.pi, step)), 2)
+
+    def test_seam_join_before_span_and_count_filters(self):
+        step = math.tau / 719
+        readings = [math.inf] * 720
+        readings[0] = .55
+        readings[-1] = .55
+        self.assertEqual(laser_clusters(readings, -math.pi, step), [])
+        self.assertEqual(len(laser_clusters(readings, -math.pi, math.tau / 720)), 1)
+        readings[:20] = [.55] * 20
+        readings[-20:] = [.55] * 20
+        # Each half is compact; their full circular span exceeds .14m.
+        self.assertEqual(laser_clusters(readings, -math.pi, step), [])
+
+    def test_pending_scan_waits_without_blocking_and_preserves_order(self):
+        q = PendingScans()
+        consumed = []
+        available = {}
+        q.push(100, "first", 1.)
+        q.push(200, "second", 1.1)
+        q.push(100, "duplicate", 1.1)
+        available["second"] = "tf200"
+        q.drain(1.2, available.get, lambda *x: consumed.append(x))
+        self.assertEqual(consumed, [])
+        available["first"] = "tf100"
+        q.drain(1.3, available.get, lambda *x: consumed.append(x))
+        self.assertEqual(consumed, [(100, "first", "tf100"), (200, "second", "tf200")])
+        self.assertEqual(q.counters()["rejected"], 1)
+
+    def test_pending_scan_bounded_and_expired_not_reused(self):
+        q = PendingScans(max_pending=2, max_wait=.5)
+        q.push(1, "old", 1.)
+        q.push(2, "expire", 1.1)
+        q.push(3, "fresh", 1.5)
+        consumed = []
+        q.drain(1.7, lambda msg: "tf", lambda *x: consumed.append(x))
+        self.assertEqual(consumed, [(3, "fresh", "tf")])
+        self.assertEqual(q.counters(), {"pending": 0, "expired": 1, "overflow": 1, "rejected": 0})
 
     def test_clustering(self):
         # A tiny circular target over 3 adjacent angles around 1.0 m.

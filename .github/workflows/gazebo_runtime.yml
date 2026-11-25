@@ -1,4 +1,4 @@
-name: Gazebo Fortress ROS2 runtime acceptance
+name: Gazebo Fortress and Harmonic ROS2 runtime acceptance
 
 on:
   pull_request:
@@ -15,6 +15,12 @@ permissions:
 
 jobs:
   sim-runtime:
+    strategy:
+      fail-fast: false
+      matrix:
+        backend: [fortress, harmonic]
+        goal: [C2, A1]
+    name: ${{ matrix.backend }} SIM C3 to ${{ matrix.goal }}
     runs-on: ubuntu-22.04
     container: ros:humble-ros-base-jammy
     timeout-minutes: 25
@@ -26,14 +32,25 @@ jobs:
       ROS_DOMAIN_ID: "84"
       ROS_LOCALHOST_ONLY: "1"
       LIBGL_ALWAYS_SOFTWARE: "1"
+      SIM_GOAL: ${{ matrix.goal }}
+      CAR_GAZEBO_BACKEND: ${{ matrix.backend }}
     steps:
       - uses: actions/checkout@v4
-      - name: Install Humble Fortress and Nav2 runtime
+      - name: Install matching Humble simulator and Nav2 runtime
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends ros-humble-ros-gz ros-humble-nav2-bringup ros-humble-rviz2 ros-humble-robot-state-publisher python3-colcon-common-extensions xvfb xauth libgl1-mesa-dri util-linux
+          if [[ "$CAR_GAZEBO_BACKEND" == harmonic ]]; then
+            apt-get install -y --no-install-recommends curl ca-certificates
+            curl --fail --show-error --silent --location https://packages.osrfoundation.org/gazebo.gpg --output /usr/share/keyrings/pkgs-osrf-archive-keyring.gpg
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/pkgs-osrf-archive-keyring.gpg] https://packages.osrfoundation.org/gazebo/ubuntu-stable jammy main" > /etc/apt/sources.list.d/gazebo-stable.list
+            apt-get update
+            apt-get install -y --no-install-recommends gz-harmonic ros-humble-ros-gzharmonic
+          else
+            apt-get install -y --no-install-recommends ros-humble-ros-gz
+          fi
+          apt-get install -y --no-install-recommends ros-humble-nav2-bringup ros-humble-rviz2 ros-humble-robot-state-publisher python3-colcon-common-extensions xvfb xauth libgl1-mesa-dri util-linux
           source /opt/ros/humble/setup.bash
-          ign gazebo --versions
+          python3 algorithm/car_ws/src/car_gazebo/scripts/gazebo_backend.py --backend "$CAR_GAZEBO_BACKEND"
           ros2 interface show ros_gz_interfaces/srv/SetEntityPose
       - name: Build actual ROS2 packages
         run: |
@@ -43,16 +60,16 @@ jobs:
           source install/setup.bash
           colcon test --packages-select car_gazebo
           colcon test-result --verbose
-      - name: Headless actual SIM route C3 to C2
+      - name: Headless actual SIM route C3 to ${{ matrix.goal }}
         run: |
           cd algorithm/car_ws
           export CAR_GAZEBO_RUN_DIR="$RUNNER_TEMP/car_gazebo"
-          xvfb-run -a -s "-screen 0 1280x720x24" bash bash/gazebo.sh test C2
+          xvfb-run -a -s "-screen 0 1280x720x24" bash bash/gazebo.sh test "$SIM_GOAL"
       - name: Upload run logs and generated scene
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: gazebo-runtime-logs
+          name: gazebo-runtime-logs-${{ matrix.backend }}-${{ matrix.goal }}
           path: ${{ runner.temp }}/car_gazebo/
           if-no-files-found: warn
           retention-days: 14

@@ -4,8 +4,10 @@
 # keyboard: existing WASDQE ROS2 local loopback; actual STM32 motor TX stays disabled.
 set -Eeuo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-WS="$(cd -- "$HERE/.." && pwd -P)"
-REPO="$(cd -- "$WS/../.." && pwd -P)"
+source "$HERE/lib/common.sh"
+car_check_workspace
+WS="$CAR_WS"
+REPO="$(cd -- "$HERE/../../.." && pwd -P)"
 SIM="${CAR_SIM2REAL_ROOT:-$REPO/sim2real}"
 CMD="${1:-doctor}"
 if (($#)); then shift; fi
@@ -18,13 +20,8 @@ require_site() {
   }
 }
 source_ros() {
-  [[ -f /opt/ros/humble/setup.bash ]] || { echo '[ERROR] ROS2 Humble not found at /opt/ros/humble' >&2; return 2; }
-  local had_u=0
-  case "$-" in *u*) had_u=1;; esac
-  set +u
-  source /opt/ros/humble/setup.bash
-  [[ ! -f "$WS/install/setup.bash" ]] || source "$WS/install/setup.bash"
-  if ((had_u)); then set -u; fi
+  car_source_ros_base || return $?
+  [[ ! -f "$WS/install/setup.bash" ]] || car_source_setup "$WS/install/setup.bash"
 }
 
 case "$CMD" in

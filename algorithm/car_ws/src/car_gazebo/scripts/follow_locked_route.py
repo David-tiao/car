@@ -56,6 +56,15 @@ def matching_lock(lock, route_key):
             tuple(sorted(set(roads))) == route_key[1])
 
 
+def fresh_lock_scan(lock, clock_stamp):
+    """A live lock heartbeat must contain recent exact-time transformed scan evidence."""
+    stamp = lock.get("scan_tf_stamp_ns") if isinstance(lock, dict) else None
+    return (isinstance(lock, dict) and lock.get("scan_tf_ready") is True
+            and type(stamp) is int and stamp > 0
+            and type(clock_stamp) is int and clock_stamp > 0
+            and -100_000_000 <= clock_stamp - stamp <= 1_500_000_000)
+
+
 def dense_path(points, spacing=.025):
     if len(points) < 2 or not math.isfinite(spacing) or spacing <= 0:
         raise ValueError("invalid interpolation")
@@ -68,6 +77,21 @@ def dense_path(points, spacing=.025):
         output.extend((a[0] + (b[0]-a[0])*i/count,
                        a[1] + (b[1]-a[1])*i/count) for i in range(1, count+1))
     return output
+
+
+def segment_paths(names, nodes):
+    """One immutable path per adjacent edge of the already validated locked route."""
+    if len(names) < 2:
+        raise ValueError("route requires at least one edge")
+    return tuple(tuple(dense_path([nodes[a], nodes[b]])) for a, b in zip(names, names[1:]))
+
+
+def segment_settled(xy, target, speed, elapsed, odom_after_result):
+    """Check fresh measured stop and position at a junction, not only action status."""
+    return (xy is not None and speed is not None and odom_after_result is True
+            and all(math.isfinite(v) for v in (*xy, *target, *speed, elapsed))
+            and .15 <= elapsed <= 3. and 0 <= speed[0] <= .025
+            and 0 <= speed[1] <= .05 and math.dist(xy, target) <= .06)
 
 
 def main():
@@ -103,6 +127,10 @@ def main():
             self.clock_reset = False
             self.points = []
             self.xy = None
+            self.odom_speed = None
+            self.odom_yaw = None
+            self.completed_segments = 0
+            self.total_segments = 0
             self.status_wall = self.path_wall = self.odom_wall = self.scan_wall = self.clock_wall = -math.inf
             self.clock_stamp = 0
             self.run = None
@@ -149,10 +177,14 @@ def main():
 
         def on_odom(self, msg):
             p = msg.pose.pose.position
+            v, w = msg.twist.twist.linear, msg.twist.twist.angular
+            q = msg.pose.pose.orientation
             if (msg.header.frame_id == "odom" and msg.child_frame_id == "base_link" and
-                    all(math.isfinite(v) for v in (p.x, p.y)) and
+                    all(math.isfinite(a) for a in (p.x, p.y, v.x, v.y, w.z, q.x, q.y, q.z, q.w)) and
                     self.valid_stamp(msg.header.stamp)):
                 self.xy = (p.x, p.y)
+                self.odom_speed = (math.hypot(v.x, v.y), abs(w.z))
+                self.odom_yaw = math.atan2(2*(q.w*q.z + q.x*q.y), 1-2*(q.y*q.y + q.z*q.z))
                 self.odom_wall = time.monotonic()
 
         def on_scan(self, msg):
@@ -184,6 +216,8 @@ def main():
             key = route_contract(self.status, self.points, self.nodes, self.edges)
             if not matching_lock(self.lock_status, key):
                 raise ValueError("original lidar lock disagrees with route")
+            if not fresh_lock_scan(self.lock_status, self.clock_stamp):
+                raise ValueError("no recent exact-time TF scan evidence")
             return key
 
         def start(self, request, response):
@@ -196,36 +230,56 @@ def main():
                     raise ValueError("robot must be at route start within 0.06 m")
                 if not self.client.server_is_ready():
                     raise ValueError("Nav2 FollowPath action not ready")
-                path = PathMsg()
-                path.header.frame_id = "map"
-                path.header.stamp = self.get_clock().now().to_msg()
-                for x, y in dense_path(self.points):
-                    p = PoseStamped()
-                    p.header = path.header
-                    p.pose.position.x, p.pose.position.y = x, y
-                    p.pose.orientation.w = 1.
-                    path.poses.append(p)
-                goal = FollowPath.Goal()
-                goal.path = path
-                goal.controller_id = "FollowPath"
-                goal.goal_checker_id = "goal_checker"
-                now = time.monotonic()
-                self.run = {"key": key, "goal_xy": self.points[-1], "started": now,
+                legs = segment_paths(key[0], self.nodes)
+                self.completed_segments, self.total_segments = 0, len(legs)
+                self.run = {"key": key, "legs": legs, "index": 0,
+                            "started": time.monotonic(), "phase": "REQUESTED",
                             "handle": None, "stopping": False}
-                self.state, self.last_reason = "REQUESTED", ""
                 try:
-                    future = self.client.send_goal_async(goal)
-                except Exception:
-                    self.run = None
-                    self.state = "FAILED"
+                    self.send_segment()
+                except Exception as exc:
+                    if self.run is not None:
+                        self.finish("FAILED", str(exc))
                     raise
-                future.add_done_callback(self.accepted)
                 response.success = True
-                response.message = "SIM action requested; not an execution result"
+                response.message = "SIM route requested; each locked edge is executed and verified in order"
             except Exception as exc:
                 response.success = False
                 response.message = str(exc)
             return response
+
+        def send_segment(self):
+            run = self.run
+            leg = run["legs"][run["index"]]
+            if (self.xy is None or math.dist(self.xy, leg[0]) > .06
+                    or self.live_contract() != run["key"]
+                    or not self.client.server_is_ready()):
+                self.finish("FAILED", "segment start or live contract invalid")
+                raise ValueError(self.last_reason)
+            path = PathMsg()
+            path.header.frame_id = "map"
+            path.header.stamp = self.get_clock().now().to_msg()
+            for x, y in leg:
+                p = PoseStamped()
+                p.header = path.header
+                p.pose.position.x, p.pose.position.y = x, y
+                p.pose.orientation.w = 1.
+                path.poses.append(p)
+            goal = FollowPath.Goal()
+            goal.path = path
+            goal.controller_id = "FollowPath"
+            # The existing road graph has only XY nodes, no requested heading.
+            goal.goal_checker_id = "road_node_checker"
+            run["phase"], run["request_wall"] = "REQUESTED", time.monotonic()
+            run["handle"] = None
+            self.state, self.last_reason = "REQUESTED", ""
+            a, b = run["key"][0][run["index"]:run["index"]+2]
+            self.get_logger().info(f"SIM SEGMENT REQUEST: {a}->{b} ({run['index']+1}/{len(run['legs'])})")
+            try:
+                self.client.send_goal_async(goal).add_done_callback(self.accepted)
+            except Exception as exc:
+                self.finish("FAILED", str(exc))
+                raise
 
         def accepted(self, future):
             if self.run is None:
@@ -236,18 +290,22 @@ def main():
                 self.finish("FAILED", str(exc))
                 return
             if handle is None or not handle.accepted:
-                self.finish("REJECTED", "Nav2 rejected goal")
+                self.finish("STOPPED" if self.run["stopping"] else "REJECTED",
+                            self.last_reason if self.run["stopping"] else "Nav2 rejected goal")
                 return
             self.run["handle"] = handle
-            handle.get_result_async().add_done_callback(self.finished)
             if self.run["stopping"]:
                 handle.cancel_goal_async()
             else:
-                self.state = "FOLLOWING"
+                self.run["phase"] = self.state = "FOLLOWING"
+            handle.get_result_async().add_done_callback(self.finished)
 
         def stop(self, reason):
             self.out.publish(Twist())
             if self.run is not None and not self.run["stopping"]:
+                if self.run["phase"] == "SETTLING":
+                    self.finish("STOPPED", reason)
+                    return
                 self.run["stopping"] = True
                 self.state, self.last_reason = "STOPPING", reason
                 if self.run["handle"] is not None:
@@ -272,12 +330,41 @@ def main():
                 status = future.result().status
                 if self.run["stopping"]:
                     self.finish("STOPPED", self.last_reason)
-                elif (status == GoalStatus.STATUS_SUCCEEDED and self.xy is not None and
-                      time.monotonic()-self.odom_wall <= .5 and
-                      math.dist(self.xy, self.run["goal_xy"]) <= .06):
-                    self.finish("SUCCEEDED", "Nav2 result and SIM final pose agree")
-                else:
-                    self.finish("FAILED", "Nav2 result or final SIM pose did not pass")
+                    return
+                leg = self.run["legs"][self.run["index"]]
+                if (status != GoalStatus.STATUS_SUCCEEDED or self.xy is None or
+                        self.live_contract() != self.run["key"] or
+                        time.monotonic()-self.odom_wall > .5 or math.dist(self.xy, leg[-1]) > .06):
+                    self.finish("FAILED", f"Nav2 segment {self.run['index']+1} status={status}, pose={self.xy}, target={leg[-1]}, yaw={self.odom_yaw}, speed={self.odom_speed}")
+                    return
+                self.out.publish(Twist())
+                self.run["handle"] = None
+                self.run["phase"] = self.state = "SETTLING"
+                self.run["settle_wall"] = time.monotonic()
+            except Exception as exc:
+                self.finish("FAILED", str(exc))
+
+        def settle(self):
+            run = self.run
+            now = time.monotonic()
+            self.out.publish(Twist())
+            if now-run["settle_wall"] > 3.:
+                self.finish("FAILED", "segment stationary confirmation timeout")
+                return
+            target = run["legs"][run["index"]][-1]
+            # Fresh post-result odometry and a zero-command interval at each junction.
+            if not segment_settled(self.xy, target, self.odom_speed,
+                                   now-run["settle_wall"], self.odom_wall >= run["settle_wall"]):
+                return
+            self.completed_segments += 1
+            a, b = run["key"][0][run["index"]:run["index"]+2]
+            self.get_logger().info(f"SIM SEGMENT PASS: {a}->{b}, error={math.dist(self.xy, target):.4f} m, yaw={self.odom_yaw}, stationary")
+            if self.completed_segments == self.total_segments:
+                self.finish("SUCCEEDED", "all locked edges completed with stationary odometry")
+                return
+            run["index"] += 1
+            try:
+                self.send_segment()
             except Exception as exc:
                 self.finish("FAILED", str(exc))
 
@@ -289,7 +376,8 @@ def main():
                     raise ValueError("locked route changed")
                 if time.monotonic()-self.run["started"] > 120.:
                     raise ValueError("route wall-time limit")
-                if self.run["handle"] is None and time.monotonic()-self.run["started"] > 3.:
+                if (self.run["phase"] == "REQUESTED" and
+                        time.monotonic()-self.run["request_wall"] > 3.):
                     raise ValueError("action acceptance timeout")
             except ValueError as exc:
                 self.stop(str(exc))
@@ -297,17 +385,22 @@ def main():
             return True
 
         def on_velocity(self, msg):
-            if self.valid_run() and self.run["handle"] is not None:
+            if self.valid_run() and self.run["phase"] == "FOLLOWING" and self.run["handle"] is not None:
                 if all(math.isfinite(v) for v in (msg.linear.x, msg.linear.y, msg.angular.z)):
                     self.out.publish(msg)
                 else:
                     self.stop("NONFINITE_NAV_COMMAND")
 
         def tick(self):
-            if not self.valid_run() or self.run["handle"] is None:
+            if not self.valid_run():
+                self.out.publish(Twist())
+            elif self.run["phase"] == "SETTLING":
+                self.settle()
+            elif self.run["phase"] != "FOLLOWING" or self.run["handle"] is None:
                 self.out.publish(Twist())
             self.report.publish(String(data=json.dumps({"source_type": "GAZEBO_SIM",
-                "state": self.state, "reason": self.last_reason, "active": self.run is not None})))
+                "state": self.state, "reason": self.last_reason, "active": self.run is not None,
+                "completed_segments": self.completed_segments, "total_segments": self.total_segments})))
 
     rclpy.init()
     node = None

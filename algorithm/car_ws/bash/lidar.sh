@@ -4,22 +4,21 @@
 #       bash lidar.sh start    前台启动雷达，Ctrl+C/关闭终端可结束
 # 注意：当 V6 一键程序已运行时，不要同时执行本脚本抢占 /dev/ttyUSB0。
 set -Eeuo pipefail
-HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-WS="$(cd -- "$HERE/.." && pwd)"
-CFG="$WS/config/x3.yaml"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
+car_check_workspace
+WS="$CAR_WS"
+CFG="${CAR_LIDAR_CONFIG:-$WS/config/x3.yaml}"
 MODE="${1:-start}"
 if [[ "$MODE" != start && "$MODE" != doctor ]]; then
   echo "[ERROR] 用法: bash lidar.sh [start|doctor]" >&2; exit 2
 fi
-if [[ ! -r /opt/ros/humble/setup.bash || ! -r "$CFG" ]]; then
+if [[ ! -r "$CAR_ROS_SETUP" || ! -r "$CFG" ]]; then
   echo "[ERROR] ROS Humble 或雷达配置不存在：$CFG" >&2; exit 1
 fi
 # ROS 的 setup.bash 可能访问未定义 AMENT_* 环境变量，加载时临时关闭 -u。
-set +u
-source /opt/ros/humble/setup.bash
-[[ ! -r "$WS/install/setup.bash" ]] || source "$WS/install/setup.bash"
-[[ ! -r "$WS/install_oneclick_lidar/setup.bash" ]] || source "$WS/install_oneclick_lidar/setup.bash"
-set -u
+car_source_ros_base
+[[ ! -r "$WS/install/setup.bash" ]] || car_source_setup "$WS/install/setup.bash"
+[[ ! -r "$WS/install_oneclick_lidar/setup.bash" ]] || car_source_setup "$WS/install_oneclick_lidar/setup.bash"
 if ! ros2 pkg prefix ydlidar_ros2_driver >/dev/null 2>&1; then
   echo '[ERROR] 当前 car_ws 没有注册 ydlidar_ros2_driver；先检查/编译驱动，不能把源码存在当成编译成功。' >&2
   exit 1
@@ -27,6 +26,10 @@ fi
 if ! ros2 pkg executables ydlidar_ros2_driver | grep -Eq '^ydlidar_ros2_driver[[:space:]]+ydlidar_ros2_driver_node$'; then
   echo '[ERROR] 驱动包存在，但缺少可运行的 ydlidar_ros2_driver_node。' >&2; exit 1
 fi
+PREFIX="$(ros2 pkg prefix ydlidar_ros2_driver)"
+[[ -x "$PREFIX/lib/ydlidar_ros2_driver/ydlidar_ros2_driver_node" ]] || {
+  echo "[ERROR] 雷达可执行文件缺失或旧符号链接失效：$PREFIX" >&2; exit 1;
+}
 # 仅从实际 YAML 读取串口路径，不写死 ttyUSB0；拒绝非法路径。
 PORT="$(/usr/bin/python3 - "$CFG" <<'PYPORT'
 import pathlib,re,sys

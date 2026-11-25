@@ -21,7 +21,7 @@ def setup(context):
     sim = IncludeLaunchDescription(PythonLaunchDescriptionSource(
         str(share / "launch/gazebo_view.launch.py")), launch_arguments={
             "mode": "sim", "command_source": "nav2", "world": arg("world"),
-            "partition": arg("partition"), "server_only": arg("server_only")}.items())
+            "partition": arg("partition"), "server_only": arg("server_only"), "backend": arg("backend")}.items())
     nav = IncludeLaunchDescription(PythonLaunchDescriptionSource(
         str(share / "launch/sim_nav.launch.py")), launch_arguments={
             "map_dir": arg("map_dir"), "start": arg("start"), "goal": arg("goal")}.items())
@@ -38,6 +38,7 @@ def generate_launch_description():
         DeclareLaunchArgument("world"),
         DeclareLaunchArgument("map_dir"),
         DeclareLaunchArgument("partition"),
+        DeclareLaunchArgument("backend", default_value="fortress"),
         DeclareLaunchArgument("start", default_value="C3"),
         DeclareLaunchArgument("goal", default_value="A1"),
         DeclareLaunchArgument("server_only", default_value="false"),

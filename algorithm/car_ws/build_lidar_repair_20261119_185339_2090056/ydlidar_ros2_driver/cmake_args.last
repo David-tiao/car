@@ -1,1 +1,0 @@
-['-DBUILD_TESTING=OFF', '-Dydlidar_sdk_DIR=/usr/local/lib/cmake/ydlidar_sdk', '-DAMENT_CMAKE_SYMLINK_INSTALL=1']

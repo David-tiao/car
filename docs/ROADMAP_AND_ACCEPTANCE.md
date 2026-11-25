@@ -82,7 +82,7 @@
 在已拉取最新代码、没有进行中的 rebase 的 Ubuntu 工作区，先检查状态：
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 git status --short
 git fetch origin --prune
 git rev-parse origin/main
@@ -94,7 +94,7 @@ git log -1 --oneline origin/main
 完整软件离线验收（不需要物理 STM32/OpenMV/Pi）：
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 bash algorithm/car_ws/bash/test_all_offline.sh
 # 快速子集：
 bash algorithm/car_ws/bash/test_all_offline.sh --quick
@@ -105,7 +105,7 @@ bash algorithm/car_ws/bash/test_all_offline.sh --quick
 模块检查（用于定位问题，而非替代整套 CI）：
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 bash algorithm/car_ws/bash/web.sh doctor
 bash algorithm/car_ws/bash/test_keyboard_mapping.sh
 node sim2real/tests/test_keyboard_mechanism_preview.js
@@ -119,7 +119,7 @@ python3 -m unittest discover -s algorithm/openmv/tests \
 ## 3. 本机软件回环的验收
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 python3 sim2real/server.py --host 127.0.0.1 --port 8092
 # 浏览器访问 http://127.0.0.1:8092/keyboard
 ~~~
@@ -248,11 +248,11 @@ ros2 run tf2_ros tf2_echo map base_link
 ros2 run car_gazebo mirror_pose.py --ros-args -p enable_real_mirror:=true -p use_sim_time:=false
 ```
 
-成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。Gazebo 运行、服务调用、URDF/RViz 显示和实车镜像均尚未验收。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
+成功判据：服务类型一致；新鲜真实 TF 更新时镜像跟随 x/y/yaw，断 TF 时停止刷新且终端告警；没有 /cmd_vel 写入、模拟 /clock 或雷达回灌。源数据归属仍须现场确认。本段 REAL 镜像服务调用、桌面 URDF/RViz 显示与实车镜像尚未验收；独立 SIM 的无界面运动已通过下文运行 CI。官方接口依据：[Fortress world](https://gazebosim.org/docs/fortress/sdf_worlds/)、[Humble SetEntityPose](https://github.com/gazebosim/ros_gz/blob/humble/ros_gz_interfaces/srv/SetEntityPose.srv)。
 
-本次离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。
+初始历史离线检查（2026-11-24，开发分支）：Python 3.13.5 实际执行 py_compile，场景单元测试 4/4 通过；生成 preview/mirror XML 后实际解析，重复输出拒绝覆盖均通过。生成器、测试、镜像脚本、launch 及 zones.json 的 Git blob SHA 已与远程核对。ROS2 Humble / colcon / Fortress 当前环境缺失，构建、运行和真实数据联调保持 NOT_RUN。新增 CI 检查入口使用 Python 3.10，CI 结果以实际 workflow run 为准。
 
-### SIM 全向运动与虚拟雷达（手动测试，运行待验收）
+### SIM 全向运动与虚拟雷达（手动诊断）
 
 只在独立终端使用仿真域；先确认域 84 未被真实硬件/网页或其他实验占用。Ubuntu 22.04 / Humble / Fortress，已安装 robot_state_publisher、ros_gz_bridge、RViz2、colcon，并完成 car_gazebo、car_navigation 构建。每个 SIM 终端从仓库根目录进入 algorithm/car_ws：
 
@@ -298,9 +298,9 @@ python3 maps/competition_v1/topology_stage6/road_topology.py --start C3 --goal A
 rviz2 --ros-args -p use_sim_time:=true
 ```
 
-只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本采用原有 CLI，未变更源码；SIM TF/消息时间兼容性需在真实 ROS2 环境验证。手动模式下路径只是预览；使用下节 Nav2 专用模式才可执行，不能同时启动两套 map/lock/topology。不要将本节命令用于 REAL 域。
+只有扫描实测到两个可靠仿真障碍且道路状态 LOCKED_READY 才应出现锁路路径；看不到两个目标时保持等待，不能硬编码锁路结果。锁路脚本保留原有 CLI，已修复全周接缝及同时间戳 TF 等待；固定场景中 SIM TF/消息时间兼容性已通过实际运行 CI。手动模式下路径只是预览；使用下节 Nav2 专用模式才可执行，不能同时启动两套 map/lock/topology。不要将本节命令用于 REAL 域。
 
-### SIM Nav2 单段锁路执行（分步诊断）
+### SIM Nav2 锁路执行（分步诊断）
 
 已安装 ROS2 Humble 的 Nav2 controller、DWB、lifecycle manager 与前述 Gazebo 依赖，重新构建 car_gazebo、car_navigation；仅在域84运行。为使真实仿真起点与拓扑 C3 对应，使用 --start 2.05 2.05；启动 Nav2 速度源（手动 cmd_vel 不再被 adapter 接收）：
 
@@ -343,3 +343,218 @@ ros2 service call /car_gz/cancel_locked_route std_srvs/srv/Trigger '{}'
 断开原始锁路/道路状态/路径/仿真数据，或发生冲突，速度门应输出零并取消；未开始不得产生非零 nav_checked_cmd。SIM 时钟回退后必须重启导航，不允许复用旧锁。此为仿真验收预期，不代表已经运行成功。原有网页与实体控制链不变。
 
 离线全量软件回归：[Actions #45335849607](https://github.com/David-tiao/car/actions/runs/45335849607)，对应 56b503a，已通过。实际 ROS2/Fortress 无界面集成测试 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 已完成，结论 FAIL。依赖安装、两个 ROS2 包构建、colcon test 均 PASS；运行检查收到时钟、激光、里程计、TF、地图及 ACTIVE 控制器，但 60s 内未取得一致的锁路路径（`READINESS failed: confirmed live locked path`，锁路状态 `CONFLICT`）。未发起 FollowPath，原因尚未定位，不能视为运动已通过。保留原锁路与速度门，不降低预期障碍数量或跳过检查。[运行日志制品](https://github.com/David-tiao/car/actions/runs/45335849586/artifacts/14893073841)。下一步检查激光反射点簇及地图过滤，识别额外候选来源后复测。GUI 联合显示和真实小车映射仍需单独现场验收。
+
+## 跨电脑部署与路径验收
+
+适用于 Ubuntu 22.04 ROS2 Humble（PC x86_64、Pi5 ARM64 的相应系统与依赖）。所有示例从任意位置开始：先进入你自己的 car 仓库根目录，下面的 `$PWD` 指该目录，而不是固定用户路径。不要在 Conda 或 venv 终端启动 ROS；不要求安装 workplace。若本地有未提交文件，先检查并保留；禁止 reset --hard 或强制覆盖。
+
+```bash
+git status -sb
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/main
+```
+
+预期：检查当前分支、未提交项与远端提交；仅当合并不会覆盖本地修改时执行正常快进。迁移或换架构时，保留旧安装及重要忽略文件，使用新工作区构建，不复制旧二进制。在已准备好的 Humble 环境进行软件检查：
+
+```bash
+python3 algorithm/car_ws/bash/test_portability.py -v
+cd algorithm/car_ws
+bash bash/build.sh core
+source bash/env.sh
+bash bash/web.sh doctor
+```
+
+预期：路径测试通过，核心软件包在当前架构构建，web doctor 通过；实际串口、真实 TF 与电机不由这些命令验证。Pi5 不需要 Gazebo/RViz2 桌面依赖才能构建核心包；仅在需要的 PC 上构建 car_navigation/car_gazebo。当前 ARM64 真机仍待验证。
+
+### 路径覆盖（可选）
+
+| 变量/参数 | 默认 | 范围 |
+| --- | --- | --- |
+| CAR_WS | 脚本推导的 car_ws | 已接入 common.sh 的入口及 V6 |
+| CAR_ROS_SETUP | /opt/ros/humble/setup.bash | 已接入 common.sh、V6、部分网页 ROS 入口 |
+| CAR_YDLIDAR_SDK_DIR | 自动发现 SDK 配置目录 | 雷达修复，最高优先级，目录含 ydlidar_sdkConfig.cmake |
+| CAR_YDLIDAR_SDK_PREFIX | 项目 SDK / CMAKE_PREFIX_PATH / 系统前缀 | 雷达修复 |
+| CAR_LIDAR_CONFIG | car_ws/config/x3.yaml | lidar.sh / V6 |
+| CAR_SIM2REAL_ROOT | 仓库内 sim2real | web.sh |
+| CAR_GAZEBO_RUN_DIR | ~/.cache/car_gazebo | SIM 日志与世界文件 |
+| CAR_V6_STATE_DIR | XDG_STATE_HOME 或 ~/.local/state 下的 competition_v6_viewer | V6 本地状态及日志 |
+
+显式覆盖建议使用绝对路径且双引号保护含空格目录；未设置时无需填写任何路径。不同 ROS 工作区不要共用已生成的安装目录或运行状态目录。设备路径通过自有 YAML / 参数配置；不能根据机器名猜测串口。
+
+### 雷达迁移
+
+先结束已有雷达会话并确认实际设备、SDK 与新架构。仅检查 SDK 路径（不编译、下载或打开硬件）：
+
+```bash
+bash bash/repair_car_ws_lidar.sh doctor
+```
+
+如果 SDK 不在默认路径，设置 CAR_YDLIDAR_SDK_DIR 为实际 CMake 配置目录后重新执行 doctor。已有 SDK、已核实备份且驱动未运行时可执行：
+
+```bash
+bash bash/repair_car_ws_lidar.sh build
+bash bash/lidar.sh doctor
+```
+
+预期：仅重建雷达驱动 overlay，旧 overlay 备份保留，安装失败或校验失败时恢复旧 overlay。doctor 检查实际可执行文件及串口权限，不启动雷达。SDK 缺失时 build 拒绝下载；只有明确审查依赖后使用 --allow-sdk-build，仍仅写项目内目录。不卸载系统 SDK。P4 已解除历史 201 项跟踪，更新前按下节备份，重建后增加 verify 检查，不复制旧二进制。
+
+### 旧 Nav2 配置
+
+旧两份 YAML 是参数模板，不能直接从任意工作目录交给 Nav2。需要保留比赛版行为树（失败等待，不主动旋转或倒车）时，用现有 XML 生成临时参数文件：
+
+```bash
+OUT="$(mktemp -d)"
+python3 bash/render_nav2_params.py --output "$OUT/nav2_competition.yaml"
+```
+
+预期：输出新文件，行为树路径自动解析为当前工作区绝对路径，其他参数保持不变。可指定 --params 或 --behavior-tree，缺失/错误路径、重复输出会失败。之后仅在已验证的 Nav2 启动入口中使用生成的参数；不因此启用实车控制。当前 Gazebo 单段 FollowPath 使用独立 nav2_sim.yaml，不依赖该历史配置。
+
+### 验收范围
+
+独立离线测试覆盖带空格的临时物理目录、符号链接、不同 cwd、显式 ROS/SDK 覆盖、nounset 恢复、环境拒绝、坏雷达符号链接及行为树配置生成；模拟 ROS 环境只用于验证路径逻辑，不代表真实 ROS2/雷达。还在实际 checkout 的符号链接外执行 web doctor 和 Bash 语法检查。真实 x86_64/ARM64 构建、串口、Gazebo 版本以及运行级路径执行独立验收，不能用路径测试替代。
+
+### 原生 PC/Pi5 部署及验证
+
+从任意路径进入自己的 car 仓库，先进入 algorithm/car_ws；不要求 workplace 或特定用户名。独立终端，不激活 Conda/venv。部署目标自动按 uname -m 选择，以下显式 pi5 只用于 ARM64 Ubuntu 22.04/Humble 树莓派5（PC 将 pi5 改为 pc）；不是跨编译器。
+
+```bash
+cd algorithm/car_ws
+bash bash/deploy.sh plan pi5
+bash bash/deploy.sh doctor pi5
+```
+
+预期：显示实际工作区、12 个核心包及依赖；doctor 仅检查已安装工具、系统 Python rclpy 和 ROS 依赖，不检查硬件或修改环境。缺少依赖按各 package.xml/rosdep 提示独立审核，不默认安装。已配置 rosdep 数据库的机器可预览依赖：
+
+```bash
+mapfile -t PKG_PATHS < <(bash bash/deploy.sh paths pi5)
+rosdep check --from-paths "${PKG_PATHS[@]}" --ignore-src --rosdistro humble
+```
+
+预期：输出已满足或缺失的依赖，不安装。新工作区或经核验保留旧产物后，显式构建和验证：
+
+```bash
+bash bash/deploy.sh build pi5
+bash bash/deploy.sh verify pi5
+bash bash/deploy.sh test pi5
+```
+
+预期：PASS BUILD、PASS VERIFY、PASS TEST（包注册路径属于本工作区，关键 ELF 机器类型正确、软件测试成功、静态地图 probe 返回有效样例）。默认 isolated install，保留现有启动脚本兼容性。旧 CMakeCache 的源码/构建路径或编译器架构异常时拒绝继续，不自动删除；在干净工作区重新构建。此流程不需要 RViz2/Gazebo，不含 YDLIDAR SDK 编译及串口设备测试，不启动机器人。Pi5 上按上节雷达 doctor/build 另行验证。
+
+PC 若需要仿真并具备 Fortress 与配套 Nav2/RViz2，可选择 `bash bash/deploy.sh doctor sim` 和 `build sim`；Harmonic 已通过固定场景实际运行验收，仍须检查匹配的桥接 ABI；不自动替换安装。实际路径闭环仍通过 gazebo.sh 独立验收。路径含空格已通过离线入口测试，完整 colcon 工具链的空格路径支持尚未验证，实际构建推荐普通目录名。
+
+### 历史构建产物迁移
+
+**更新前必做，尤其已有本地雷达安装的队员。** P4 开发分支移除了 201 个历史跟踪项；普通 checkout/pull 可能删除这些原先受 Git 管理的文件。先停止自己管理的雷达、V6、oneclick 和编译进程；不要 kill 其他项目进程。检查本地未提交改动及独立 SDK、工作区外符号链接目标，分别备份；不要 reset --hard、clean -fdx 或强制 checkout。旧主分支仍未合并，fetch 不改变工作副本。
+
+从本机 car 仓库根目录执行以下命令（无需先 checkout 清理后的代码）：
+
+```bash
+git status --short
+git fetch origin fix/portable-workspace-20261124
+BACKUP_PARENT="${XDG_STATE_HOME:-$HOME/.local/state}/car-lidar-backups"
+mkdir -p "$BACKUP_PARENT"
+SESSION="$(mktemp -d "$BACKUP_PARENT/migration.XXXXXXXX")"
+git show 636527cf873c80eb5440d91e4d68806dd6c8ccfd:algorithm/car_ws/bash/backup_lidar_artifacts.py > "$SESSION/backup_tool.py"
+python3 "$SESSION/backup_tool.py" backup --repo "$(git rev-parse --show-toplevel)" --output "$SESSION/backup"
+python3 "$SESSION/backup_tool.py" verify --backup "$SESSION/backup"
+printf 'Backup: %s\n' "$SESSION/backup"
+```
+
+必须两次出现 PASS BACKUP VERIFY，查看 manifest.json 中 entries（旧目录、普通文件 SHA256、权限、symlink 目标、原 HEAD），确认本地重要文件都已另行备份。备份仅覆盖明确匹配的历史 repair/build/install/log 目录，外部链接目标、其他工作区及本地源代码/索引改动须独立保存。发现工作副本变化或失败不继续更新。归档保留原路径与链接文字，仅用于人工检查/恢复，禁止直接覆盖新 overlay；不要把旧安装当成跨机器可运行文件。若目标在旧 checkout 中不存在，空归档只说明无对应目录，不代表其他本地数据已备份。确认本地改动及备份后，由用户选择更新已审核的开发分支或将来合并后的 main，禁止自动强制切换。Git 历史仍保留旧提交；本轮不是历史清除或 pack 体积回收。
+
+更新到清理后的版本，进入工作区：
+
+```bash
+cd algorithm/car_ws
+python3 bash/audit_lidar_artifacts.py --expect-empty
+bash bash/repair_car_ws_lidar.sh doctor
+bash bash/repair_car_ws_lidar.sh build
+bash bash/repair_car_ws_lidar.sh verify
+```
+
+预期：TRACKED=0，SDK 路径可用，原生构建完成、node/client ELF 和 ldd PASS，COLCON_IGNORE 恢复。若已有 SDK 配置在非默认目录，显式设置 CAR_YDLIDAR_SDK_DIR 或 CAR_YDLIDAR_SDK_PREFIX；默认 build 不下载，不需要为旧目录修改机器的全局 SDK。缺少 SDK 时，审核依赖后才允许 --allow-sdk-build，固定上游 V1.2.7 提交；其他已有 SDK 版本由用户负责配对，CI 仅验证固定版本。新生成 overlay/build/log 被 .gitignore 排除；不要 git add -f。实车前单独执行 bash bash/lidar.sh doctor，要求实际串口可访问且未被占用；实际 /scan、TF 与真实设备验收仍需现场，不属于本轮软件重建。
+
+P4：提交 41faa65 仅解除已核对的 201 个历史雷达生成文件（93 build、83 install、25 log，其中 38 个 symlink，Git blob 合计 8,009,261 字节）的跟踪；当前树匹配项为零，源代码与地图保留，旧 Git 提交历史不重写。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 在 x86_64 与 AArch64 新目录中使用锁定 SDK V1.2.7 (ad8e30f9e9315d4bd7544df85571072fdbcd31ea) 重建 ROS 驱动，node/client 两个 ELF、动态库、包注册和 COLCON_IGNORE 恢复均 PASS；此前链接失败已修复。[备份离线 CI #45402945365](https://github.com/David-tiao/car/actions/runs/45402945365) PASS。清理后 [离线回归 #45403210364](https://github.com/David-tiao/car/actions/runs/45403210364) PASS（TRACKED=0、ignore 规则、源代码/配置保留及备份、全量回归），[雷达重建 #45403210292](https://github.com/David-tiao/car/actions/runs/45403210292) 双架构均 PASS（node/client ELF、动态库、包前缀、COLCON_IGNORE）。未接真实雷达、未访问 STM32、未清除任何用户机器文件。
+
+### P2 原生验收与接缝回归
+
+[双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748)：PC 和 ARM64 两个 job 完成成功；均在临时新工作区通过 doctor/build/verify/test，12 个包、7 个关键 ELF、2 项 colcon 软件测试以及 C3→C2 静态地图 probe。ARM64 runner 非 Pi5 板卡；不代表实际雷达、串口和运动通过。首轮容器 checkout ownership 失败通过仅单次 Git 调用指定 safe.directory 解决，不关闭安全检查。
+
+从 car 仓库根运行：
+
+```bash
+python3 algorithm/car_ws/maps/competition_v1/simple_lock_stage/test_fixed_route.py -v
+````
+
+预期：全周接缝两障碍解析用例锁定 B2-B3 与 B3-C3，真第三目标冲突、部分视场/无效端点不误拼、重复角不重复计数、跨接缝大跨度拒绝。实际 Gazebo CI 另行运行；若仍冲突，查看 CONFLICT evidence 日志；不绕过门控、不增加预期障碍数量。
+
+### 锁路 TF 等待与诊断
+
+[双架构 CI #45346142888](https://github.com/David-tiao/car/actions/runs/45346142888)、[离线 CI #45346142980](https://github.com/David-tiao/car/actions/runs/45346142980) 均通过，重复角去重验证通过。[运行 CI #45346142970](https://github.com/David-tiao/car/actions/runs/45346142970) 实际 ROS2 构建通过，但 READINESS failed: confirmed live locked path；反复报告 future extrapolation，未进入 FollowPath。改用有界异步轮询，不加大同步等待或使用最新 TF 替代。
+
+```bash
+python3 algorithm/car_ws/maps/competition_v1/simple_lock_stage/test_fixed_route.py -v
+python3 algorithm/car_ws/src/car_gazebo/tests/test_scene.py -v
+```
+
+预期：扫描排队等待、严格顺序、重复帧拒绝、过期及溢出丢弃；SIM 无近期同时间戳变换证据时拒绝执行。实际 Fortress/Humble 环境构建后执行：
+
+```bash
+cd algorithm/car_ws
+bash bash/gazebo.sh test C2
+```
+
+预期先 PASS READY 和 LOCKED ROUTE，再显式 SIM action、实际位移、最终误差与零驱动 PASS ROUTE；失败输出 LOCK DIAGNOSTIC / ROAD DIAGNOSTIC，包含 scan_tf_processed、scan_queue 的 pending/expired/overflow/rejected、状态和候选证据。查看此次 run 目录 launch.log/acceptance.log；不修改实车系统。运行结果：[运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112)（522b563）已通过；PASS READY、LOCKED ROUTE ['C3','C2']，PASS ROUTE 最终误差 0.0381m、驱动归零、里程计静止。[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100)、[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) 也全部 PASS。
+
+### 交付验收：独立单路段及多路段
+
+代码不改变当前用户的 workplace 或已有 Gazebo；在具备已验证 Fortress/Humble 依赖的干净环境中，从 car 根目录运行：
+
+```bash
+cd algorithm/car_ws
+bash bash/deploy.sh doctor sim
+bash bash/deploy.sh build sim
+bash bash/gazebo.sh test C2
+bash bash/gazebo.sh test A1
+```
+
+每次独立测试须完成旧实例退出，生成新 SDF/URDF、获取两个真实模拟障碍锁定、执行 FollowPath、测得终点误差不超过 0.06m、零驱动及静止里程计。无桌面需要 Xvfb/Mesa，详见上文。[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两个 job 已全部 PASS，分别保存两个目标日志制品。
+
+99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。
+
+每段采用独立 road_node_checker（二维节点无朝向约束，Nav2 位置 4cm 不变）；只有实际 Action 成功、位置≤6cm、至少0.15s零令及结果后的新里程计确认停止，才累计通过路段。失败日志含当前路段位置、朝向、速度。已安装 Harmonic 不等于 Fortress；不允许自动换装。GUI 联动和实车仍需现场验收。
+
+### Gazebo 双后端选择
+
+Ubuntu 22.04 / ROS2 Humble，先检查自己已安装的 Gazebo 和 bridge，不要求 workplace 或固定用户名。以下从 car 仓库根目录进入工作空间，使用已准备好的 ROS 终端，不使用 Conda/venv。
+
+```bash
+cd algorithm/car_ws
+dpkg -l | grep -E 'gz-harmonic|ignition-fortress|ros-humble-ros-gz'
+python3 src/car_gazebo/scripts/gazebo_backend.py --backend auto
+CAR_GAZEBO_BACKEND=harmonic bash bash/deploy.sh doctor sim
+```
+
+预期：auto 输出与当前 overlay 的 ros_gz_bridge ABI 匹配的 fortress 或 harmonic；显式请求不匹配、未安装 bridge、共享库缺失或 simulator major 缺失时报错，不启动仿真，不修改 apt。若本机只有 Harmonic 和 Classic，且没有 Humble 的 Harmonic bridge，先阅读[官方依赖配对说明](https://gazebosim.org/docs/harmonic/ros_installation/)。仅在已配置 OSRF 签名软件源的机器上，预览变更（不安装）：
+
+```bash
+apt-cache policy ros-humble-ros-gzharmonic
+apt-get -s install ros-humble-ros-gzharmonic
+```
+
+若显示移除其他项目依赖或包不可用，停止并使用独立环境，不在当前工作站直接替换 Fortress 或 Classic。实际安装须由用户审核授权。CI 在一次性 Humble 容器分别装默认 Fortress 或 OSRF Harmonic 桥，互不混装。已具备对应依赖时，运行：
+
+```bash
+export CAR_GAZEBO_BACKEND=harmonic
+bash bash/deploy.sh build sim
+bash bash/gazebo.sh doctor
+bash bash/gazebo.sh test C2
+bash bash/gazebo.sh test A1
+# 确认两个测试均退出后，可另行启动桌面显示
+bash bash/gazebo.sh start A1
+```
+
+Fortress 用户将环境变量改为 fortress，或 unset CAR_GAZEBO_BACKEND 自动选择。原手动生成场景与 launch 例子默认 Fortress；Harmonic 手动模式必须同时给 generator --backend harmonic 和 launch backend:=harmonic，不能混用旧生成文件。start 仅显示和检查就绪，不自动运动。test 使用同一套雷达锁路、Nav2、停车与误差门（≤0.06m）；默认输出目录和隔离策略不变。[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) 已通过。[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 分别执行 Fortress/C2、Fortress/A1、Harmonic/C2、Harmonic/A1；各自检查实际进程、传感器和运动，日志按后端/目标分开。当前不代表本地 GUI 或真实小车已验收。
+
+2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。

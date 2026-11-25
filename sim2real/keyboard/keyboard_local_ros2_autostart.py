@@ -19,7 +19,7 @@ from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT.parent / "algorithm/car_ws/bash/start_keyboard_local_ros2.sh"
-SETUP = Path("/opt/ros/humble/setup.bash")
+SETUP = Path(os.environ.get("CAR_ROS_SETUP", "/opt/ros/humble/setup.bash")).expanduser().resolve()
 LOG = ROOT / "data/web_modes/keyboard_local_autostart.log"
 
 _LOCK = threading.RLock()
@@ -66,7 +66,7 @@ def ensure_started(port, *, existing_feedback=False):
             return False
         _ATTEMPT_AT = now
         if not SETUP.is_file():
-            _ERROR = "ROS2 Humble missing: /opt/ros/humble/setup.bash"
+            _ERROR = f"ROS2 Humble missing: {SETUP}"
             return False
         if not SCRIPT.is_file():
             _ERROR = "Existing start_keyboard_local_ros2.sh not found"

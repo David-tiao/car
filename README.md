@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # 项目汇总介绍
 
 algorithm   --- SLAM,路径规划算法/openmv算法
@@ -64,6 +63,20 @@ https://github.com/fishros/fishros_app  ---- 可以开发一个 ros2的手机操
 
 ## Gazebo 三维建模与导航
 
-新增 [car_gazebo](algorithm/car_ws/src/car_gazebo/) 独立三维通道，不依赖网页。使用现有赛场几何生成 URDF（机器人模型）和 SDF（Gazebo 场景），区分静态预览、纯仿真 SIM 和真实位姿只读镜像 REAL。SIM 中的虚拟雷达和里程计进入独立 ROS2 图，复用道路锁定与 Dijkstra，用户确认后由 Nav2 FollowPath 执行单段路线；REAL 镜像只读取真实定位，不控制电机。
+新增 [car_gazebo](algorithm/car_ws/src/car_gazebo/) 独立三维通道，不依赖网页。使用现有赛场几何生成 URDF（机器人模型）和 SDF（Gazebo 场景），区分静态预览、纯仿真 SIM 和真实位姿只读镜像 REAL。SIM 中的虚拟雷达和里程计进入独立 ROS2 图，复用道路锁定与 Dijkstra，用户确认后由 Nav2 FollowPath 执行一条锁定路线（可包含多个道路边）；REAL 镜像只读取真实定位，不控制电机。
 
-统一启动入口为 [bash/gazebo.sh](algorithm/car_ws/bash/gazebo.sh)，提供环境检查、Gazebo + RViz2 联合启动、只读状态和独立 SIM 路径验收；运行日志保留在本地。现状：0.4.0 代码候选的离线 CI 已通过，ROS2 Humble/Fortress 依赖安装及 colcon 构建通过，但 [运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) 路径验收 FAIL：雷达锁路 CONFLICT，未进入 FollowPath。作为未验收开发基线纳入主分支，不代表仿真运动闭环已完成。完整机械 CAD、真实传感器外参及实车镜像仍待验收。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。
+统一启动入口为 [bash/gazebo.sh](algorithm/car_ws/bash/gazebo.sh)，提供环境检查、Gazebo + RViz2 联合启动、只读状态和独立 SIM 路径验收；运行日志保留在本地。99fcf34 已验证：[双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) 两组独立 Fortress/Humble 实际运行均 PASS；锁定 B2-B3、B3-C3，C3→C2 1/1 路段、终点误差 0.0387m；C3→C2→B2→A2→A1 4/4 路段、终点误差 0.0374m；均零驱动与静止里程计。[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) x86_64/ARM64 12 包原生构建及 ELF/包前缀、2 测试、地图 probe PASS；[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS。完整机械 CAD、GUI 显示、真实传感器外参及实车镜像仍待验收。新增 Fortress/Harmonic 双后端选择，自动检测 ros_gz_bridge 链接库 ABI 与模拟器版本，不自动安装或替换依赖；[全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS，[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 四组实际运行已通过。阅读：[架构与原理](docs/ARCHITECTURE_AND_ALGORITHMS.md#gazebo-三维通道)、[运行命令和验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo--urdf-验收独立于网页)、[当前进度](docs/PROJECT_STATUS.md#gazebo-建模与导航)、[版本记录](docs/VERSION_HISTORY.md)。
+
+## 跨电脑部署与路径约定
+
+car 是独立 Git 项目，可放在任意目录（包括 workplace 的项目入口、树莓派或其他队员机器），不要求用户名、Desktop 或 workplace 目录。ROS 2 Humble 使用系统 Python；x86_64 与 ARM64 各自构建，不复制 build/install/log。项目内资源默认从脚本位置发现，外部 SDK、ROS setup、雷达配置等由环境变量或显式参数覆盖。启动前拒绝混用 Conda/venv，Gazebo Fortress 与 Harmonic 不视为等价环境。参见 [跨机操作与验收](docs/ROADMAP_AND_ACCEPTANCE.md#跨电脑部署与路径验收) 与 [路径设计](docs/ARCHITECTURE_AND_ALGORITHMS.md#跨电脑路径设计)。P4 已解除历史雷达生成文件跟踪（开发分支），更新前务必在旧工作副本备份，再按当前机器架构重新编译；不重写历史。详见[历史构建产物迁移](docs/ROADMAP_AND_ACCEPTANCE.md#历史构建产物迁移)。
+
+新增 `bash/deploy.sh plan|doctor|build|verify|test [pc|pi5|sim]`：自动识别 x86_64/ARM64，PC 与 Pi5 共享明确的 12 包核心部署清单，不依赖 Gazebo/RViz2，sim 单独选择仿真包。只读 `audit_lidar_artifacts.py` 输出旧雷达构建文件清单；不自动清理。原生双架构 CI 独立于原离线及 Gazebo 运行 CI，详见操作文档。
+
+原生部署验收：[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641) 已在 x86_64 和 AArch64 新物理目录完成 12 个 ROS2 包构建、包前缀及 7 个关键 ELF 架构校验、两项软件测试和静态地图 probe。[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) 全量软件回归通过。不是 Pi5 真机验收。圆周扫描接缝与非阻塞同时间戳 TF 队列已纳入软件回归，真实第三目标仍触发冲突；不以弱化门控换取通过。
+
+Gazebo 后端可通过 `CAR_GAZEBO_BACKEND=auto|fortress|harmonic` 选择，默认 auto。Humble 默认匹配 Fortress；Harmonic 要求对应 ROS 桥接包，不能和默认 Fortress 桥接包混装。详见[双后端操作与验收](docs/ROADMAP_AND_ACCEPTANCE.md#gazebo-双后端选择)。
+
+2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。
+
+P4：提交 41faa65 仅解除已核对的 201 个历史雷达生成文件（93 build、83 install、25 log，其中 38 个 symlink，Git blob 合计 8,009,261 字节）的跟踪；当前树匹配项为零，源代码与地图保留，旧 Git 提交历史不重写。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 在 x86_64 与 AArch64 新目录中使用锁定 SDK V1.2.7 (ad8e30f9e9315d4bd7544df85571072fdbcd31ea) 重建 ROS 驱动，node/client 两个 ELF、动态库、包注册和 COLCON_IGNORE 恢复均 PASS；此前链接失败已修复。[备份离线 CI #45402945365](https://github.com/David-tiao/car/actions/runs/45402945365) PASS。清理后 [离线回归 #45403210364](https://github.com/David-tiao/car/actions/runs/45403210364) PASS（TRACKED=0、ignore 规则、源代码/配置保留及备份、全量回归），[雷达重建 #45403210292](https://github.com/David-tiao/car/actions/runs/45403210292) 双架构均 PASS（node/client ELF、动态库、包前缀、COLCON_IGNORE）。未接真实雷达、未访问 STM32、未清除任何用户机器文件。

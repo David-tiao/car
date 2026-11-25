@@ -90,7 +90,7 @@
 ## 4. 如何查询版本而不误用旧分支
 
 ~~~bash
-cd ~/Desktop/car
+# 先进入本机 car 仓库根目录（任意位置）
 git fetch origin --prune
 git log --first-parent --oneline -20 origin/main
 git rev-parse origin/main
@@ -109,3 +109,14 @@ git branch -r
 | car_gazebo 0.2.0 | SIM 全向速度、虚拟雷达、odom/TF、超时门 | [软件 CI 成功](https://github.com/David-tiao/car/actions/runs/45332561062) |
 | car_gazebo 0.3.0 | SIM Nav2 DWB、锁路拓扑复用、FollowPath 显式触发及双状态门控 | 运行待验收 |
 | car_gazebo 0.4.0 | 碰撞包络与 Nav2 足迹对齐；独立 RViz2、一键启动、就绪门、运行级集成验收 | [离线 CI 通过](https://github.com/David-tiao/car/actions/runs/45335849607)；[运行级 CI #45335849586](https://github.com/David-tiao/car/actions/runs/45335849586) FAIL（构建 PASS，锁路 CONFLICT）；GUI/实车待验收 |
+
+| 跨电脑部署 P1（开发分支） | 自动定位、显式 ROS/SDK 配置、保守行为树参数生成、移植回归及新增忽略规则 | 路径离线 CI 待确认；ARM64/实机待验收 |
+| 跨电脑部署 P2（开发分支） | PC/Pi5/SIM 原生部署配置，缓存与 ELF 架构检查，x64/ARM64 CI，历史产物只读审计 | 新 CI 待核验；Pi5 实机 NOT_RUN；不解除历史产物跟踪 |
+| 跨电脑 P2/P6 接缝修复（开发分支） | x86_64/ARM64 原生构建验收；全周扫描首尾聚类与冲突诊断 | [双架构原生 CI #45345706748](https://github.com/David-tiao/car/actions/runs/45345706748) 双平台 PASS；新接缝与 Gazebo 回归待确认，实机 NOT_RUN |
+| P6 TF 同步（开发分支） | 有界 FIFO、非阻塞同时间戳 TF、扫描健康诊断、SIM 动作前/中/结束校验 | 上轮双架构与离线 PASS；Gazebo TF future extrapolation FAIL；新 CI 待确认 |
+| 522b563（已验证软件基线） | TF 同步、锁路证据门和实际 C3→C2 路径闭环 | [运行 CI #45348928112](https://github.com/David-tiao/car/actions/runs/45348928112) PASS，0.0381m、零驱动、静止里程计；[双架构 CI #45348928100](https://github.com/David-tiao/car/actions/runs/45348928100)、[离线 CI #45348928143](https://github.com/David-tiao/car/actions/runs/45348928143) PASS；非实车验收 |
+| 5846bdc（运行回归扩展） | CI 独立 C3→C2 和 C3→A1 场景 | [双路线运行 CI #45358283320](https://github.com/David-tiao/car/actions/runs/45358283320)，以各 job 结果为准 |
+| 99fcf34（双路线已验证软件基线） | 逐边 FollowPath、交叉节点停车、独立 XY 目标检查器、全路段计数 | [双路线运行 CI #45359460287](https://github.com/David-tiao/car/actions/runs/45359460287) C2 1/1、0.0387m；A1 4/4、0.0374m；均停车；[原生双架构 CI #45359460641](https://github.com/David-tiao/car/actions/runs/45359460641)、[全量离线 CI #45359460151](https://github.com/David-tiao/car/actions/runs/45359460151) PASS；GUI/实车/Harmonic 待验收 |
+| P5 双后端适配 2c56861 | Fortress/Harmonic 统一入口、ABI 配对检查、SDF/bridge 后端转换，四组合实际验收 | [全量离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS；[双后端四路线运行 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 以各 job 结果为准；不自动替换本机软件 |
+| 2c56861 双后端运行验收 | Fortress/Harmonic 共用导航与安全门控 | 2c56861 实际运行验收：[四组合 CI #45384544228](https://github.com/David-tiao/car/actions/runs/45384544228) 全部 PASS。Fortress C3→C2 1/1、0.0375m；Fortress C3→A1 4/4、0.0385m；Harmonic C3→C2 1/1、0.0377m；Harmonic C3→A1 4/4、0.0382m。均实测锁定 B2-B3、B3-C3，驱动归零、静止里程计。[双架构 CI #45384544069](https://github.com/David-tiao/car/actions/runs/45384544069) 两组 PASS；[离线 CI #45384544126](https://github.com/David-tiao/car/actions/runs/45384544126) PASS（14 场景、18 锁路、12 移植及原全量回归）。无界面固定场景，不代表本机 GUI、真实镜像或实车验收。 |
+| P4 历史雷达构建产物迁移（41faa65） | 备份校验、SDK 链接路径修复、双架构原生重建、201 项解除跟踪、ignore 回归 | P4：提交 41faa65 仅解除已核对的 201 个历史雷达生成文件（93 build、83 install、25 log，其中 38 个 symlink，Git blob 合计 8,009,261 字节）的跟踪；当前树匹配项为零，源代码与地图保留，旧 Git 提交历史不重写。[原生雷达重建 CI #45402945082](https://github.com/David-tiao/car/actions/runs/45402945082) 在 x86_64 与 AArch64 新目录中使用锁定 SDK V1.2.7 (ad8e30f9e9315d4bd7544df85571072fdbcd31ea) 重建 ROS 驱动，node/client 两个 ELF、动态库、包注册和 COLCON_IGNORE 恢复均 PASS；此前链接失败已修复。[备份离线 CI #45402945365](https://github.com/David-tiao/car/actions/runs/45402945365) PASS。清理后 [离线回归 #45403210364](https://github.com/David-tiao/car/actions/runs/45403210364) PASS（TRACKED=0、ignore 规则、源代码/配置保留及备份、全量回归），[雷达重建 #45403210292](https://github.com/David-tiao/car/actions/runs/45403210292) 双架构均 PASS（node/client ELF、动态库、包前缀、COLCON_IGNORE）。未接真实雷达、未访问 STM32、未清除任何用户机器文件。 |

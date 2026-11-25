@@ -35,12 +35,10 @@ then
   echo "[KEYBOARD] Then retry: bash algorithm/car_ws/bash/start_keyboard_local_ros2.sh $SERVER" >&2
   exit 2
 fi
-set +u
-source /opt/ros/humble/setup.bash
-if [[ -f "$ROOT/algorithm/car_ws/install/setup.bash" ]]; then
-  source "$ROOT/algorithm/car_ws/install/setup.bash"
-fi
-set -u
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
+car_check_workspace
+car_source_ros_base
+[[ ! -f "$CAR_WS/install/setup.bash" ]] || car_source_setup "$CAR_WS/install/setup.bash"
 pc=""
 feedback=""
 cleanup(){

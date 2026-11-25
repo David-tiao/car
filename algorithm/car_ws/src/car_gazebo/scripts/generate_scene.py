@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate an explicitly provisional URDF and a Fortress static scene.
+"""Generate an explicitly provisional URDF and Fortress/Harmonic scene.
 No real TF, actuator, simulated odometry, or lidar publisher is started here.
 """
 import argparse
@@ -241,7 +241,9 @@ def sim_model(world, start):
     return model
 
 
-def world_description(zones, obstacles=(), mode="preview", start=(2.25, 2.25)):
+def world_description(zones, obstacles=(), mode="preview", start=(2.25, 2.25), backend="fortress"):
+    if backend not in ("fortress", "harmonic"):
+        raise ValueError("unsupported SDF backend")
     validate(zones, obstacles, mode)
     if mode == "sim":
         x, y = start
@@ -288,7 +290,7 @@ def world_description(zones, obstacles=(), mode="preview", start=(2.25, 2.25)):
                  (0, 0, 0, 0, 0, 0), BLACK, True)
     if mode == "sim":
         sim_model(world, start)
-        return sdf
+        return backend_scene(sdf, backend)
     # A static visual-only car: preview is NOT a dynamics simulation.
     # Mirror starts outside the field until a fresh real pose is available.
     xyz = (2.25, 2.25, 0.001) if mode == "preview" else (-0.4, -0.4, 0.001)
@@ -297,6 +299,19 @@ def world_description(zones, obstacles=(), mode="preview", start=(2.25, 2.25)):
     for suffix, x, y in WHEELS:
         sdf_part(car, "wheel_" + suffix, "cylinder", (R, WHEEL_WIDTH),
                  (x, y, R, math.pi/2, 0, 0), BLACK, False)
+    return backend_scene(sdf, backend)
+
+
+def backend_scene(sdf, backend):
+    # Translate only the simulator integration names; geometry and parameters are shared.
+    if backend == "harmonic":
+        for plugin in sdf.findall(".//plugin"):
+            filename = plugin.get("filename")
+            name = plugin.get("name")
+            plugin.set("filename", filename.removeprefix("lib").removesuffix(".so").replace("ignition-gazebo-", "gz-sim-", 1))
+            plugin.set("name", name.replace("ignition::gazebo::", "gz::sim::", 1))
+        for frame in sdf.findall(".//sensor/ignition_frame_id"):
+            frame.tag = "gz_frame_id"
     return sdf
 
 
@@ -310,6 +325,7 @@ def main():
     p.add_argument("--zones", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--mode", choices=("preview", "mirror", "sim"), default="preview")
+    p.add_argument("--backend", choices=("fortress", "harmonic"), default="fortress")
     p.add_argument("--start", type=float, nargs=2, default=(2.25, 2.25), help="SIM only; map x y, yaw=0")
     p.add_argument("--obstacle", type=float, nargs=2, action="append", default=[])
     args = p.parse_args()
@@ -320,7 +336,7 @@ def main():
         model_name = "car_sim.urdf" if args.mode == "sim" else "car_preview.urdf"
         outputs = {model_name: xml_bytes(robot_description(args.mode == "sim")),
                    "car_" + args.mode + ".sdf":
-                       xml_bytes(world_description(zones, args.obstacle, args.mode, args.start))}
+                       xml_bytes(world_description(zones, args.obstacle, args.mode, args.start, args.backend))}
         args.output.mkdir(parents=True, exist_ok=True)
         for name in outputs:
             if (args.output / name).exists():

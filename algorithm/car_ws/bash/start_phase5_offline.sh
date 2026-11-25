@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Phase 5 read-only navigation preview: real existing competition maps + SYNTHETIC scan.
 set -Eeuo pipefail
-WS="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd -P)"
+source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)/lib/common.sh"
+car_check_workspace
+WS="$CAR_WS"
 MAP_DIR="${CAR_PHASE5_MAP_DIR:-$WS/maps/competition_v1}"
 MAP="$MAP_DIR/competition_navigation_map.yaml"
 MASK="$MAP_DIR/competition_keepout_mask.yaml"
 [[ -f "$MAP" && -f "$MASK" ]] || { echo "ERROR: missing map/mask in $MAP_DIR" >&2;exit 2; }
-set +u
-source /opt/ros/humble/setup.bash
-source "$WS/install/setup.bash"
-set -u
+car_source_ros
 # Do not overwrite /map from the existing V6 viewer or other map servers.
 existing="$(ros2 topic info /map 2>/dev/null | sed -n 's/^Publisher count: //p' | head -1 || true)"
 if [[ "$existing" =~ ^[1-9][0-9]*$ ]];then
