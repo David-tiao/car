@@ -662,6 +662,8 @@
           <GroupName>App</GroupName>
           <Files>
             <File><FileName>app_runtime.c</FileName><FileType>1</FileType><FilePath>..\App\app_runtime.c</FilePath></File>
+            <File><FileName>motion_link.c</FileName><FileType>1</FileType><FilePath>..\App\motion_link.c</FilePath></File>
+            <File><FileName>pi_motion_adapter.c</FileName><FileType>1</FileType><FilePath>..\App\pi_motion_adapter.c</FilePath></File>
             <File><FileName>app_runtime.h</FileName><FileType>5</FileType><FilePath>..\App\app_runtime.h</FilePath></File>
             <File><FileName>app_race.c</FileName><FileType>1</FileType><FilePath>..\App\app_race.c</FilePath></File>
             <File><FileName>app_race.h</FileName><FileType>5</FileType><FilePath>..\App\app_race.h</FilePath></File>
@@ -690,6 +692,7 @@
         <Group>
           <GroupName>Hardware</GroupName>
           <Files>
+            <File><FileName>pi_uart2_port.c</FileName><FileType>1</FileType><FilePath>..\Hardware\pi_uart2_port.c</FilePath></File>
             <File>
               <FileName>oledfont.h</FileName>
               <FileType>5</FileType>

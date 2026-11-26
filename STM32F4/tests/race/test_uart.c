@@ -52,8 +52,46 @@ static void receive(const char *text)
     }
 }
 
+static void receive_body(unsigned seq, const char *body)
+{
+    char header[160], wire[192];
+    unsigned char check = 0U;
+    unsigned i;
+    int n = snprintf(header, sizeof(header), "%u,%u,%s", seq,
+                     (unsigned)strlen(body), body);
+    assert(n > 0 && (size_t)n < sizeof(header));
+    for (i = 0U; i < (unsigned)n; i++) check ^= (unsigned char)header[i];
+    n = snprintf(wire, sizeof(wire), "@%s*%02X\n", header, (unsigned)check);
+    assert(n > 0 && (size_t)n < sizeof(wire));
+    receive(wire);
+}
+
+static void test_tagged_terminal(void)
+{
+    char code[RACE_TASK_CODE_SIZE];
+    assert(RaceVision_Init());
+    assert(RaceVision_BeginScanSession(23U));
+    HAL_UART_TxCpltCallback(&huart3); /* R -> JOB */
+    HAL_UART_TxCpltCallback(&huart3);
+    receive_body(100U, "ACK,JOB,1");
+    receive_body(101U, "QR,156+123+516+231,23");
+    assert(RaceVision_Poll(code));
+    assert(RaceVision_AckQr(23U));
+    HAL_UART_TxCpltCallback(&huart3);
+    receive_body(102U, "DONE,QR");
+    assert(!RaceVision_Poll(code));
+    assert(!RaceVision_HandoffComplete(23U));
+    receive_body(103U, "IDLE");
+    assert(!RaceVision_Poll(code));
+    assert(RaceVision_HandoffComplete(23U));
+    assert(!RaceVision_HandoffComplete(24U));
+    RaceVision_EndScan();
+    assert(!RaceVision_HandoffComplete(23U));
+}
+
 int main(void)
 {
+    test_tagged_terminal();
     const char *valid = "#SEQ,4,5,2,3,2,1,2,5,4,3,1,2\n";
     char code[RACE_TASK_CODE_SIZE];
     unsigned index;

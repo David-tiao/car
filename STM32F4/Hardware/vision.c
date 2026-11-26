@@ -123,6 +123,19 @@ static void ring_fail(VisionContext *vision, const char *reason)
     stop_vehicle(vision);
 }
 
+/* Tagged QR transactions are fail-closed. DONE/IDLE in V4 carry no
+ * session field, so require current accepted QR, a successful ACK enqueue,
+ * and consecutive, forward-sequenced terminal frames. */
+static void qr_fail(VisionContext *vision, const char *reason)
+{
+    vision->qr_stage = VISION_QR_FAILED;
+    vision->qr_ready = 0U;
+    vision->result = VISION_RESULT_ERROR;
+    vision->phase = VISION_WAIT_IDLE;
+    copy_text(vision->last_error, sizeof(vision->last_error), reason);
+    stop_vehicle(vision);
+}
+
 static void start_next_tx(VisionContext *vision)
 {
     uint8_t index;
@@ -244,6 +257,8 @@ static void handle_body(VisionContext *vision, char *body, uint32_t now_ms)
 
     if (!strcmp(fields[0], "READY") && count == 2 && !strcmp(fields[1], "IDLE")) {
         if (Vision_RingActive(vision)) ring_fail(vision, "OPENMV_RESTART");
+        if (vision->qr_stage != VISION_QR_NONE &&
+            vision->qr_stage != VISION_QR_FAILED) qr_fail(vision, "QR_RESTART");
         vision->ready = 1U;
         vision->rx_seq_valid = 0U;
         vision->phase = VISION_IDLE;
@@ -295,12 +310,36 @@ static void handle_body(VisionContext *vision, char *body, uint32_t now_ms)
               session >= 0L && session <= 65535L &&
               session == (long)vision->qr_session)) &&
             vision_task_code_valid(fields[1])) {
+            if (vision->qr_session != 0U) {
+                if (vision->qr_stage != VISION_QR_WAIT_CODE &&
+                    vision->qr_stage != VISION_QR_CODE &&
+                    vision->qr_stage != VISION_QR_ACK_SENT) return;
+                if (vision->qr_stage != VISION_QR_WAIT_CODE &&
+                    strcmp(vision->qr_code, fields[1]) != 0) {
+                    qr_fail(vision, "QR_CODE_CHANGED");
+                    return;
+                }
+                if (vision->qr_stage == VISION_QR_WAIT_CODE)
+                    vision->qr_stage = VISION_QR_CODE;
+            }
             copy_text(vision->qr_code, sizeof(vision->qr_code), fields[1]);
             vision->qr_ready = 1U;
         }
         return;
     }
     if (!strcmp(fields[0], "DONE") && count == 2 && !strcmp(fields[1], "QR")) {
+        if (vision->qr_session != 0U && vision->qr_stage != VISION_QR_NONE) {
+            if (vision->qr_stage == VISION_QR_FAILED) return;
+            if (vision->qr_stage != VISION_QR_ACK_SENT ||
+                vision->phase != VISION_RUNNING) {
+                qr_fail(vision, "QR_DONE_OUT_OF_ORDER");
+                return;
+            }
+            vision->qr_stage = VISION_QR_DONE_SEEN;
+            vision->qr_done_seq = vision->rx_seq;
+            vision->qr_ready = 0U;
+            vision->phase = VISION_WAIT_IDLE;
+        }
         vision->result = VISION_RESULT_QR_DONE;
         return;
     }
@@ -310,7 +349,8 @@ static void handle_body(VisionContext *vision, char *body, uint32_t now_ms)
     }
     if (!strcmp(fields[0], "ERR") && count >= 2) {
         copy_text(vision->last_error, sizeof(vision->last_error), fields[1]);
-        if (Vision_RingActive(vision)) ring_fail(vision, fields[1]);
+        if (vision->qr_stage != VISION_QR_NONE) qr_fail(vision, fields[1]);
+        else if (Vision_RingActive(vision)) ring_fail(vision, fields[1]);
         else {
             vision->result = VISION_RESULT_ERROR;
             vision->phase = VISION_IDLE;
@@ -318,12 +358,26 @@ static void handle_body(VisionContext *vision, char *body, uint32_t now_ms)
         return;
     }
     if (!strcmp(fields[0], "TIMEOUT")) {
+        if (vision->qr_stage != VISION_QR_NONE) {
+            qr_fail(vision, "QR_TIMEOUT");
+            return;
+        }
         vision->result = VISION_RESULT_TIMEOUT;
         if (Vision_RingActive(vision)) ring_fail(vision, "OPENMV_TIMEOUT");
         else vision->phase = VISION_WAIT_IDLE;
         return;
     }
     if (!strcmp(fields[0], "IDLE") && count == 1) {
+        if (vision->qr_stage != VISION_QR_NONE) {
+            if (vision->qr_stage == VISION_QR_DONE_SEEN &&
+                (uint16_t)(vision->rx_seq - vision->qr_done_seq) == 1U) {
+                vision->qr_stage = VISION_QR_COMPLETE;
+                vision->phase = VISION_IDLE;
+            } else if (vision->qr_stage != VISION_QR_FAILED) {
+                qr_fail(vision, "QR_IDLE_OUT_OF_ORDER");
+            }
+            return;
+        }
         if (vision->ring.state == VISION_RING_WAIT_IDLE) {
             vision->ring.state = VISION_RING_SUCCESS;
             vision->result = VISION_RESULT_ARRIVED;
@@ -342,7 +396,7 @@ static void process_frame(VisionContext *vision, uint32_t now_ms)
         vision->frames_bad++;
         return;
     }
-    is_ready = !strncmp(body, "READY,IDLE", 10U);
+    is_ready = !strcmp(body, "READY,IDLE");
     if (!is_ready && vision->rx_seq_valid && !newer_sequence(sequence, vision->rx_seq)) return;
     vision->rx_seq = sequence;
     vision->rx_seq_valid = 1U;
@@ -542,6 +596,7 @@ int Vision_StartJobTol(VisionContext *vision, unsigned code,
     vision->phase = VISION_WAIT_ACK;
     vision->job_code = (uint8_t)code;
     vision->qr_session = 0U;
+    vision->qr_stage = VISION_QR_NONE;
     vision->last_request_ms = now_ms;
     vision->result = VISION_RESULT_NONE;
     vision->pos.valid = 0U;
@@ -565,6 +620,7 @@ int Vision_StartQrJob(VisionContext *vision, uint32_t session, uint32_t now_ms)
     vision->phase = VISION_WAIT_ACK;
     vision->job_code = 1U;
     vision->qr_session = (uint16_t)session;
+    vision->qr_stage = session == 0U ? VISION_QR_NONE : VISION_QR_WAIT_CODE;
     vision->last_request_ms = now_ms;
     vision->result = VISION_RESULT_NONE;
     vision->pos.valid = 0U;
@@ -572,9 +628,36 @@ int Vision_StartQrJob(VisionContext *vision, uint32_t session, uint32_t now_ms)
     if (!Vision_SendBody(vision, body)) {
         vision->phase = VISION_IDLE;
         vision->qr_session = 0U;
+        vision->qr_stage = VISION_QR_NONE;
         return 0;
     }
     return 1;
+}
+
+int Vision_AckQr(VisionContext *vision, uint32_t session)
+{
+    char body[32];
+    int written;
+    if (vision == NULL || !vision->ready || vision->rx_fault || vision->tx_fault ||
+        session != vision->qr_session ||
+        (session != 0U && (vision->phase != VISION_RUNNING ||
+         (vision->qr_stage != VISION_QR_CODE && vision->qr_stage != VISION_QR_ACK_SENT))))
+        return 0;
+    written = snprintf(body, sizeof(body), "ACK,QR,%u", (unsigned)session);
+    if (written <= 0 || written >= (int)sizeof(body) || !Vision_SendBody(vision, body)) {
+        if (session != 0U) qr_fail(vision, "QR_ACK_TX");
+        return 0;
+    }
+    if (session != 0U) vision->qr_stage = VISION_QR_ACK_SENT;
+    return 1;
+}
+
+uint8_t Vision_QrHandoffComplete(const VisionContext *vision, uint32_t session)
+{
+    return vision != NULL && session != 0U && session == vision->qr_session &&
+           vision->ready && !vision->rx_fault && !vision->tx_fault &&
+           vision->qr_stage == VISION_QR_COMPLETE && vision->phase == VISION_IDLE &&
+           vision->result == VISION_RESULT_QR_DONE;
 }
 
 int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms)
@@ -589,6 +672,7 @@ int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms)
     vision->phase = VISION_WAIT_ACK;
     vision->job_code = (uint8_t)code;
     vision->qr_session = 0U;
+    vision->qr_stage = VISION_QR_NONE;
     vision->last_request_ms = now_ms;
     vision->result = VISION_RESULT_NONE;
     vision->pos.valid = 0U;
@@ -603,6 +687,7 @@ int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms)
 int Vision_Cancel(VisionContext *vision)
 {
     if (vision == NULL || !vision->ready) return 0;
+    if (vision->qr_stage != VISION_QR_NONE) qr_fail(vision, "QR_CANCELLED");
     if (!Vision_SendBody(vision, "CANCEL")) return 0;
     vision->result = VISION_RESULT_CANCELLED;
     if (Vision_RingActive(vision)) ring_fail(vision, "CANCELLED");
@@ -616,6 +701,7 @@ int Vision_Cancel(VisionContext *vision)
 int Vision_Reset(VisionContext *vision)
 {
     if (vision == NULL || !vision->ready) return 0;
+    if (vision->qr_stage != VISION_QR_NONE) qr_fail(vision, "QR_RESET");
     if (!Vision_SendBody(vision, "RESET")) return 0;
     vision->phase = VISION_WAIT_IDLE;
     vision->qr_ready = 0U;
@@ -798,6 +884,9 @@ void Vision_RingFail(VisionContext *vision, const char *reason)
 void Vision_Poll(VisionContext *vision, uint32_t now_ms)
 {
     if (vision == NULL) return;
+    if (vision->qr_stage != VISION_QR_NONE &&
+        vision->qr_stage != VISION_QR_FAILED && (vision->rx_fault || vision->tx_fault))
+        qr_fail(vision, "QR_UART_FAULT");
     drain_rx(vision, now_ms);
     if (!vision->ready && (uint32_t)(now_ms - vision->last_probe_ms) >= 1000U) {
         vision->last_probe_ms = now_ms;
@@ -807,9 +896,12 @@ void Vision_Poll(VisionContext *vision, uint32_t now_ms)
         (uint32_t)(now_ms - vision->last_request_ms) > VISION_ACK_TIMEOUT_MS &&
         !Vision_RingActive(vision)) {
         copy_text(vision->last_error, sizeof(vision->last_error), "ACK_TIMEOUT");
-        vision->result = VISION_RESULT_ERROR;
-        vision->phase = VISION_WAIT_IDLE;
-        stop_vehicle(vision);
+        if (vision->qr_stage != VISION_QR_NONE) qr_fail(vision, "QR_JOB_ACK_TIMEOUT");
+        else {
+            vision->result = VISION_RESULT_ERROR;
+            vision->phase = VISION_WAIT_IDLE;
+            stop_vehicle(vision);
+        }
         (void)Vision_SendBody(vision, "CANCEL");
     }
     if (vision->pos.valid &&
@@ -838,12 +930,15 @@ uint8_t RaceVision_BeginScanSession(uint32_t session)
 {
     static const uint8_t legacy_reset = 'R';
     uint32_t saved_irq = __get_PRIMASK();
-    if (s_scan_active) return RaceVision_Healthy();
+    if (s_scan_active) return session == s_default.qr_session && RaceVision_Healthy();
+    if (session != 0U && (s_default.phase != VISION_IDLE ||
+                          Vision_RingActive(&s_default))) return 0U;
     __disable_irq();
     s_default.rx_tail = s_default.rx_head;
     __set_PRIMASK(saved_irq);
     s_default.legacy_collecting = 0U;
     s_default.legacy_len = 0U;
+    s_default.rx_frame_len = 0U;
     if (!RaceVision_Healthy()) return 0U;
     if (!Vision_RingActive(&s_default)) s_default.phase = VISION_IDLE;
     if (!Vision_SendRaw(&s_default, &legacy_reset, 1U)) return 0U;
@@ -853,24 +948,34 @@ uint8_t RaceVision_BeginScanSession(uint32_t session)
 
 uint8_t RaceVision_AckQr(uint32_t session)
 {
-    char body[32];
-    int written;
-    if (!s_scan_active || !RaceVision_Healthy() ||
-        session != s_default.qr_session) return 0U;
-    written = snprintf(body, sizeof(body), "ACK,QR,%u", (unsigned)session);
-    return written > 0 && written < (int)sizeof(body) &&
-           Vision_SendBody(&s_default, body);
+    return s_scan_active && RaceVision_Healthy() && Vision_AckQr(&s_default, session);
+}
+
+uint8_t RaceVision_HandoffComplete(uint32_t session)
+{
+    return s_scan_active && Vision_QrHandoffComplete(&s_default, session);
 }
 
 uint8_t RaceVision_ScanFailed(void)
 {
     if (!s_scan_active) return 0U;
-    return s_default.result == VISION_RESULT_TIMEOUT ||
-           s_default.result == VISION_RESULT_ERROR;
+    return !RaceVision_Healthy() || s_default.qr_stage == VISION_QR_FAILED ||
+           s_default.result == VISION_RESULT_TIMEOUT ||
+           s_default.result == VISION_RESULT_ERROR ||
+           s_default.result == VISION_RESULT_CANCELLED;
 }
 
 void RaceVision_EndScan(void)
 {
+    if (s_scan_active && s_default.qr_session != 0U) {
+        if (!Vision_QrHandoffComplete(&s_default, s_default.qr_session)) {
+            (void)Vision_Cancel(&s_default);
+            s_default.qr_stage = VISION_QR_FAILED;
+        } else {
+            s_default.qr_stage = VISION_QR_NONE;
+            s_default.qr_session = 0U;
+        }
+    }
     s_scan_active = 0U;
     s_default.qr_ready = 0U;
     s_default.legacy_collecting = 0U;

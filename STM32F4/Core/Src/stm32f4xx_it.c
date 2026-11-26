@@ -23,6 +23,10 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "bsp_stepper.h"
+#include "app_mode.h"
+#if APP_RUN_MODE == APP_MODE_PI_MOTION
+#include "pi_uart2_port.h"
+#endif
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -229,6 +233,12 @@ void TIM6_DAC_IRQHandler(void)
 }
 
 /* USER CODE BEGIN 1 */
+#if APP_RUN_MODE == APP_MODE_PI_MOTION
+void USART2_IRQHandler(void)
+{
+  PiUart2_IRQHandler();
+}
+#endif
 
 /**
   * @brief This function handles TIM8 capture compare interrupt.

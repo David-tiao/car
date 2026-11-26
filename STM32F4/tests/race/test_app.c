@@ -14,6 +14,8 @@ static MecanumChassis_t s_chassis;
 static uint32_t s_now, s_frames, s_irq, s_position_calls, s_stops, s_scans;
 static uint8_t s_key_down, s_imu_ok = 1U, s_bias_ready = 1U, s_link_ok = 1U, s_qr;
 static VisionContext s_vision;
+static uint8_t s_qr_complete;
+static uint32_t s_acks;
 
 uint32_t __get_PRIMASK(void) { return s_irq; }
 void __disable_irq(void) { s_irq = 1U; }
@@ -47,9 +49,11 @@ uint8_t RaceVision_BeginScan(void) { s_scans++; return s_link_ok; }
 uint8_t RaceVision_BeginScanSession(uint32_t session)
 { assert(session != 0U); return RaceVision_BeginScan(); }
 uint8_t RaceVision_AckQr(uint32_t session)
-{ return session != 0U && s_link_ok; }
+{ s_acks++; return session != 0U && s_link_ok; }
+uint8_t RaceVision_HandoffComplete(uint32_t session)
+{ return session != 0U && s_qr_complete && s_link_ok; }
 uint8_t RaceVision_ScanFailed(void) { return 0U; }
-void RaceVision_EndScan(void) { s_qr = 0U; }
+void RaceVision_EndScan(void) { s_qr = 0U; s_qr_complete = 0U; }
 uint8_t RaceVision_Poll(char code[RACE_TASK_CODE_SIZE])
 {
     if (!s_qr) return 0U;
@@ -125,6 +129,8 @@ static void init(uint8_t held)
     s_key_down = held;
     s_now = s_frames = s_irq = s_position_calls = s_scans = 0U;
     s_bias_ready = s_imu_ok = s_link_ok = 1U;
+    s_qr = s_qr_complete = 0U;
+    s_acks = 0U;
     AppRace_Init(&s_chassis);
 }
 
@@ -198,6 +204,24 @@ int main(void)
         s_chassis.y_pos = race->target_y;
         s_chassis.theta_pos = race->target_yaw;
         tick(race->actions[index].hold_ms + 2U);
+    }
+    s_qr = 1U;
+    tick(1U);
+    calls = s_position_calls;
+    assert(AppRace_Status()->action_index == 4U && AppRace_Status()->qr_valid);
+    s_chassis.vx_actual = RACE_STILL_SPEED_MPS + 0.01f;
+    tick(1U);
+    assert(AppRace_Status()->state == RACE_FAULT &&
+           AppRace_Status()->error == RACE_ERROR_SCAN_MOTION);
+    assert(!AppRace_ControlTick() && s_position_calls == calls);
+    start();
+    while (AppRace_Status()->action_index < 4U) {
+        uint8_t index = AppRace_Status()->action_index;
+        const RaceFsm *race = AppRace_Status();
+        s_chassis.x_pos = race->target_x;
+        s_chassis.y_pos = race->target_y;
+        s_chassis.theta_pos = race->target_yaw;
+        tick(race->actions[index].hold_ms + 2U);
         assert(AppRace_Status()->action_index == index + 1U);
     }
     /* Complete the scan action before exercising the material route. */
@@ -206,9 +230,18 @@ int main(void)
         s_chassis.x_pos = race->target_x;
         s_chassis.y_pos = race->target_y;
         s_chassis.theta_pos = race->target_yaw;
+        uint32_t before = s_position_calls;
         s_qr = 1U;
         tick(1U);
-        assert(AppRace_Status()->action_index == 5U);
+        assert(AppRace_Status()->action_index == 4U && s_acks == 1U);
+        assert(AppRace_Status()->qr_valid && !AppRace_Status()->qr_handoff_complete);
+        assert(s_chassis.mode == 0U && s_position_calls == before);
+        s_qr = 1U; /* retry after a lost ACK */
+        tick(50U);
+        assert(s_acks == 2U && s_position_calls == before);
+        s_qr_complete = 1U;
+        tick(1U);
+        assert(AppRace_Status()->action_index == 5U && s_position_calls == before + 1U);
     }
     while (AppRace_Status()->action_index < 7U) {
         uint8_t index = AppRace_Status()->action_index;

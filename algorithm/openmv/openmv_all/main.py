@@ -249,6 +249,70 @@ class App:
         self.panel.update(self.job, self.state)
 
 
+class PitchControl:
+    """SG90 command + conservative time gate; no physical position feedback."""
+    @staticmethod
+    def validate():
+        if not C.PITCH_ENABLED:
+            return
+        if C.UART_PROTOCOL != 'V4':
+            raise ValueError('PITCH requires V4 QR ACK handshake')
+        if C.LCD_ENABLED:
+            raise ValueError('PITCH/LCD pin conflict: disconnect LCD Shield and disable LCD')
+        if type(C.PITCH_SERVO_ID) is not int or C.PITCH_SERVO_ID not in (1, 2):
+            raise ValueError('PITCH_SERVO_ID must be 1 (P7) or 2 (P8)')
+        pulses = (C.PITCH_QR_PULSE_US, C.PITCH_RAW_PULSE_US)
+        if (any(type(p) is not int or not 1000 <= p <= 2000 for p in pulses)
+                or pulses[0] == pulses[1]):
+            raise ValueError('PITCH: enter two distinct measured safe pulse widths (1000..2000 us)')
+        if (type(C.PITCH_SETTLE_MS) is not int or not 200 <= C.PITCH_SETTLE_MS <= 5000
+                or type(C.PITCH_DISCARD_FRAMES) is not int or not 1 <= C.PITCH_DISCARD_FRAMES <= 10):
+            raise ValueError('PITCH: invalid settling/discard configuration')
+
+    def __init__(self):
+        self.validate()
+        self.enabled = C.PITCH_ENABLED
+        self.target = None
+        self.started = None
+        self.discard = 0
+        self.fault = False
+        if self.enabled:
+            from pyb import Servo
+            self.servo = Servo(C.PITCH_SERVO_ID)
+
+    def request(self, target, now):
+        if not self.enabled:
+            return True
+        if self.fault:
+            return False
+        if self.target == target:
+            return True  # Duplicate requests do not restart the timer or servo.
+        pulse = C.PITCH_QR_PULSE_US if target == 'QR' else C.PITCH_RAW_PULSE_US
+        try:
+            self.servo.pulse_width(pulse)
+        except Exception:
+            self.fault = True
+            self.target = None
+            return False
+        self.target = target
+        self.started = now
+        self.discard = C.PITCH_DISCARD_FRAMES
+        return True
+
+    def ready(self, now):
+        return (not self.enabled or
+                (not self.fault and self.started is not None and
+                 time.ticks_diff(now, self.started) >= C.PITCH_SETTLE_MS and self.discard == 0))
+
+    def frame_ready(self, now):
+        if self.ready(now):
+            return True
+        if (not self.fault and self.started is not None and self.discard > 0 and
+                time.ticks_diff(now, self.started) >= C.PITCH_SETTLE_MS):
+            self.discard -= 1
+        return False
+
+
 class ElectricalApp:
     """按 STM32 的会话工作。同一份相机识别器供两种主控使用。"""
     def __init__(self, link, panel):
@@ -256,8 +320,23 @@ class ElectricalApp:
         self.panel = panel
         self.materials = MaterialDetector()
         self.stations = StationVision(self.materials)
+        self.pitch = PitchControl()
+        self.pitch_boot_pending = self.pitch.enabled
         self.reset()
-        self.link.send('READY', 'IDLE')
+        if self.pitch.enabled:
+            self.request_pitch('QR', 'PITCH_BOOT')
+        else:
+            self.link.send('READY', 'IDLE')
+
+    def request_pitch(self, target, transition):
+        if not self.pitch.request(target, time.ticks_ms()):
+            self.idle()
+            self.source = None
+            self.state = 'PITCH_FAULT'
+            self.link.send('ERR', 'PITCH_FAULT')
+            return False
+        self.state = transition
+        return True
 
     def reset(self):
         self.board = Mission()
@@ -281,6 +360,10 @@ class ElectricalApp:
         return int(s)
 
     def start(self, command, scan_prefix):
+        if self.pitch.enabled and self.state in ('PITCH_BOOT', 'PITCH_RAW', 'PITCH_RESET', 'PITCH_CANCEL'):
+            raise ValueError('BUSY')
+        if self.pitch.fault:
+            raise ValueError('PITCH_FAULT')
         if self.request == command and not scan_prefix:
             self.link.send(*self.accept)
             return
@@ -291,6 +374,8 @@ class ElectricalApp:
                 raise ValueError('FORMAT')
             ring = self.number(command[1], 1, 3)
             session = self.number(command[2], 1, 65535)
+            if self.pitch.enabled and (self.pitch.target != 'RAW' or not self.pitch.ready(time.ticks_ms())):
+                raise ValueError('VIEW_REQUIRED')
             self.idle()
             self.target, self.session = ring, session
             self.state = 'RING'
@@ -310,6 +395,8 @@ class ElectricalApp:
             elif len(command) == 4:
                 tx = self.number(command[2], 1, 100)
                 ty = self.number(command[3], 1, 100)
+            if self.pitch.enabled and job != 1 and (self.pitch.target != 'RAW' or not self.pitch.ready(time.ticks_ms())):
+                raise ValueError('VIEW_REQUIRED')
             if job == 41 and (self.source is None or not self.source.disk.locked):
                 raise ValueError('AREA_REQUIRED')
             self.idle()
@@ -319,6 +406,8 @@ class ElectricalApp:
                 self.state = 'QR'
                 self.board = Mission()
                 self.source = None
+                if self.pitch.enabled and not self.request_pitch('QR', 'QR'):
+                    return
             elif job == 40:
                 self.state = 'AREA'
                 colors = self.board.groups[0] if self.board.groups else range(1, 7)
@@ -338,11 +427,21 @@ class ElectricalApp:
             self.start(request, name == 'SCAN_BEGIN')
         elif cmd == ('RESET',):
             self.reset()
-            self.link.send('IDLE')
+            if self.pitch.enabled:
+                self.request_pitch('QR', 'PITCH_RESET')
+            else:
+                self.link.send('IDLE')
         elif cmd == ('CANCEL',):
             self.idle()
             self.source = None
-            self.link.send('IDLE')
+            if self.pitch.fault:
+                self.state = 'PITCH_FAULT'
+                self.link.send('ERR', 'PITCH_FAULT')
+            elif self.pitch.enabled and (self.pitch_boot_pending or not self.pitch.ready(time.ticks_ms())):
+                # Do not reverse the servo while cancelling; do not claim QR success.
+                self.state = 'PITCH_CANCEL'
+            else:
+                self.link.send('IDLE')
         elif cmd == ('STATUS',):
             if self.state == 'IDLE':
                 self.link.send('READY', 'IDLE')
@@ -351,8 +450,13 @@ class ElectricalApp:
         elif name == 'ACK' and len(cmd) == 3 and cmd[1] == 'QR':
             if (self.state == 'QR' and self.qr is not None and
                     self.number(cmd[2], 0, 65535) == self.session):
-                self.link.finish('DONE', 'QR')
-                self.idle()
+                if self.pitch.enabled:
+                    # ACK proves STM32 accepted this QR session. Delay DONE/IDLE
+                    # until the newly commanded view has settled. No new wire format.
+                    self.request_pitch('RAW', 'PITCH_RAW')
+                else:
+                    self.link.finish('DONE', 'QR')
+                    self.idle()
         elif name == 'STEP_DONE' and len(cmd) == 3:
             step = self.number(cmd[1], 0, 65535)
             if self.state == 'RING' and self.wait_step and step == self.step and cmd[2] in ('0', '1'):
@@ -424,6 +528,22 @@ class ElectricalApp:
             self.last_report = now
 
     def frame(self, img, now):
+        if self.pitch.enabled:
+            if self.pitch.fault or not self.pitch.frame_ready(now):
+                self.panel.update(self.board, self.state)
+                return
+            if self.state == 'PITCH_RAW':
+                self.link.finish('DONE', 'QR')
+                self.idle()
+                return
+            if self.state in ('PITCH_BOOT', 'PITCH_RESET', 'PITCH_CANCEL'):
+                self.idle()
+                if self.pitch_boot_pending:
+                    self.pitch_boot_pending = False
+                    self.link.send('READY', 'IDLE')
+                else:
+                    self.link.send('IDLE')
+                return
         if self.state == 'QR':
             self.qr_frame(img, now)
         elif self.state == 'RING':
@@ -443,6 +563,7 @@ class ElectricalApp:
 
 
 def run():
+    PitchControl.validate()  # Check pin conflict before initializing Panel or Servo.
     if C.UART_PROTOCOL == 'V4':
         link, app_type = V4Link(), ElectricalApp
     elif C.UART_PROTOCOL == 'V5':

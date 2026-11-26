@@ -72,6 +72,28 @@ Visualization Manager:
         Durability Policy: Transient Local
         Reliability Policy: Reliable
         History Policy: Keep Last
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: false
+      Name: REAL STARTUP TARGET CANDIDATES (calibrated only)
+      Topic:
+        Value: /competition/lidar/startup_markers
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+    - Class: rviz_default_plugins/Path
+      Enabled: false
+      Name: REAL STARTUP TARGET ROAD PREVIEW (calibrated only)
+      Topic:
+        Value: /competition/lidar/target_approach_path
+        Depth: 1
+        Durability Policy: Transient Local
+        Reliability Policy: Reliable
+        History Policy: Keep Last
+      Alpha: 0.95
+      Color: 255; 180; 0
+      Line Style: Lines
+      Line Width: 0.025
     - Class: rviz_default_plugins/Path
       Enabled: false
       Name: REAL LOCKED ROAD PATH (calibrated only)

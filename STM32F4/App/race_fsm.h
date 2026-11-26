@@ -28,7 +28,8 @@ typedef enum {
     RACE_ERROR_SCAN_TIMEOUT,
     RACE_ERROR_IMU,
     RACE_ERROR_LINK,
-    RACE_ERROR_LOOP_STALL
+    RACE_ERROR_LOOP_STALL,
+    RACE_ERROR_SCAN_MOTION
 } RaceError;
 
 typedef struct {
@@ -52,6 +53,8 @@ typedef struct {
     uint8_t action_count;
     uint8_t holding;
     uint8_t qr_valid;
+    uint8_t qr_handoff_complete;
+    uint8_t qr_handoff_required;
     uint32_t entered_ms;
     uint32_t hold_since_ms;
     uint32_t scan_session;
@@ -63,7 +66,10 @@ typedef struct {
     uint8_t positions[2][3];
 } RaceFsm;
 
+/* Legacy trusted-code API is retained for host-only simulation adapters.
+ * Firmware must use Race_InitWithQrHandoff to require the UART terminal gate. */
 void Race_Init(RaceFsm *race);
+void Race_InitWithQrHandoff(RaceFsm *race);
 uint8_t Race_SelectZone(RaceFsm *race, uint8_t zone);
 uint8_t Race_RunActions(RaceFsm *race, const RaceAction *actions, uint8_t count,
                        const RaceFeedback *feedback, uint32_t now);
@@ -72,6 +78,9 @@ void Race_Tick(RaceFsm *race, const RaceFeedback *feedback, uint32_t now);
 void Race_Abort(RaceFsm *race);
 void Race_Fail(RaceFsm *race, RaceError error);
 uint8_t Race_SubmitQr(RaceFsm *race, uint32_t session, const char *code);
+uint8_t Race_ScanStationary(const RaceFsm *race, const RaceFeedback *feedback);
+uint8_t Race_CompleteQr(RaceFsm *race, uint32_t session,
+                        const RaceFeedback *feedback, uint32_t now);
 uint8_t Race_ParseTask(const char *code, uint8_t colors[2][3], uint8_t positions[2][3]);
 
 #endif
