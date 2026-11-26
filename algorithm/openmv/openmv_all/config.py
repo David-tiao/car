@@ -88,3 +88,14 @@ HOME_MIN_PIXELS = 1200
 # 电控 architecture-v2 使用 V4；原 V5 主控可显式选择 V5。
 UART_PROTOCOL = 'V4'
 RING_TARGET_X, RING_TARGET_Y = 160, 120
+
+# 独立 SG90 Pitch：V4 模式收到匹配 QR ACK 后自动切换下视。
+# H7 Plus Servo(1)=P7、Servo(2)=P8；二者均与常见 LCD Shield 冲突。
+# 启用前物理断开冲突 LCD Shield，并设置 LCD_ENABLED=False。
+# 舵机独立稳压 5V 供电，与 OpenMV 共地；不得直接接 3.3V 供电。
+PITCH_ENABLED = False  # 默认保持原行为；完成实测与接线确认后才启用。
+PITCH_SERVO_ID = 1
+PITCH_QR_PULSE_US = None   # 实测 QR 观察姿态的安全脉宽（微秒）。
+PITCH_RAW_PULSE_US = None  # 实测下视姿态的安全脉宽（两姿态机械角差约90度）。
+PITCH_SETTLE_MS = 1200     # 初始等待值，实测负载下转动时间及余量后再调整。
+PITCH_DISCARD_FRAMES = 2   # 时间到后再丢弃两帧；不代表舵机角度已实测。
