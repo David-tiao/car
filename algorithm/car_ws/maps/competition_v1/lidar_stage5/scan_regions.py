@@ -598,7 +598,9 @@ class StartupAccumulator:
 
     def snapshot(self):
         qr,disk = self.target("qr_board"),self.target("raw_disk")
-        both = all(t["state"]=="GEOMETRY_CANDIDATE" for t in (qr,disk))
+        both = (self.terminated_by == "FRAME_LIMIT" and
+                self.frames == self.total and
+                all(t["state"]=="GEOMETRY_CANDIDATE" for t in (qr,disk)))
         return dict(phase="SNAPSHOT" if self.finished else "SCANNING",
                     status="BOTH_GEOMETRIES_FOUND" if both else "INCOMPLETE",
                     frame_count=self.frames,frame_target=self.total,
@@ -655,11 +657,209 @@ def startup_self_test():
     print("PASS: startup full-field FOV, stable coordinate snapshot, ambiguity and missing-target guards")
 
 
+def unified_startup_scene(snapshot, lock, road, path_nodes, path_source='NONE',
+                          max_delta_ns=10000000000):
+    """Pure-data preview gate. No commands to navigation or hardware."""
+    result = dict(schema='car_startup_scene_v1', status='WAIT_TARGET_SCAN',
+                  ready=False, identity_verified=False,
+                  navigation_authorized=False, robot_must_remain_stationary=True,
+                  qr_board=None, raw_disk=None, obstacles=[], blocked_roads=[],
+                  mission_routes=[], path_nodes=0, path_source='NONE',
+                  route_type='FIXED_ROAD_PREVIEW_NOT_TARGET_GOAL')
+    if not isinstance(snapshot, dict) or snapshot.get('phase') != 'SNAPSHOT':
+        return result
+    result['scan_stamp_ns'] = snapshot.get('scan_stamp_ns')
+    result['qr_board'] = snapshot.get('qr_board')
+    result['raw_disk'] = snapshot.get('raw_disk')
+    if (snapshot.get('status') != 'BOTH_GEOMETRIES_FOUND' or
+            snapshot.get('terminated_by') != 'FRAME_LIMIT' or
+            snapshot.get('identity_verified') is not False):
+        result['status'] = 'TARGET_INCOMPLETE'
+        return result
+    for name in ('qr_board', 'raw_disk'):
+        target = snapshot.get(name)
+        if not isinstance(target, dict) or target.get('state') != 'GEOMETRY_CANDIDATE':
+            result['status'] = 'TARGET_INCOMPLETE'
+            return result
+        xy = target.get('position_map_m')
+        if (not isinstance(xy, list) or len(xy) != 2 or
+                any(type(n) not in (int, float) or not math.isfinite(n) for n in xy)):
+            result['status'] = 'TARGET_INCOMPLETE'
+            return result
+    if isinstance(lock, dict) and lock.get('state') == 'CONFLICT':
+        result['status'] = 'CONFLICT_STOP'
+        return result
+    if not isinstance(lock, dict) or lock.get('state') != 'LOCKED' or lock.get('locked') is not True:
+        result['status'] = 'WAIT_OBSTACLE_LOCK'
+        return result
+    if not (lock.get('map_received') is True and lock.get('scan_tf_ready') is True):
+        result['status'] = 'STALE_LOCK'
+        return result
+    obstacles = lock.get('obstacles')
+    expected = lock.get('expected_obstacles')
+    if (type(expected) is not int or expected < 1 or
+            not isinstance(obstacles, list) or len(obstacles) != expected):
+        result['status'] = 'INVALID_LOCK'
+        return result
+    for obs in obstacles:
+        if (not isinstance(obs, dict) or
+                any(type(obs.get(key)) not in (int, float) or not math.isfinite(obs[key])
+                    for key in ('x', 'y')) or
+                not 0 <= obs['x'] <= 2.4 or not 0 <= obs['y'] <= 2.4):
+            result['status'] = 'INVALID_LOCK'
+            return result
+    last_scan = lock.get('scan_tf_stamp_ns')
+    first_scan = snapshot.get('scan_stamp_ns')
+    if (type(last_scan) is not int or type(first_scan) is not int or
+            last_scan <= 0 or first_scan <= 0 or
+            abs(last_scan - first_scan) > max_delta_ns):
+        result['status'] = 'SCAN_EPOCH_MISMATCH'
+        return result
+    result['obstacles'] = [dict(x=o['x'], y=o['y']) for o in obstacles]
+    result['blocked_roads'] = lock.get('blocked_roads', [])
+    if isinstance(road, dict) and (road.get('conflict') is True or
+                                   road.get('status') == 'CONFLICT_STOP'):
+        result['status'] = 'CONFLICT_STOP'
+        return result
+    if isinstance(road, dict) and road.get('status') == 'NO_ROUTE':
+        result['status'] = 'NO_ROUTE'
+        return result
+    if not isinstance(road, dict) or road.get('status') != 'LOCKED_READY':
+        result['status'] = 'WAIT_ROUTE'
+        return result
+    if (road.get('source') != 'LIDAR_CONFIRMED' or road.get('frozen') is not True or
+            road.get('conflict') is not False):
+        result['status'] = 'INVALID_ROUTE'
+        return result
+    legs = road.get('mission_routes')
+    blocked = road.get('blocked')
+    if (not isinstance(legs, list) or not legs or
+            not all(isinstance(leg, list) and len(leg) >= 1 and
+                    all(isinstance(node, str) and node for node in leg) for leg in legs) or
+            not isinstance(blocked, list) or
+            not isinstance(result['blocked_roads'], list) or
+            any(type(v) is not str for v in blocked) or
+            any(type(v) is not str for v in result['blocked_roads'])):
+        result['status'] = 'INVALID_ROUTE'
+        return result
+    if not set(result['blocked_roads']).issubset(set(blocked)):
+        result['status'] = 'INVALID_ROUTE'
+        return result
+    waypoints = road.get('waypoints')
+    if (not isinstance(waypoints, list) or len(waypoints) != len(legs)+1 or
+            any(leg[0] != waypoints[i] or leg[-1] != waypoints[i+1]
+                for i, leg in enumerate(legs))):
+        result['status'] = 'INVALID_ROUTE'
+        return result
+    result['blocked_roads'] = blocked
+    result['mission_routes'] = legs
+    result['start_node'] = waypoints[0]
+    if type(path_nodes) is not int or path_nodes < 2 or path_source not in ('MISSION','ROAD_TEST'):
+        result['status'] = 'WAIT_ROUTE_PATH'
+        return result
+    result['path_nodes'] = path_nodes
+    result['path_source'] = path_source
+    result['status'] = 'PREVIEW_READY_UNVERIFIED_TARGETS'
+    result['ready'] = True
+    return result
+
+
+def target_road_preview(scene, nodes, shortest, max_approach_m=.55):
+    """Candidate target-to-road-node plan using EXISTING Dijkstra, not a parking path."""
+    out=dict(status='NO_PREVIEW',source='STARTUP_GEOMETRY_UNVERIFIED',
+             route_nodes=[],qr_road_node=None,raw_road_node=None,
+             goal_identity_verified=False,not_for_nav2_followpath=True)
+    if not isinstance(scene,dict) or not scene.get('ready'):
+        return out
+    try:
+        a=scene['qr_board']['position_map_m']
+        b=scene['raw_disk']['position_map_m']
+        start=scene['start_node']
+        blocked=set(scene['blocked_roads'])
+        if (start not in nodes or not nodes or
+                any(not isinstance(p,list) or len(p)!=2 or
+                    any(type(v) not in (int,float) or not math.isfinite(v) for v in p)
+                    for p in (a,b))):
+            return out
+    except (KeyError,TypeError,ValueError):
+        return out
+    route=[]
+    for label,target in (('qr_road_node',a),('raw_road_node',b)):
+        ordered=sorted((n for n in nodes if math.dist(nodes[n],target)<=max_approach_m),
+                       key=lambda n:(math.dist(nodes[n],target),n))
+        chosen=None
+        for node in ordered:
+            leg=shortest(start,node,blocked)
+            if leg and leg[0]==start and leg[-1]==node and all(n in nodes for n in leg):
+                chosen=(node,leg)
+                break
+        if chosen is None:
+            out['status']='NO_APPROACH_ROAD_PATH'
+            return out
+        node,leg=chosen
+        route.extend(leg if not route else leg[1:])
+        out[label]=node
+        start=node
+    if len(route) < 2:
+        out['status']='NO_APPROACH_ROAD_PATH'
+        return out
+    out['status']='ROAD_PREVIEW_ONLY'
+    out['route_nodes']=route
+    return out
+
+
+def unified_scene_self_test():
+    target = lambda xy: dict(state='GEOMETRY_CANDIDATE', position_map_m=xy,
+                             identity_verified=False)
+    snap = dict(phase='SNAPSHOT',status='BOTH_GEOMETRIES_FOUND',
+                terminated_by='FRAME_LIMIT',scan_stamp_ns=1000000000,
+                identity_verified=False,qr_board=target([2.4,1.2]),
+                raw_disk=target([1.2,2.47]))
+    lock = dict(state='LOCKED',locked=True,map_received=True,scan_tf_ready=True,
+                scan_tf_stamp_ns=1300000000,expected_obstacles=2,
+                obstacles=[dict(x=1.,y=1.),dict(x=1.3,y=1.2)],
+                blocked_roads=['A1-B1'])
+    road = dict(status='LOCKED_READY',source='LIDAR_CONFIRMED',
+                frozen=True,conflict=False,blocked=['A1-B1'],
+                mission_routes=[['C3','B3'],['B3','A3']],waypoints=['C3','B3','A3'])
+    ok = unified_startup_scene(snap,lock,road,5,'MISSION')
+    assert ok['ready'] is True and ok['status']=='PREVIEW_READY_UNVERIFIED_TARGETS'
+    assert ok['navigation_authorized'] is False and ok['identity_verified'] is False
+    assert len(ok['obstacles'])==2 and len(ok['mission_routes'])==2
+    assert unified_startup_scene(snap,None,road,5)['status']=='WAIT_OBSTACLE_LOCK'
+    assert unified_startup_scene(snap,lock,None,5)['status']=='WAIT_ROUTE'
+    assert unified_startup_scene(snap,lock,road,0,'MISSION')['status']=='WAIT_ROUTE_PATH'
+    assert unified_startup_scene(dict(snap,terminated_by='MOTION_DURING_STARTUP'),lock,road,5)['status']=='TARGET_INCOMPLETE'
+    assert unified_startup_scene(snap,dict(lock,state='CONFLICT'),road,5)['status']=='CONFLICT_STOP'
+    assert unified_startup_scene(snap,lock,dict(road,status='NO_ROUTE'),5)['status']=='NO_ROUTE'
+    assert unified_startup_scene(snap,dict(lock,scan_tf_stamp_ns=20000000000),road,5)['status']=='SCAN_EPOCH_MISMATCH'
+    assert unified_startup_scene(snap,dict(lock,scan_tf_ready=False),road,5)['status']=='STALE_LOCK'
+    assert unified_startup_scene(snap,lock,road,5)['status']=='WAIT_ROUTE_PATH'
+    assert unified_startup_scene(snap,lock,road,5,'ROAD_TEST')['ready'] is True
+    assert unified_startup_scene(dict(snap,raw_disk=target([float('nan'),2.])),lock,road,5)['status']=='TARGET_INCOMPLETE'
+    assert unified_startup_scene(snap,lock,dict(road,source='MANUAL_TEST'),5)['status']=='INVALID_ROUTE'
+    assert unified_startup_scene(snap,lock,dict(road,waypoints=['C3','A3','B3']),5)['status']=='INVALID_ROUTE'
+    assert unified_startup_scene(snap,lock,dict(road,blocked=[['bad']]),5)['status']=='INVALID_ROUTE'
+    nodes={'C3':(2.,2.),'C2':(2.,1.),'B3':(1.,2.),'B2':(1.,1.)}
+    def demo_shortest(src,dst,blocked):
+        if 'ALL' in blocked:
+            return []
+        return [src] if src==dst else [src,dst]
+    preview=target_road_preview(ok,nodes,demo_shortest)
+    assert preview['status']=='ROAD_PREVIEW_ONLY' and preview['qr_road_node']=='C2'
+    assert preview['raw_road_node']=='B3' and preview['route_nodes']==['C3','C2','B3']
+    assert target_road_preview(dict(ok,ready=False),nodes,demo_shortest)['status']=='NO_PREVIEW'
+    assert target_road_preview(dict(ok,blocked_roads=['ALL']),nodes,demo_shortest)['status']=='NO_APPROACH_ROAD_PATH'
+    assert target_road_preview(ok,{'C3':(10.,10.)},demo_shortest)['status']=='NO_APPROACH_ROAD_PATH'
+    print('PASS: startup scene join, target-aware Dijkstra preview, stale/motion/conflict guards')
+
+
 def main():
     if sys.argv[1:] == ["--self-test"]:
         self_test()
         calibration_self_test()
         startup_self_test()
+        unified_scene_self_test()
         return
     if len(sys.argv)>1 and sys.argv[1] in ('capture','calibrate'):
         calibration_cli()
@@ -675,6 +875,9 @@ def main():
     from rclpy.qos import qos_profile_sensor_data, QoSProfile, DurabilityPolicy, ReliabilityPolicy
     from sensor_msgs.msg import LaserScan
     from std_msgs.msg import String
+    from nav_msgs.msg import Path as RosPath
+    from geometry_msgs.msg import PoseStamped
+    from visualization_msgs.msg import Marker, MarkerArray
     from tf2_ros import Buffer, TransformListener, TransformException
 
     class Observer(Node):
@@ -702,6 +905,35 @@ def main():
                                      reliability=ReliabilityPolicy.RELIABLE)
                 self.startup_pub = self.create_publisher(
                     String,"/competition/lidar/startup_targets",latched)
+            if startup_mode:
+                self.scene_lock = None
+                self.scene_route = None
+                self.scene_lock_rx = 0.
+                self.scene_route_rx = 0.
+                self.scene_path_nodes = 0
+                self.scene_path_source = 'NONE'
+                self.scene_require_mission = os.environ.get('CAR_STARTUP_REQUIRE_MISSION') == '1'
+                self.scene_status_pub = self.create_publisher(
+                    String, '/competition/lidar/scene_status', latched)
+                self.scene_marker_pub = self.create_publisher(
+                    MarkerArray, '/competition/lidar/startup_markers', latched)
+                self.scene_approach_pub = self.create_publisher(
+                    RosPath, '/competition/lidar/target_approach_path', latched)
+                from pathlib import Path as LocalPath
+                import importlib.util
+                topo_file = LocalPath(__file__).resolve().parent.parent / 'topology_stage6' / 'road_topology.py'
+                spec = importlib.util.spec_from_file_location('startup_road_topology', str(topo_file))
+                topo = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(topo)
+                self.scene_nodes,self.scene_shortest = topo.NODES,topo.shortest
+                self.scene_lock_sub = self.create_subscription(
+                    String, '/competition/obstacle_lock_status', self.on_scene_lock, latched)
+                self.scene_road_sub = self.create_subscription(
+                    String, '/competition/road_status', self.on_scene_route, latched)
+                self.scene_path_sub = self.create_subscription(
+                    RosPath, '/competition/mission_road_path', self.on_scene_path, latched)
+                self.scene_road_path_sub = self.create_subscription(
+                    RosPath, '/competition/locked_road_path', self.on_scene_road_path, latched)
             self.queue = deque(maxlen=8)
             self.last_rx = time.monotonic()
             self.last_report = -math.inf
@@ -762,11 +994,120 @@ def main():
                 self.report(dict(status="SCAN_QUEUE_OVERFLOW"))
             self.queue.append((self.last_rx,stamp,msg,duration))
 
+        def update_scene_state(self):
+            if self.startup_snapshot is None or self.scene_status_pub is None:
+                return
+            now = time.monotonic()
+            lock = self.scene_lock if now-self.scene_lock_rx < 2.5 else None
+            road = self.scene_route if now-self.scene_route_rx < 2.5 else None
+            merged = unified_startup_scene(self.startup_snapshot,
+                                           lock,road,
+                                           self.scene_path_nodes,
+                                           self.scene_path_source)
+            preview = target_road_preview(merged,self.scene_nodes,self.scene_shortest)
+            merged['target_approach_preview']=preview
+            if merged['ready'] and preview['status']!='ROAD_PREVIEW_ONLY':
+                merged['ready']=False
+                merged['status']='NO_TARGET_APPROACH'
+            self.scene_status_pub.publish(String(data=json.dumps(merged,allow_nan=False)))
+            path = RosPath()
+            path.header.frame_id='map'
+            path.header.stamp=self.get_clock().now().to_msg()
+            for name in preview['route_nodes']:
+                pose=PoseStamped()
+                pose.header=path.header
+                pose.pose.position.x,pose.pose.position.y=self.scene_nodes[name]
+                pose.pose.orientation.w=1.
+                path.poses.append(pose)
+            self.scene_approach_pub.publish(path)
+
+        def on_scene_lock(self, msg):
+            try:
+                obj = json.loads(msg.data)
+                if not isinstance(obj, dict):
+                    raise ValueError('expected object')
+            except (ValueError,TypeError):
+                self.get_logger().warning('Invalid obstacle lock status ignored')
+                return
+            self.scene_lock = obj
+            self.scene_lock_rx = time.monotonic()
+            self.update_scene_state()
+
+        def on_scene_route(self, msg):
+            try:
+                obj = json.loads(msg.data)
+                if not isinstance(obj, dict):
+                    raise ValueError('expected object')
+            except (ValueError,TypeError):
+                self.get_logger().warning('Invalid road status ignored')
+                return
+            self.scene_route = obj
+            self.scene_route_rx = time.monotonic()
+            self.update_scene_state()
+
+        def on_scene_path(self, msg):
+            # An empty mission route revokes readiness: never fall back to stale road paths.
+            self.scene_path_nodes = len(msg.poses) if msg.header.frame_id == 'map' else 0
+            self.scene_path_source = 'MISSION'
+            self.update_scene_state()
+
+        def on_scene_road_path(self, msg):
+            # V6 viewer publishes a one-leg ROAD TEST preview, not the full mission.
+            if self.scene_require_mission or self.scene_path_source == 'MISSION':
+                return
+            self.scene_path_nodes = len(msg.poses) if msg.header.frame_id == 'map' else 0
+            self.scene_path_source = 'ROAD_TEST'
+            self.update_scene_state()
+
+        def publish_target_markers(self):
+            # Only completed scans and measured geometric candidates may appear.
+            arr = MarkerArray()
+            if (self.startup_snapshot.get('terminated_by') != 'FRAME_LIMIT' or
+                    self.startup_snapshot.get('status') != 'BOTH_GEOMETRIES_FOUND'):
+                deleted = Marker()
+                deleted.action = Marker.DELETEALL
+                arr.markers.append(deleted)
+                self.scene_marker_pub.publish(arr)
+                return
+            for ident,name,shape,rgb in (
+                    (0,'qr_board',Marker.SPHERE,(.52,.25,.96)),
+                    (1,'raw_disk',Marker.CYLINDER,(1.,.68,.12))):
+                target = self.startup_snapshot.get(name)
+                if not isinstance(target,dict) or target.get('state')!='GEOMETRY_CANDIDATE':
+                    continue
+                xy = target.get('position_map_m')
+                if not isinstance(xy,list) or len(xy)!=2 or not all(
+                        type(v) in (float,int) and math.isfinite(v) for v in xy):
+                    continue
+                for label_offset,kind in ((0,shape),(2,Marker.TEXT_VIEW_FACING)):
+                    m=Marker()
+                    m.header.frame_id='map'
+                    m.header.stamp=self.get_clock().now().to_msg()
+                    m.ns='startup_geometric_candidates'
+                    m.id=ident+label_offset
+                    m.type=kind
+                    m.action=Marker.ADD
+                    m.pose.orientation.w=1.
+                    m.pose.position.x,m.pose.position.y=xy
+                    m.pose.position.z=.08 if label_offset==0 else .21
+                    m.color.r,m.color.g,m.color.b=rgb
+                    m.color.a=.85
+                    if label_offset:
+                        m.scale.z=.085
+                        m.text=('QR? ' if name=='qr_board' else 'Disk? ')+f'({xy[0]:.3f},{xy[1]:.3f})m'
+                    else:
+                        m.scale.x=m.scale.y=.075 if name=='qr_board' else .30
+                        m.scale.z=.04
+                    arr.markers.append(m)
+            self.scene_marker_pub.publish(arr)
+
         def publish_startup(self):
             if self.startup_snapshot is None:
                 self.startup_snapshot=self.startup.snapshot()
                 self.get_logger().warning("STARTUP_SNAPSHOT status="+self.startup_snapshot["status"])
             self.startup_pub.publish(String(data=json.dumps(self.startup_snapshot,allow_nan=False)))
+            self.publish_target_markers()
+            self.update_scene_state()
             self.startup_last_pub=time.monotonic()
 
         def tick(self):

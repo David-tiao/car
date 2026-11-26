@@ -32,6 +32,7 @@ REQUIRED = (
     ROOT / 'simple_lock_stage' / 'preflight_fixed_route.py',
     ROOT / 'simple_lock_stage' / 'lock_core.py',
     ROOT / 'topology_stage6' / 'road_topology.py',
+    ROOT / 'lidar_stage5' / 'scan_regions.py',
     WS / 'config' / 'x3.yaml',
 )
 
@@ -115,7 +116,12 @@ def pub_count(topic):
 
 def check_conflict():
     for topic in ('/scan', '/map', '/keepout_filter_mask', '/costmap_filter_info',
-                  '/competition/obstacle_lock_status', '/competition/road_status'):
+                  '/competition/obstacle_lock_status', '/competition/road_status',
+                  '/competition/lidar/startup_targets',
+                  '/competition/lidar/startup_markers',
+                  '/competition/lidar/scene_status',
+                  '/competition/mission_road_path', '/competition/locked_road_path',
+                  '/competition/lidar/target_approach_path'):
         count = pub_count(topic)
         if count:
             raise RuntimeError(f'已有 {count} 个节点正在发布 {topic}；请手动关闭旧实例，本脚本不会结束其他进程')
@@ -350,6 +356,9 @@ def run(args):
         except Exception as exc:
             raise RuntimeError('输入话题/TF 校验未通过，未启动障碍物锁定：' + str(exc)) from exc
         say('READY', '雷达扫描、静态地图、TF 已收到；物理坐标精度仍须实测验证')
+        sv.launch('startup_targets', ['env', 'CAR_STARTUP_REQUIRE_MISSION=1',
+            sys.executable, str(ROOT / 'lidar_stage5' / 'scan_regions.py'), 'startup'])
+        say('INFO', '开局全场几何扫描已启动；只产生候选标记，不自动改写固定任务路线或驱动车辆')
         expected = str(settings['expected_obstacles'])
         sv.launch('lock', [sys.executable, str(ROOT / 'simple_lock_stage' / 'lock_obstacles.py'),
                             '--expected', expected, '--snapshot', str(log_dir / 'obstacles_locked.json')])

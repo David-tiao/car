@@ -244,7 +244,8 @@ def preflight(offline=False):
              MAP / 'competition_navigation_map.yaml', MAP / 'competition_navigation_map.pgm',
              MAP / 'competition_keepout_mask.yaml', MAP / 'competition_keepout_mask.pgm',
              MAP / 'verify_static_map.py', MAP / 'zones.json', LOCK,
-             ROOT / 'simple_lock_stage/lock_core.py', TOPO]
+             ROOT / 'simple_lock_stage/lock_core.py', TOPO,
+             ROOT / 'lidar_stage5/scan_regions.py']
     missing = [str(p) for p in files if not p.is_file()]
     if missing:
         raise RuntimeError('必要文件缺失: {}'.format(' | '.join(missing)))
@@ -275,11 +276,17 @@ def preflight(offline=False):
         nodes = required_call(['ros2', 'node', 'list']).splitlines()
         for name in ('/competition_v6_map_server', '/competition_v6_mask_server',
                      '/ydlidar_ros2_driver_node', '/competition_v6_static_visual',
-                     '/competition_obstacle_lock', '/competition_stage6_road_topology'):
+                     '/competition_obstacle_lock', '/competition_stage6_road_topology',
+                     '/competition_region_scan'):
             if name in nodes:
                 raise RuntimeError('节点 {} 已存在，可能属于其他实例；拒绝冲突启动'.format(name))
         known_topics = set(required_call(['ros2', 'topic', 'list']).splitlines())
-        for topic in ('/map', '/keepout_filter_mask', '/scan', '/competition/v6/scene'):
+        for topic in ('/map', '/keepout_filter_mask', '/scan', '/competition/v6/scene',
+                      '/competition/lidar/startup_targets', '/competition/lidar/startup_markers',
+                      '/competition/lidar/scene_status',
+                      '/competition/lidar/target_approach_path',
+                      '/competition/obstacle_lock_status', '/competition/road_status',
+                      '/competition/mission_road_path', '/competition/locked_road_path'):
             if topic not in known_topics:
                 continue
             result = required_call(['ros2', 'topic', 'info', topic])
@@ -400,7 +407,9 @@ def create_rviz(calibrated):
         for name in ('REAL LOCKED ROAD PATH (calibrated only)',
                      'REAL LOCKED ROAD GRAPH (calibrated only)',
                      'REAL LOCKED OBSTACLES (calibrated only)',
-                     'REGISTERED LaserScan (calibrated only)'):
+                     'REGISTERED LaserScan (calibrated only)',
+                     'REAL STARTUP TARGET CANDIDATES (calibrated only)',
+                     'REAL STARTUP TARGET ROAD PREVIEW (calibrated only)'):
             anchor = '      Enabled: false\n      Name: ' + name + '\n'
             if data.count(anchor) != 1:
                 raise RuntimeError('RViz 配置未找到待启用显示：' + name)
@@ -519,6 +528,8 @@ def run_start(desktop=False):
 
             if calibration:
                 lock, _ = spawn('lock', ['/usr/bin/python3',LOCK,'--expected',str(expected)])
+                startup, _ = spawn('startup_targets',
+                    ['/usr/bin/python3', ROOT / 'lidar_stage5/scan_regions.py', 'startup'])
                 topology, _ = spawn('topology',['/usr/bin/python3',TOPO,'--start','C3',
                                          '--goal','A3','--expected-obstacles',str(expected)])
                 probe('status','/competition/obstacle_lock_status','',lock)

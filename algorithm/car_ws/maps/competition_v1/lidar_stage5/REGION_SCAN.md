@@ -144,3 +144,16 @@ ros2 topic echo /competition/lidar/startup_targets --once
 严格物理限制：起始位置可能遮挡目标，平面 X3 看不到高于扫描平面的物体，二维码板若与背景平面共面无法仅用轮廓区分；这些情形无法保证开局静止一次全场扫描就得到两个实际坐标，必须由视觉/移动后复核或更换硬件安装方案。当前仅完成**感知结果快照话题**，原 V6 启动器和 Nav2 并未消费这个新话题；如需直接驱动后续自主路径，必须另行审查对应模块及授权范围。
 
 开局累积20帧时，还会将后续车体位姿与第一帧的位姿比较；超过平移5mm或yaw 0.3°即终止此次扫描并发布不完整结果。此检查只依赖 TF，不代表硬件本身静止已被独立验证。当前仍需完成真实 TF 和双目标可见性实机验收。
+
+## V6 一键场景集成（开发分支；实机待验收）
+
+当前两套一键入口在已得到真实 /scan、/map、实测 map->base_link->laser_frame TF 时运行 scan_regions.py startup；现有障碍物锁路、Dijkstra 道路拓扑、mission_export.py 及 RViz 继续使用原有进程生命周期。无 TF 时，V6 仅提供原始点云及基线预览，不输出伪地图目标坐标。
+
+新增 ROS2 话题：
+- /competition/lidar/startup_markers：MarkerArray，显示紫色 QR 几何候选、黄色物料盘盘心几何候选及米制地图坐标，未扫描完成或存在歧义时 DELETEALL 清除候选标记。
+- /competition/lidar/scene_status：String JSON，汇总开局目标、锁定障碍物、封闭路段、已有道路路径状态，以及明确的失败原因。只有扫描全程正常、双目标多帧稳定、障碍物锁定和路径状态一致且及时，才报 PREVIEW_READY_UNVERIFIED_TARGETS。
+- /competition/lidar/target_approach_path：Path，复用原有 Dijkstra 从起点到 QR 附近道路节点再到物料盘附近道路节点的预览，距离阈值初值 0.55m；无匹配节点、不连通、冲突或数据过期就发布空路径。
+
+固定九节点的任务道路路线仍是原工程的任务阶段示意，并非二维码任务动态规划。V6 Viewer 的 C3->A3 路线仅为 ROAD_TEST，不能冒充完整任务路线；正式一键入口强制等待 mission_road_path。开局路径只到道路节点，不是停车位姿或机械抓取目标。
+
+全程只读：identity_verified=false、navigation_authorized=false，绝不发送 /cmd_vel、Nav2 FollowPath 或 STM32 串口运动指令。X3 扫描平面若被遮挡或打不到盘体，无法保证一次开局就识别目标。需用真实外参、静止车体及现场目标/障碍布局进行 ROS2/Humble + Pi5 + X3 + RViz 实验验证。
