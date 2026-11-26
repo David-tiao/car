@@ -1,5 +1,10 @@
 import unittest
 import math
+from pathlib import Path
+import sys
+
+# Resolve the module root independently of the current working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from segment_executor import Executor, Pose, Limits, Sample
 
 L=Limits(.02,.04,.01,.02,.12,100,30,80,50,80,3)

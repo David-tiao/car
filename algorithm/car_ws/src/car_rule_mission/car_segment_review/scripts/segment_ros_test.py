@@ -7,6 +7,11 @@ from dataclasses import asdict
 import json
 import os
 import time
+from pathlib import Path
+import sys
+
+# Resolve the module root independently of the current working directory.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from segment_executor import Executor, Limits, Pose, Sample
 
 PREFIX='/car/test/segment/'
