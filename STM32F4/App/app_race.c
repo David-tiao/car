@@ -124,7 +124,7 @@ void AppRace_Init(MecanumChassis_t *chassis)
     s_chassis = chassis;
     s_direct_cycle_done = 0U;
     s_ring_control = 0U;
-    Race_Init(&s_race);
+    Race_InitWithQrHandoff(&s_race);
     s_boot = HAL_GetTick();
     s_last_poll = s_boot;
     s_last_imu = s_boot;
@@ -193,30 +193,35 @@ void AppRace_Poll(void)
     if (!RaceVision_Healthy() && (s_race.state == RACE_READY || s_race.state == RACE_RUNNING)) {
         Race_Fail(&s_race, RACE_ERROR_LINK);
     }
-    if (RaceVision_Poll(code)) {
-        if (Race_SubmitQr(&s_race, s_race.scan_session, code)) {
-            /* Exactly once: validate and build the plan before moving on. */
-            if (!RaceVision_AckQr(s_race.scan_session)) {
-                Race_Fail(&s_race, RACE_ERROR_LINK);
-            } else if (!RaceTaskPlan_Build(&s_plan,
-                                           (const uint8_t (*)[3])s_race.colors,
-                                           (const uint8_t (*)[3])s_race.positions) ||
-                       !RaceTaskPlan_Start(&s_plan)) {
-                Race_Fail(&s_race, RACE_ERROR_CONFIG);
+    {
+        uint8_t got_qr = RaceVision_Poll(code);
+        if (s_race.state == RACE_RUNNING &&
+            s_race.actions[s_race.action_index].kind == RACE_ACTION_SCAN) {
+            if (!current.imu_valid) Race_Fail(&s_race, RACE_ERROR_IMU);
+            else if (!Race_ScanStationary(&s_race, &current))
+                Race_Fail(&s_race, RACE_ERROR_SCAN_MOTION);
+            else if (RaceVision_ScanFailed())
+                Race_Fail(&s_race, RaceVision_Healthy() ?
+                          RACE_ERROR_SCAN_TIMEOUT : RACE_ERROR_LINK);
+            else if (got_qr) {
+                if (Race_SubmitQr(&s_race, s_race.scan_session, code) ||
+                    (s_race.qr_valid && strcmp(s_race.task_code, code) == 0)) {
+                    /* Identical retries are ACKed, but the route remains parked. */
+                    if (!RaceVision_AckQr(s_race.scan_session))
+                        Race_Fail(&s_race, RACE_ERROR_LINK);
+                } else Race_Fail(&s_race, RACE_ERROR_LINK);
             }
-        } else if (s_race.state == RACE_RUNNING && s_race.qr_valid &&
-                   strcmp(s_race.task_code, code) == 0) {
-            /* OpenMV retries QR until ACK, which itself may be lost.
-             * Re-ACK identical data without advancing the race plan twice. */
-            if (!RaceVision_AckQr(s_race.scan_session))
-                Race_Fail(&s_race, RACE_ERROR_LINK);
+            if (s_race.state == RACE_RUNNING &&
+                RaceVision_HandoffComplete(s_race.scan_session)) {
+                if (!Race_CompleteQr(&s_race, s_race.scan_session, &current, now) ||
+                    !RaceTaskPlan_Build(&s_plan,
+                        (const uint8_t (*)[3])s_race.colors,
+                        (const uint8_t (*)[3])s_race.positions) ||
+                    !RaceTaskPlan_Start(&s_plan))
+                    Race_Fail(&s_race, RACE_ERROR_CONFIG);
+                else RaceVision_EndScan();
+            }
         }
-    }
-    if (s_race.state == RACE_RUNNING &&
-        s_race.actions[s_race.action_index].kind == RACE_ACTION_SCAN &&
-        RaceVision_ScanFailed()) {
-        Race_Fail(&s_race, RaceVision_Healthy() ?
-                  RACE_ERROR_SCAN_TIMEOUT : RACE_ERROR_LINK);
     }
     if (s_ring_control || Vision_RingActive(Vision_GetDefault())) {
         if (s_stalled && Vision_RingActive(Vision_GetDefault()))
@@ -292,9 +297,14 @@ void AppRace_Poll(void)
             Mecanum_SetPositionMode(s_chassis, s_race.target_x, s_race.target_y, s_race.target_yaw);
         }
         __set_PRIMASK(saved_irq);
-        if (action->kind == RACE_ACTION_SCAN &&
-            !RaceVision_BeginScanSession(s_race.scan_session)) {
-            Race_Fail(&s_race, RACE_ERROR_LINK);
+        if (action->kind == RACE_ACTION_SCAN) {
+            /* Exit position mode before the camera transaction begins. */
+            saved_irq = __get_PRIMASK();
+            __disable_irq();
+            stop_outputs();
+            __set_PRIMASK(saved_irq);
+            if (!RaceVision_BeginScanSession(s_race.scan_session))
+                Race_Fail(&s_race, RACE_ERROR_LINK);
         }
     }
     saved_irq = __get_PRIMASK();

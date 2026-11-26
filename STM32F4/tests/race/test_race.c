@@ -48,7 +48,7 @@ static void test_routes(void)
         RaceFsm race;
         RaceFeedback current = stationary();
         uint32_t now = 50U;
-        Race_Init(&race);
+        Race_InitWithQrHandoff(&race);
         assert(Race_SelectZone(&race, zone));
         assert(Race_StartQrRoute(&race, &current, now));
         assert(fabsf(race.target_y - 0.125f) < 0.0001f);
@@ -77,7 +77,13 @@ static void test_routes(void)
         current.vx = 0.1f;
         Race_Tick(&race, &current, now);
         assert(race.state == RACE_RUNNING);
+        assert(!Race_CompleteQr(&race, race.scan_session, &current, now));
         current.vx = 0.0f;
+        Race_Tick(&race, &current, now);
+        assert(race.action_index == 4U);
+        assert(!Race_CompleteQr(&race, race.scan_session + 1U, &current, now));
+        assert(Race_CompleteQr(&race, race.scan_session, &current, now));
+        assert(!Race_CompleteQr(&race, race.scan_session, &current, now));
         Race_Tick(&race, &current, now + 1U);
         assert(race.action_index == 5U && race.state == RACE_RUNNING);
         while (race.action_index < 7U) {
@@ -99,6 +105,29 @@ static void test_routes(void)
         Race_Tick(&race, &current, now + 100000U);
         assert(race.state == RACE_DONE);
     }
+}
+
+static void test_pending_qr_timeout(void)
+{
+    RaceFsm race;
+    RaceFeedback current = stationary();
+    RaceAction action = {RACE_ACTION_SCAN, 0.0f, 0.0f, 0.0f, 1000U, 0U};
+    Race_InitWithQrHandoff(&race);
+    assert(Race_RunActions(&race, &action, 1U, &current, 0U));
+    assert(!Race_CompleteQr(&race, race.scan_session, &current, 1U));
+    assert(Race_SubmitQr(&race, race.scan_session, "452+321+254+312"));
+    Race_Tick(&race, &current, 999U);
+    assert(race.state == RACE_RUNNING && race.action_index == 0U);
+    assert(!Race_CompleteQr(&race, race.scan_session, &current, 1000U));
+    Race_Tick(&race, &current, 1000U);
+    assert(race.error == RACE_ERROR_SCAN_TIMEOUT && race.state == RACE_FAULT);
+    assert(!Race_CompleteQr(&race, race.scan_session, &current, 1001U));
+    /* The pre-existing host adapter injects already-trusted code, not UART. */
+    Race_Init(&race);
+    assert(Race_RunActions(&race, &action, 1U, &current, 0U));
+    assert(Race_SubmitQr(&race, race.scan_session, "452+321+254+312"));
+    Race_Tick(&race, &current, 1U);
+    assert(race.state == RACE_DONE);
 }
 
 static void test_motion_guards(void)
@@ -307,12 +336,17 @@ static void test_v4_qr_session_contract(void)
     assert(strcmp(code, "156+123+516+231") == 0);
     inject_v4(&vision, 5U, "QR,156+123+516+231,23", 20U, 0);
     assert(!Vision_TakeQr(&vision, code));
-    assert(Vision_SendBody(&vision, "ACK,QR,23"));
+    assert(!Vision_QrHandoffComplete(&vision, 23U));
+    assert(!Vision_AckQr(&vision, 22U));
+    assert(Vision_AckQr(&vision, 23U));
     assert(strstr(v4_tx, "ACK,QR,23*") != NULL);
     inject_v4(&vision, 6U, "DONE,QR", 20U, 0);
     assert(vision.result == VISION_RESULT_QR_DONE);
+    assert(!Vision_QrHandoffComplete(&vision, 23U));
     inject_v4(&vision, 7U, "IDLE", 20U, 0);
     assert(vision.phase == VISION_IDLE);
+    assert(Vision_QrHandoffComplete(&vision, 23U));
+    assert(!Vision_QrHandoffComplete(&vision, 24U));
     assert(Vision_StartQrJob(&vision, 24U, 30U));
     assert(vision.qr_session == 24U);
     /* Stale QR from scan 23 cannot activate the new scan. */
@@ -323,10 +357,41 @@ static void test_v4_qr_session_contract(void)
     assert(Vision_TakeQr(&vision, code));
 }
 
+static void test_qr_terminal_guards(void)
+{
+    VisionContext v;
+    unsigned scenario;
+    for (scenario = 0U; scenario < 6U; scenario++) {
+        Vision_Init(&v, capture_v4_tx, NULL, NULL);
+        v.ready = 1U;
+        assert(Vision_StartQrJob(&v, 23U, 0U));
+        inject_v4(&v, 10U, "ACK,JOB,1", 1U, 0);
+        assert(!Vision_AckQr(&v, 23U));
+        inject_v4(&v, 11U, "QR,156+123+516+231,23", 2U, 0);
+        if (scenario != 0U) assert(Vision_AckQr(&v, 23U));
+        if (scenario == 0U) inject_v4(&v, 12U, "DONE,QR", 3U, 0);
+        if (scenario == 1U) inject_v4(&v, 12U, "IDLE", 3U, 0);
+        if (scenario == 2U) {
+            inject_v4(&v, 12U, "DONE,QR", 3U, 0);
+            inject_v4(&v, 14U, "IDLE", 4U, 0);
+        }
+        if (scenario == 3U) inject_v4(&v, 0U, "READY,IDLE", 3U, 0);
+        if (scenario == 4U) assert(Vision_Cancel(&v));
+        if (scenario == 5U) assert(Vision_Reset(&v));
+        assert(!Vision_QrHandoffComplete(&v, 23U));
+        assert(v.qr_stage == VISION_QR_FAILED);
+        inject_v4(&v, 15U, "DONE,QR", 5U, 0);
+        inject_v4(&v, 16U, "IDLE", 6U, 0);
+        assert(!Vision_QrHandoffComplete(&v, 23U));
+    }
+}
+
 int main(void)
 {
+    test_qr_terminal_guards();
     test_v4_qr_session_contract();
     test_routes();
+    test_pending_qr_timeout();
     test_motion_guards();
     test_faults();
     test_protocol();

@@ -44,6 +44,7 @@ static void enter_action(RaceFsm *race, uint32_t now)
         race->scan_session++;
         if (race->scan_session == 0U) race->scan_session = 1U;
         race->qr_valid = 0U;
+        race->qr_handoff_complete = 0U;
     }
 }
 
@@ -52,6 +53,12 @@ void Race_Init(RaceFsm *race)
     memset(race, 0, sizeof(*race));
     race->zone = RACE_DEFAULT_START_ZONE;
     race->state = RACE_READY;
+}
+
+void Race_InitWithQrHandoff(RaceFsm *race)
+{
+    Race_Init(race);
+    race->qr_handoff_required = 1U;
 }
 
 uint8_t Race_SelectZone(RaceFsm *race, uint8_t zone)
@@ -107,6 +114,7 @@ uint8_t Race_RunActions(RaceFsm *race, const RaceAction *actions, uint8_t count,
     race->target_yaw = feedback->yaw;
     race->task_code[0] = '\0';
     race->qr_valid = 0U;
+    race->qr_handoff_complete = 0U;
     race->error = RACE_ERROR_NONE;
     race->state = RACE_RUNNING;
     enter_action(race, now);
@@ -178,7 +186,7 @@ void Race_Tick(RaceFsm *race, const RaceFeedback *feedback, uint32_t now)
         return;
     }
     if (action->kind == RACE_ACTION_SCAN) {
-        if (!race->qr_valid) return;
+        if (!race->qr_valid || (race->qr_handoff_required && !race->qr_handoff_complete)) return;
     } else {
         if (!race->holding) {
             race->holding = 1U;
@@ -214,6 +222,27 @@ uint8_t Race_ParseTask(const char *code, uint8_t colors[2][3], uint8_t positions
             positions[group][index] = (uint8_t)(code[group * 8U + 4U + index] - '0');
         }
     }
+    return 1U;
+}
+
+uint8_t Race_ScanStationary(const RaceFsm *race, const RaceFeedback *feedback)
+{
+    return race != NULL && race->state == RACE_RUNNING &&
+           race->action_index < race->action_count &&
+           race->actions[race->action_index].kind == RACE_ACTION_SCAN &&
+           valid_feedback(feedback) && still(feedback) &&
+           hypotf(race->target_x - feedback->x, race->target_y - feedback->y) <= RACE_POSITION_TOL_M &&
+           fabsf(wrap_yaw(race->target_yaw - feedback->yaw)) <= RACE_YAW_TOL_RAD;
+}
+
+uint8_t Race_CompleteQr(RaceFsm *race, uint32_t session,
+                        const RaceFeedback *feedback, uint32_t now)
+{
+    if (!Race_ScanStationary(race, feedback) || !race->qr_valid ||
+        race->qr_handoff_complete || session != race->scan_session ||
+        (uint32_t)(now - race->entered_ms) >= race->actions[race->action_index].timeout_ms)
+        return 0U;
+    race->qr_handoff_complete = 1U;
     return 1U;
 }
 

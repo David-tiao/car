@@ -53,6 +53,16 @@ typedef enum {
     VISION_RING_ERROR
 } VisionRingState;
 
+typedef enum {
+    VISION_QR_NONE = 0,
+    VISION_QR_WAIT_CODE,
+    VISION_QR_CODE,
+    VISION_QR_ACK_SENT,
+    VISION_QR_DONE_SEEN,
+    VISION_QR_COMPLETE,
+    VISION_QR_FAILED
+} VisionQrStage;
+
 typedef struct {
     int16_t dx;
     int16_t dy;
@@ -106,6 +116,8 @@ typedef struct {
     uint8_t job_code;
     /* QR session is assigned by STM32 race FSM and echoed by OpenMV V4. */
     uint16_t qr_session;
+    VisionQrStage qr_stage;
+    uint16_t qr_done_seq;
     VisionPhase phase;
     VisionResult result;
     VisionPosition pos;
@@ -136,6 +148,8 @@ int Vision_SendBody(VisionContext *vision, const char *body);
 int Vision_SendRaw(VisionContext *vision, const uint8_t *data, size_t length);
 int Vision_StartJob(VisionContext *vision, unsigned code, uint32_t now_ms);
 int Vision_StartQrJob(VisionContext *vision, uint32_t session, uint32_t now_ms);
+int Vision_AckQr(VisionContext *vision, uint32_t session);
+uint8_t Vision_QrHandoffComplete(const VisionContext *vision, uint32_t session);
 int Vision_StartJobTol(VisionContext *vision, unsigned code,
                        unsigned tolerance_x_px, unsigned tolerance_y_px,
                        uint32_t now_ms);
@@ -170,6 +184,7 @@ uint8_t RaceVision_BeginScan(void);
 uint8_t RaceVision_BeginScanSession(uint32_t session);
 uint8_t RaceVision_AckQr(uint32_t session);
 uint8_t RaceVision_ScanFailed(void);
+uint8_t RaceVision_HandoffComplete(uint32_t session);
 uint8_t RaceVision_Poll(char code[VISION_TASK_CODE_SIZE]);
 uint8_t RaceVision_Healthy(void);
 void RaceVision_EndScan(void);
