@@ -1,0 +1,36 @@
+test_ack_timeout (test_segment_executor.Test.test_ack_timeout) ... ok
+test_actual_origin_required (test_segment_executor.Test.test_actual_origin_required) ... ok
+test_complete_before_ack (test_segment_executor.Test.test_complete_before_ack) ... ok
+test_corridor_rejected (test_segment_executor.Test.test_corridor_rejected) ... ok
+test_deviation (test_segment_executor.Test.test_deviation) ... ok
+test_diagonal (test_segment_executor.Test.test_diagonal) ... ok
+test_duplicate_sample (test_segment_executor.Test.test_duplicate_sample) ... ok
+test_invalid_imu (test_segment_executor.Test.test_invalid_imu) ... ok
+test_invalid_qr (test_segment_executor.Test.test_invalid_qr) ... ok
+test_link_loss (test_segment_executor.Test.test_link_loss) ... ok
+test_map_changed (test_segment_executor.Test.test_map_changed) ... ok
+test_moving_resets_count (test_segment_executor.Test.test_moving_resets_count) ... ok
+test_no_advance_on_ack (test_segment_executor.Test.test_no_advance_on_ack) ... ok
+test_no_advance_on_completion (test_segment_executor.Test.test_no_advance_on_completion) ... ok
+test_no_double_issue (test_segment_executor.Test.test_no_double_issue) ... ok
+test_pitch_not_ready (test_segment_executor.Test.test_pitch_not_ready) ... ok
+test_replan_after_axis (test_segment_executor.Test.test_replan_after_axis) ... ok
+test_result_timeout (test_segment_executor.Test.test_result_timeout) ... ok
+test_session_change (test_segment_executor.Test.test_session_change) ... ok
+test_settled (test_segment_executor.Test.test_settled) ... ok
+test_stale_feedback (test_segment_executor.Test.test_stale_feedback) ... ok
+test_target (test_segment_executor.Test.test_target) ... ok
+test_tf (test_segment_executor.Test.test_tf) ... ok
+test_two_stages (test_segment_executor.Test.test_two_stages) ... ok
+test_unexpected_motion (test_segment_executor.Test.test_unexpected_motion) ... ok
+test_vision_failure (test_segment_executor.Test.test_vision_failure) ... ok
+test_vision_timeout (test_segment_executor.Test.test_vision_timeout) ... ok
+test_vision_token (test_segment_executor.Test.test_vision_token) ... ok
+test_wrong_command (test_segment_executor.Test.test_wrong_command) ... ok
+test_wrong_status (test_segment_executor.Test.test_wrong_status) ... ok
+test_wrong_type (test_segment_executor.Test.test_wrong_type) ... ok
+
+----------------------------------------------------------------------
+Ran 31 tests in 0.003s
+
+OK

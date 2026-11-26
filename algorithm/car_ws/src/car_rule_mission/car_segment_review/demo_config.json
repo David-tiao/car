@@ -1,0 +1,7 @@
+{
+  "mode": "SIM_ONLY",
+  "map_id": "demo-not-measured",
+  "map_to_odom": {"x": 1.0, "y": 1.0, "yaw": 0.0},
+  "success_status": 0,
+  "limits": {"pos": 0.02, "yaw": 0.04, "speed": 0.01, "angular_speed": 0.02, "max_deviation": 0.12, "fresh_ms": 1500, "ack_ms": 1000, "result_ms": 30000, "settle_ms": 2000, "vision_ms": 10000, "stable_samples": 3}
+}
