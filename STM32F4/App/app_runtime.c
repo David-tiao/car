@@ -17,17 +17,30 @@
 #include "tim.h"
 #include "vofa_debug.h"
 #include <math.h>
+#if APP_RUN_MODE == APP_MODE_PI_MOTION
+#include "pi_uart2_port.h"
+#endif
+#define APP_RUNTIME_LEGACY (APP_RUN_MODE != APP_MODE_RACE && APP_RUN_MODE != APP_MODE_PI_MOTION)
 
 Motor_t motor_left_front;
 Motor_t motor_right_front;
 Motor_t motor_left_back;
 Motor_t motor_right_back;
 MecanumChassis_t chassis;
-#if APP_RUN_MODE != APP_MODE_RACE
+#if APP_RUN_MODE == APP_MODE_PI_MOTION
+static uint8_t s_pi_ready, s_pi_have_frame;
+static uint32_t s_pi_frames, s_pi_sample_ms;
+
+/* Physical authorization and independently provisioned session are not wired.
+ * Even an explicitly compiled Pi mode cannot grant motion in this revision.
+ * PE0 is NOT a verified hardware e-stop; never infer authorization from UART. */
+static uint8_t pi_local_enable(void) { return 0U; }
+#endif
+#if APP_RUNTIME_LEGACY
 static uint8_t s_square_seen_running;
 #endif
 
-#if APP_RUN_MODE != APP_MODE_RACE
+#if APP_RUNTIME_LEGACY
 static uint8_t d36_stepper_busy(uint8_t axis, void *user)
 { (void)user; return AppStepper_IsBusy((StepperAxis_t)axis); }
 static uint32_t d36_stepper_remaining(uint8_t axis, void *user)
@@ -72,6 +85,7 @@ static void update_chassis_imu_snapshot(void)
     MecanumChassis_SetImuSnapshot(&chassis, &snapshot);
 }
 
+#if APP_RUN_MODE != APP_MODE_PI_MOTION
 static void update_ulog_snapshot(void)
 {
     ULogAppSnapshot snapshot = {0};
@@ -112,6 +126,7 @@ static void update_ulog_snapshot(void)
 #endif
     ULog_SetAppSnapshot(&snapshot);
 }
+#endif
 static void init_motors_and_chassis(void)
 {
     Motor_Init(&motor_left_front,
@@ -168,7 +183,7 @@ void AppRuntime_Init(void)
     Servo_Init();
     ServoKey_Init();
 #else
-#if APP_RUN_MODE != APP_MODE_RACE
+#if APP_RUNTIME_LEGACY
     AppStepper_Init();
     Servo_Init();
     Servo_SetBothAngle(30.0f, 30.0f);
@@ -180,13 +195,17 @@ void AppRuntime_Init(void)
 #endif
     __HAL_TIM_MOE_ENABLE(&htim1);
     init_motors_and_chassis();
-#if APP_RUN_MODE != APP_MODE_RACE
+#if APP_RUNTIME_LEGACY
     DisplayNav_Init();
     VOFA_Init();
 #endif
     Vbat_Init();
     if (app_imu_init() != 0) {
-#if APP_RUN_MODE != APP_MODE_RACE
+#if APP_RUN_MODE == APP_MODE_PI_MOTION
+        stop_chassis_outputs();
+        s_pi_ready = 0U;
+        return;
+#elif APP_RUNTIME_LEGACY
         Error_Handler();
 #endif
     }
@@ -194,9 +213,15 @@ void AppRuntime_Init(void)
 #if APP_RUN_MODE == APP_MODE_RACE
     ULog_Init();
     AppRace_Init(&chassis);
+#elif APP_RUN_MODE == APP_MODE_PI_MOTION
+    /* Dedicated USART2 owner; do not start AppRace, ULog, direct pick or Square. */
+    s_pi_frames = app_imu_frames();
+    s_pi_sample_ms = HAL_GetTick();
+    s_pi_have_frame = 0U;
+    s_pi_ready = (uint8_t)PiUart2_Init(&chassis, 1U, s_pi_sample_ms);
 #endif
     stop_chassis_outputs();
-#if APP_RUN_MODE != APP_MODE_RACE
+#if APP_RUNTIME_LEGACY
 #if (MOTOR_TUNE != 0)
     Tune_Start(&motor_left_front);
 #else
@@ -217,6 +242,22 @@ void AppRuntime_Poll(void)
     Vbat_Poll();
     update_ulog_snapshot();
     ULog_Poll(&chassis);
+#elif APP_RUN_MODE == APP_MODE_PI_MOTION
+    uint32_t frames, now;
+    app_imu_poll();
+    update_chassis_imu_snapshot();
+    frames = app_imu_frames();
+    now = HAL_GetTick();
+    if (frames != s_pi_frames) {
+        s_pi_frames = frames;
+        s_pi_sample_ms = now;
+        s_pi_have_frame = 1U;
+    }
+    if (s_pi_ready)
+        PiMotion_Poll(now, pi_local_enable(),
+                      (uint8_t)(s_pi_have_frame && app_imu_ok() && app_imu_bias_ready()),
+                      s_pi_sample_ms);
+    Vbat_Poll();
 #else
 #if (MOTOR_TUNE != 0)
     Tune_Poll();
@@ -238,6 +279,12 @@ uint8_t AppRuntime_ControlTick(void)
 {
 #if APP_RUN_MODE == APP_MODE_RACE
     return AppRace_ControlTick();
+#elif APP_RUN_MODE == APP_MODE_PI_MOTION
+    if (!s_pi_ready) return 0U;
+    /* Run independent guard even while permission is off. No motor update or
+     * odometry sampling until a verified local permission path is integrated. */
+    if (!PiMotion_ControlTick(HAL_GetTick(), pi_local_enable())) return 0U;
+    return pi_local_enable();
 #else
     return 1U;
 #endif
@@ -253,5 +300,12 @@ void AppRuntime_MotorTick(void)
 
 void AppRuntime_ChassisTick(void)
 {
+#if APP_RUN_MODE == APP_MODE_PI_MOTION
+    if (s_pi_ready && pi_local_enable()) {
+        MecanumChassis_Loop(&chassis, 0.01f);
+        PiMotion_Capture(HAL_GetTick());
+    }
+#else
     if (!g_tune_mode) MecanumChassis_Loop(&chassis, 0.01f);
+#endif
 }
